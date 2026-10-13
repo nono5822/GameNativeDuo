@@ -9,4 +9,9 @@
     <string name="duo_panel_device">%1$s · bottom screen %2$d×%3$d @ %4$.0f Hz</string>
     <string name="duo_panel_touch_test">Tap test</string>
     <string name="duo_panel_touch_count">Taps: %1$d</string>
+
+    <!-- Container settings: "GameNative Duo" tab -->
+    <string name="duo_settings_tab">GameNative Duo</string>
+    <string name="duo_settings_bottom_panel">Bottom-screen panel</string>
+    <string name="duo_settings_bottom_panel_description">Show the GameNative Duo panel on the second screen while the game runs. Hidden anyway when External display mode or swap is on.</string>
 </resources>

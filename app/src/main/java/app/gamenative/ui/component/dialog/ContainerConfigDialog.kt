@@ -280,6 +280,7 @@ fun ContainerConfigDialog(
     default: Boolean = false,
     title: String,
     initialConfig: ContainerData = ContainerData(),
+    containerId: String? = null, // GameNativeDuo: null = default config
     onDismissRequest: () -> Unit,
     onSave: (ContainerData) -> Unit,
 ) {
@@ -299,6 +300,7 @@ fun ContainerConfigDialog(
             mutableStateOf(initialConfig)
         }
         var config by configState
+        val duoDraft = app.gamenative.duo.settings.rememberDuoSettingsDraft(containerId) // GameNativeDuo
 
         val staticData = rememberContainerConfigDialogStaticData()
         val screenSizes = staticData.screenSizes
@@ -1049,7 +1051,7 @@ fun ContainerConfigDialog(
         }
 
         val onDismissCheck: () -> Unit = {
-            if (initialConfig != config) {
+            if (initialConfig != config || duoDraft.isDirty) { // GameNativeDuo: || duoDraft.isDirty
                 dismissDialogState = MessageDialogState(
                     visible = true,
                     title = context.getString(R.string.container_config_unsaved_changes_title),
@@ -1249,7 +1251,7 @@ fun ContainerConfigDialog(
                             },
                             actions = {
                                 IconButton(
-                                    onClick = { onSave(config) },
+                                    onClick = { duoDraft.commit(); onSave(config) }, // GameNativeDuo: duoDraft.commit()
                                     content = { Icon(Icons.Default.Save, null) },
                                 )
                             },
@@ -1257,7 +1259,7 @@ fun ContainerConfigDialog(
                     },
                 ) { paddingValues ->
                     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
-                    val tabs = listOf(
+                    val tabs = app.gamenative.duo.settings.DuoSettingsTab.withDuoTab(listOf( // GameNativeDuo
                         stringResource(R.string.container_config_tab_general),
                         stringResource(R.string.container_config_tab_graphics),
                         stringResource(R.string.container_config_tab_emulation),
@@ -1267,7 +1269,7 @@ fun ContainerConfigDialog(
                         stringResource(R.string.container_config_tab_environment),
                         stringResource(R.string.container_config_tab_drives),
                         stringResource(R.string.container_config_tab_advanced)
-                    )
+                    )) // GameNativeDuo
 
                     // Let controller shoulder buttons cycle through the tabs: R1/R2
                     // forward, L1/L2 back (both wrap). The handler lives on the content
@@ -1322,6 +1324,8 @@ fun ContainerConfigDialog(
                                 .verticalScroll(scrollState)
                                 .weight(1f),
                         ) {
+                            val selectedTab = app.gamenative.duo.settings.DuoSettingsTab.upstreamIndex(tabs, selectedTab) // GameNativeDuo
+                            if (selectedTab == app.gamenative.duo.settings.DuoSettingsTab.SELECTED) app.gamenative.duo.settings.DuoSettingsTabContent(duoDraft) // GameNativeDuo
                             if (selectedTab == 0) GeneralTabContent(state, nonzeroResolutionError)
                             if (selectedTab == 1) GraphicsTabContent(state, default)
                             if (selectedTab == 2) EmulationTabContent(state)

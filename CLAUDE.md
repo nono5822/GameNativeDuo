@@ -23,8 +23,11 @@ Upstream lands ~4-5 commits/day; `XServerScreen.kt` (~6,800 lines) changes almos
   and `app/src/main/res/values/duo_*.xml`. A separate Gradle module was rejected: our code needs
   `XServer`, renderers and `Container` from `:app`, which would be a circular dependency.
 - Touch upstream files only with **one-line hooks**, marked `// GameNativeDuo`. Never add fields to
-  `Container.java` or the container settings dialog; store devkit settings in our own files keyed by
-  container id.
+  `Container.java`/`ContainerData`; store devkit settings in our own files keyed by container id
+  (`duo/settings/DuoSettings.kt`, `files/duo/settings/`).
+- **Every GameNative Duo setting goes in the "GameNative Duo" tab** of the container settings dialog, right after
+  "Emulation" (`duo/settings/DuoSettingsTab.kt`; add a field to `DuoContainerSettings` and a row to
+  `DuoSettingsTabContent`). The global default config edits `defaults.json`, used by containers without their own file.
 - Prefer changes that upstream would accept, and offer them upstream (see "Upstream candidates").
 - Sync by merging upstream release tags into `devkit` (merge, never rebase a published branch).
 
@@ -39,6 +42,8 @@ Upstream lands ~4-5 commits/day; `XServerScreen.kt` (~6,800 lines) changes almos
 | `com/winlator/core/DXVKHelper.java`, `WineUtils.java` | `AppPaths` instead of `/data/data/app.gamenative` |
 | `xenvironment/components/BionicProgramLauncherComponent.java` | `AppPaths` for gamepad mem files; sets `EVSHIM_BASE_PATH` |
 | `com/winlator/winhandler/WinHandler.java` | sets `EVSHIM_BASE_PATH` in the app process before `loadLibrary("evshim")` (else the controller is dead) |
+| `ui/component/dialog/ContainerConfigDialog.kt` | `containerId` param, Duo draft, tab inserted after Emulation, commit on Save, dirty check |
+| `ui/PluviaMain.kt`, `ui/screen/library/appscreen/BaseAppScreen.kt` | pass `containerId` to `ContainerConfigDialog` |
 | `.github/workflows/{app-release-signed,tagged-release,issues-contributors-only}.yml` | jobs guarded to run only in upstream repo |
 
 ## Why `app.gamenative.duo` and `AppPaths`
