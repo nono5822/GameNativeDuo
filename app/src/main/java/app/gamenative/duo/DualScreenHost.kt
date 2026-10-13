@@ -5,12 +5,14 @@ import android.hardware.display.DisplayManager
 import android.os.Handler
 import android.os.Looper
 import android.view.View
+import app.gamenative.duo.display.DeviceProfile
 import app.gamenative.duo.display.DisplayInventory
 import app.gamenative.duo.display.DisplaySnapshot
+import app.gamenative.duo.panel.BottomPanelController
 import com.winlator.container.Container
 import com.winlator.xserver.XServer
-import timber.log.Timber
 import java.io.File
+import timber.log.Timber
 
 /**
  * Entry point for GameNativeDuo's dual-screen features.
@@ -50,9 +52,9 @@ object DualScreenHost {
 }
 
 /**
- * One game session's dual-screen state. For now it records how Android reports the device's displays
- * (logcat tag `GNDuo`, plus `Android/data/<package>/files/duo/displays.json`) whenever they change, so
- * device profiles can be built from real data. Bottom-screen rendering, routing and panels build on this.
+ * One game session's dual-screen state. Records how Android reports the device's displays (logcat tag
+ * `GNDuo`, plus `Android/data/<package>/files/duo/displays.json`) whenever they change, so device profiles
+ * can be built from real data, and keeps the bottom-screen panel in step with those displays.
  */
 class DualScreenSession internal constructor(
     private val context: Context,
@@ -61,6 +63,8 @@ class DualScreenSession internal constructor(
 ) {
     private val displayManager: DisplayManager? = context.getSystemService(DisplayManager::class.java)
     private val lastChangeKeys = mutableMapOf<Int, String>()
+    val profile: DeviceProfile = DeviceProfile.detect()
+    private val bottomPanel = BottomPanelController(context, container, profile)
     private var running = false
 
     private val displayListener = object : DisplayManager.DisplayListener {
@@ -79,7 +83,7 @@ class DualScreenSession internal constructor(
         if (running) return
         running = true
         displayManager?.registerDisplayListener(displayListener, Handler(Looper.getMainLooper()))
-        report("session start (container ${container.id})")
+        report("session start (container ${container.id}, profile ${profile.id})")
     }
 
     fun detach() {
@@ -90,6 +94,7 @@ class DualScreenSession internal constructor(
         } catch (t: Throwable) {
             Timber.tag(DualScreenHost.TAG).w(t, "Failed to unregister display listener")
         }
+        bottomPanel.stop()
         Timber.tag(DualScreenHost.TAG).i("Session ended")
     }
 
@@ -104,6 +109,7 @@ class DualScreenSession internal constructor(
         } catch (t: Throwable) {
             Timber.tag(DualScreenHost.TAG).e(t, "Failed to read displays")
         }
+        bottomPanel.update()
     }
 
     private fun writeReport(displays: List<DisplaySnapshot>, reason: String) {

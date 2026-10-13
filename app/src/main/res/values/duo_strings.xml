@@ -2,4 +2,11 @@
 <!-- GameNativeDuo-only strings. Kept in their own file so upstream merges never conflict. -->
 <resources>
     <string name="duo_app_name" translatable="false">GameNative Duo</string>
+
+    <!-- Bottom-screen panel -->
+    <string name="duo_panel_title">GameNative Duo</string>
+    <string name="duo_panel_game">Container: %1$s</string>
+    <string name="duo_panel_device">%1$s · bottom screen %2$d×%3$d @ %4$.0f Hz</string>
+    <string name="duo_panel_touch_test">Tap test</string>
+    <string name="duo_panel_touch_count">Taps: %1$d</string>
 </resources>
