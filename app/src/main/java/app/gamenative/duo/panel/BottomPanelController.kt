@@ -15,6 +15,7 @@ import android.widget.TextView
 import app.gamenative.R
 import app.gamenative.duo.DualScreenHost
 import app.gamenative.duo.display.DeviceProfile
+import app.gamenative.duo.settings.DuoContainerSettings
 import com.winlator.container.Container
 import timber.log.Timber
 
@@ -22,13 +23,15 @@ import timber.log.Timber
  * Shows the devkit's panel on the bottom screen while a game runs on the top screen.
  *
  * The panel window is never focusable, so the game keeps keyboard and controller input; taps on the panel
- * still reach its views. It stays out of the way when the container uses upstream's own second-screen
- * features (external touchpad/keyboard, or swapping the game onto the other screen).
+ * still reach its views. It stays out of the way when it is switched off in the container's GameNative Duo
+ * settings, or when the container uses upstream's own second-screen features (external touchpad/keyboard,
+ * or swapping the game onto the other screen).
  */
 class BottomPanelController(
     private val context: Context,
     private val container: Container,
     private val profile: DeviceProfile,
+    private val settings: DuoContainerSettings,
 ) {
     private var presentation: BottomPanelPresentation? = null
 
@@ -40,7 +43,7 @@ class BottomPanelController(
     /** Shows, moves or hides the panel to match the current displays. Safe to call on every display change. */
     fun update() {
         try {
-            val target = if (upstreamUsesSecondScreen) null else profile.findBottomDisplay(context)
+            val target = if (!settings.bottomPanelEnabled || upstreamUsesSecondScreen) null else profile.findBottomDisplay(context)
             val current = presentation
             if (target == null) {
                 if (current != null) Timber.tag(DualScreenHost.TAG).i("Bottom panel hidden")

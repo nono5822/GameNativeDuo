@@ -9,6 +9,7 @@ import app.gamenative.duo.display.DeviceProfile
 import app.gamenative.duo.display.DisplayInventory
 import app.gamenative.duo.display.DisplaySnapshot
 import app.gamenative.duo.panel.BottomPanelController
+import app.gamenative.duo.settings.DuoSettingsStore
 import com.winlator.container.Container
 import com.winlator.xserver.XServer
 import java.io.File
@@ -64,7 +65,8 @@ class DualScreenSession internal constructor(
     private val displayManager: DisplayManager? = context.getSystemService(DisplayManager::class.java)
     private val lastChangeKeys = mutableMapOf<Int, String>()
     val profile: DeviceProfile = DeviceProfile.detect()
-    private val bottomPanel = BottomPanelController(context, container, profile)
+    val settings = DuoSettingsStore.load(context, container.id)
+    private val bottomPanel = BottomPanelController(context, container, profile, settings)
     private var running = false
 
     private val displayListener = object : DisplayManager.DisplayListener {
@@ -83,7 +85,7 @@ class DualScreenSession internal constructor(
         if (running) return
         running = true
         displayManager?.registerDisplayListener(displayListener, Handler(Looper.getMainLooper()))
-        report("session start (container ${container.id}, profile ${profile.id})")
+        report("session start (container ${container.id}, profile ${profile.id}, $settings)")
     }
 
     fun detach() {
