@@ -40,7 +40,7 @@ Upstream lands ~4-5 commits/day; `XServerScreen.kt` (~6,800 lines) changes almos
 | `build.gradle.kts` (root) | `buildscript` pins D8/R8 `com.android.tools:r8` (see Known issues) |
 | `com/winlator/renderer/VulkanRenderer.java` | `duoViewRect` crop in `updateTransform`, `duoMirror` frame forwarding, `setDuoViewRect`/`setDuoMirror`/`duoRelease` |
 | `AndroidManifest.xml` | 3 launcher labels -> `@string/duo_app_name` |
-| `com/winlator/container/Container.java` | `AppPaths` for default drives/MEDIACONV paths; `setDrives`/`setEnvVars` rewrite old paths |
+| `com/winlator/container/Container.java` | `AppPaths` for default drives/MEDIACONV paths; `setDrives`/`setEnvVars` rewrite old paths; `getBox64Version` strips labels like " (Default)" |
 | `com/winlator/core/DXVKHelper.java`, `WineUtils.java` | `AppPaths` instead of `/data/data/app.gamenative` |
 | `xenvironment/components/BionicProgramLauncherComponent.java` | `AppPaths` for gamepad mem files; sets `EVSHIM_BASE_PATH` |
 | `com/winlator/winhandler/WinHandler.java` | sets `EVSHIM_BASE_PATH` in the app process before `loadLibrary("evshim")` (else the controller is dead) |
@@ -134,6 +134,8 @@ adb logcat -s GNDuo                         # devkit logs
 ## Upstream candidates
 
 - The D8/R8 pin (or an AGP bump) for the `XServerScreen` VerifyError.
+- `Container.getBox64Version()` label stripping: GameNative's known config for Stardew Valley stores "0.3.7 (Default)",
+  so no box64 gets extracted and x86_64-Proton containers die instantly (`unable to open file .../usr/bin/box64`).
 
 - `AppPaths` (package-independent data paths) — fixes upstream's `.gold` build too.
 - A "second display host" extension point + renderer frame-export hook, so the devkit could become a plugin.
