@@ -2,6 +2,8 @@ package app.gamenative.duo.mods
 
 import android.content.Context
 import app.gamenative.duo.DualScreenHost
+import app.gamenative.duo.display.DeviceProfile
+import app.gamenative.duo.display.ScreenCalibrationStore
 import app.gamenative.duo.settings.DuoSettingsStore
 import app.gamenative.duo.split.LayoutFile
 import app.gamenative.duo.split.ScreenSplit
@@ -65,7 +67,11 @@ object DuoModInstaller {
         state.put("previousScreenSplit", settings.screenSplit)
         state.put("previousSplitLayout", settings.splitLayout)
         DuoSettingsStore.save(context, container.id, settings.copy(screenSplit = true, splitLayout = mod.splitLayout.id))
-        if (mod.splitLayout == SplitLayout.NATIVE) ScreenSplit.nativeFor(context)?.let { LayoutFile.write(container, it) }
+        if (mod.splitLayout == SplitLayout.NATIVE) {
+            ScreenSplit.nativeFor(context)?.let {
+                LayoutFile.write(container, it, ScreenCalibrationStore.load(context, DeviceProfile.detect()))
+            }
+        }
 
         state.put("mod", mod.id)
         stateFile(context, mod.appId).apply { parentFile?.mkdirs() }.writeText(state.toString(2))

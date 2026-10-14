@@ -1272,6 +1272,7 @@ ok=true;}catch(...){}
         std::lock_guard<std::mutex> lk(renderMutex);
 
         if (!deleteQueue.empty()) {
+            duoWaitSecondary(); // GameNativeDuo
             for (auto& wt:deleteQueue) {
                 if (wt.ds  !=VK_NULL_HANDLE) vk_.FreeDescriptorSets(device,winTexPool,1,&wt.ds);
                 if (wt.view!=VK_NULL_HANDLE) vk_.DestroyImageView(device,wt.view,nullptr);
@@ -1436,6 +1437,7 @@ ok=true;}catch(...){}
             pi.waitSemaphoreCount=1; pi.pWaitSemaphores=sSem; pi.swapchainCount=1; pi.pSwapchains=scs; pi.pImageIndices=&imgIdx;
             res=vk_.QueuePresentKHR(graphicsQueue,&pi);
             if (res==VK_ERROR_OUT_OF_DATE_KHR||res==VK_ERROR_SURFACE_LOST_KHR) fbResized.store(true);
+            duoRenderSecondary(); // GameNativeDuo
         } else {
             // The XR session samples xrAhb from its own GL context with no fence handoff;
             // blocking here means the buffer is fully written whenever this thread is idle,

@@ -1,7 +1,8 @@
 # Stardew Valley screen split: status and everything tried (2026-10-14)
 
 Branch: `duo/stardew` (built on `duo/mod-library` = PR #3, plus the box64 fix from `duo/box64-label-fix`).
-**Work in progress: the bottom screen does not show anything yet.**
+**Work in progress.** Update (evening): the split works (world continues from the top screen onto the bottom one,
+UI on the bottom, live calibration sliders). See "Evening session" at the end.
 
 ## Goal (from the user)
 
@@ -72,7 +73,7 @@ So setup succeeds but frames either are not presented or not visible. Next steps
 - `libvulkan_renderer.so` is a prebuilt in `app/src/modern/jniLibs`; this branch replaces it with our build (see
   `duo/native/README.md`). Upstream's original is the one in git history before this branch.
 
-## Debug-only bits still in the code (remove before merging)
+## Debug-only bits (removed in the evening session)
 
 - `duo/mods-src/stardew/.../Patches.cs`: `LogDiagnostics`, the world thumbnail, magenta markers, moving green marker
   and frame counter in `RenderScreenBuffer_Prefix` (marked `DEBUG`). The bundled asset DLL is an older build without
@@ -87,3 +88,29 @@ So setup succeeds but frames either are not presented or not visible. Next steps
   `*.dll *.exe *.json` from the device; .NET SDK + `dotnet-runtime` needed on Arch).
 - Verify the APK: `adb shell cmd package compile -m verify -f app.gamenative.duo` then grep logcat for `Verification error`.
 - Note: debug installs go through an app bundle; `app/build/outputs/apk/...` is not what gets installed.
+
+## Evening session (2026-10-14): bottom screen working, GPU hang found
+
+- **Black bottom screen:** `duoRenderSecondary()` was only hooked into the frame-generation present path; the normal
+  path returned before it. Hooked into both.
+- **Texture deletion race:** the main renderer frees window textures after waiting only for its own frame fence; the
+  bottom screen's command buffer may still sample them. `duoWaitSecondary()` (hook before the `deleteQueue` flush)
+  waits for the bottom output first. Observed once ("waiting for second screen ...").
+- **Bottom acquire never makes the GPU wait:** images are acquired with a fence polled on later frames instead of a
+  semaphore the shared queue waits on (defensive; it was *not* the cause of the hangs below).
+- **The real freeze: GPU hangs from the SMAPI mod.** dmesg: `adreno-gen7-gmu: GPU hang detected` on the app's
+  `ctx_type VK` context (the game's DXVK work is attributed to the app process), 3 within 2 s -> context banned,
+  everything freezes. It happened in *every* modded session (one "good" session had 16 hangs, just never 3 within 2 s)
+  and in none without the mod. Bisected with launch-by-intent trials (`am start -a app.gamenative.LAUNCH_GAME
+  --ei app_id 413150 --es game_source STEAM`, then poll dmesg for the pid): forcing `Game1.ShouldDrawOnBuffer`
+  on the title/loading screens is the trigger. Not forcing it -> 0 hangs in 4 runs. SMAPI already forces it once a
+  save is loaded; the title/loading screens now take a UI-only path (`DrawUiOnly`). *Why* that hangs is unknown.
+  Note: dmesg also logs `CP: AHB bus error` continuously; that is noise (present in good sessions too).
+- **Camera continuation:** game logic keeps the top-screen viewport; only `DrawWorld` gets a viewport stretched over
+  both screens (+ lightmap sized to match). Fade-to-black is drawn on the top screen too.
+- **Physical alignment:** `layout.json` carries `gap` (hinge, top-screen px), `bottomScale` (density ratio; panel
+  specs give ~1.142, Android reports placeholder dpi) and `bottomShift`. Stored per device in
+  `files/duo/calibration/<profile>.json` (`ScreenCalibration`), defaults in `DeviceProfile`. A two-finger long press
+  on the bottom screen opens `ScreenCalibrationPanel`; the mod re-reads `layout.json` ~10x/s.
+- Calibration chosen on the Thor (now its `DeviceProfile` default): gap 249, scale 1.142, shift 0.
+- All debug code (mod thumbnail/markers/diagnostics, native counters and `debug.gnduo.secondary`) has been removed.

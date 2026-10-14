@@ -22,9 +22,16 @@ internal static class Patches
         Patch(harmony, nameof(Game1.updateViewportForScreenSizeChange), prefix: nameof(UpdateViewport_Prefix));
         Patch(harmony, nameof(Game1.SetWindowSize), postfix: nameof(SetWindowSize_Postfix));
         Patch(harmony, nameof(Game1.PushUIMode), postfix: nameof(PushUIMode_Postfix));
-        Patch(harmony, nameof(Game1.ShouldDrawOnBuffer), prefix: nameof(ForceTrue_Prefix));
+        // Not Game1.ShouldDrawOnBuffer: forcing it on the title and loading screens hung the GPU (kgsl "GPU hang
+        // detected" within a minute of launch, every time); SMAPI already turns it on once a save is loaded.
         Patch(harmony, nameof(Game1.IsRenderingNonNativeUIScale), prefix: nameof(ForceTrue_Prefix));
         Patch(harmony, "renderScreenBuffer", prefix: nameof(RenderScreenBuffer_Prefix));
+        Patch(harmony, "allocateLightmap", prefix: nameof(AllocateLightmap_Prefix));
+        harmony.Patch(
+            AccessTools.Method(typeof(Game1), nameof(Game1.DrawWorld)),
+            prefix: new HarmonyMethod(typeof(Patches), nameof(DrawWorld_Prefix)),
+            finalizer: new HarmonyMethod(typeof(Patches), nameof(DrawWorld_Finalizer))
+        );
         Patch(harmony, nameof(Game1.drawMouseCursor), prefix: nameof(DrawMouseCursor_Prefix));
         foreach (string name in new[] { nameof(Game1.getMouseX), nameof(Game1.getOldMouseX) })
             Patch(harmony, name, postfix: nameof(MouseX_Postfix), args: new[] { typeof(bool) });
@@ -55,7 +62,7 @@ internal static class Patches
         }
     }
 
-    /// <summary>Size the world render target to the top screen and the UI render target to the bottom screen.</summary>
+    /// <summary>Size the world render target to the whole window (both screens) and the UI render target to the bottom screen.</summary>
     private static void SetWindowSize_Postfix(Game1 __instance, int w, int h)
     {
         try
@@ -67,13 +74,7 @@ internal static class Patches
             if (!ModEntry.Active)
                 return;
 
-            var device = Game1.graphics.GraphicsDevice;
-            float zoom = Game1.options.zoomLevel;
-            float ui = Game1.options.uiScale;
-            __instance.screen = new RenderTarget2D(device, (int)Math.Ceiling(L.Top.Width / zoom), (int)Math.Ceiling(L.Top.Height / zoom),
-                false, SurfaceFormat.Color, DepthFormat.None, 0, RenderTargetUsage.PreserveContents) { Name = "@Game1.screen" };
-            __instance.uiScreen = new RenderTarget2D(device, (int)Math.Ceiling(L.Bottom.Width / ui), (int)Math.Ceiling(L.Bottom.Height / ui),
-                false, SurfaceFormat.Color, DepthFormat.None, 0, RenderTargetUsage.PreserveContents) { Name = "@Game1.uiScreen" };
+            CreateRenderTargets(__instance);
             Game1.updateViewportForScreenSizeChange(fullscreenChange: false, w, h);
 
             // Lay open menus out again for the bottom screen.
@@ -96,6 +97,36 @@ internal static class Patches
         }
     }
 
+    /// <summary>
+    /// World render target for both screens plus the hidden gap rows, UI render target for the bottom screen, and a
+    /// lightmap matching the world. Called on window resize and when the gap changes.
+    /// </summary>
+    public static void CreateRenderTargets(Game1 game)
+    {
+        var device = Game1.graphics.GraphicsDevice;
+        float zoom = Game1.options.zoomLevel;
+        float ui = Game1.options.uiScale;
+        RenderTarget2D? oldScreen = game.screen, oldUi = game.uiScreen;
+        game.screen = new RenderTarget2D(device, (int)Math.Ceiling(L.World.X / zoom), (int)Math.Ceiling(L.World.Y / zoom),
+            false, SurfaceFormat.Color, DepthFormat.None, 0, RenderTargetUsage.PreserveContents) { Name = "@Game1.screen" };
+        game.uiScreen = new RenderTarget2D(device, (int)Math.Ceiling(L.Bottom.Width / ui), (int)Math.Ceiling(L.Bottom.Height / ui),
+            false, SurfaceFormat.Color, DepthFormat.None, 0, RenderTargetUsage.PreserveContents) { Name = "@Game1.uiScreen" };
+        oldScreen?.Dispose();
+        oldUi?.Dispose();
+        AllocateLightmap(L.World.X, L.World.Y);
+    }
+
+    /// <summary>True when the world render target cannot hold <see cref="Layout.World"/> (sliders only grow it).</summary>
+    public static bool WorldTargetTooSmall(Game1 game)
+    {
+        float zoom = Game1.options.zoomLevel;
+        return game.screen == null || game.screen.Width < (int)Math.Ceiling(L.World.X / zoom) || game.screen.Height < (int)Math.Ceiling(L.World.Y / zoom);
+    }
+
+    private static readonly MethodInfo AllocateLightmapMethod = AccessTools.Method(typeof(Game1), "allocateLightmap");
+
+    private static void AllocateLightmap(int width, int height) => AllocateLightmapMethod.Invoke(null, new object[] { width, height });
+
     /// <summary>The HUD and menus lay themselves out inside the bottom screen.</summary>
     private static void PushUIMode_Postfix()
     {
@@ -106,7 +137,7 @@ internal static class Patches
             (int)Math.Ceiling(L.Bottom.Width / ui), (int)Math.Ceiling(L.Bottom.Height / ui));
     }
 
-    /// <summary>Always render through the world/UI render targets so they can be placed on different screens.</summary>
+    /// <summary>Always draw the HUD and menus through the UI render target, so it can be placed on the bottom screen.</summary>
     private static bool ForceTrue_Prefix(ref bool __result)
     {
         if (!ModEntry.Active)
@@ -115,39 +146,88 @@ internal static class Patches
         return false;
     }
 
-    /// <summary>Draw the world render target on the top screen and the UI render target on the bottom screen.</summary>
+    /// <summary>
+    /// The camera (centering, clamping, everything the game updates) works on the top screen's viewport, so the
+    /// farmer stays centred up there. Only while the world is drawn, the viewport grows to the whole window so the
+    /// bottom screen shows the world continuing below the top screen, behind the HUD and menus.
+    /// </summary>
+    private static void DrawWorld_Prefix(out xTile.Dimensions.Rectangle? __state)
+    {
+        __state = null;
+        if (!ModEntry.Active || Game1.game1.takingMapScreenshot)
+            return;
+        try
+        {
+            __state = Game1.viewport;
+            Game1.viewport = WorldViewport(Game1.viewport);
+        }
+        catch (Exception ex)
+        {
+            ModEntry.Log.Log($"DrawWorld patch failed: {ex}", LogLevel.Error);
+        }
+    }
+
+    private static Exception? DrawWorld_Finalizer(Exception? __exception, xTile.Dimensions.Rectangle? __state)
+    {
+        if (__state.HasValue)
+            Game1.viewport = __state.Value;
+        return __exception;
+    }
+
+    /// <summary>The world viewport (window plus gap rows) around the top screen's <paramref name="top"/> viewport.</summary>
+    private static xTile.Dimensions.Rectangle WorldViewport(xTile.Dimensions.Rectangle top)
+    {
+        float zoom = Game1.options.zoomLevel;
+        return new xTile.Dimensions.Rectangle(
+            top.X - (int)Math.Round(L.Top.X / zoom), top.Y - (int)Math.Round(L.Top.Y / zoom),
+            (int)Math.Ceiling(L.World.X / zoom), (int)Math.Ceiling(L.World.Y / zoom));
+    }
+
+    /// <summary>The lightmap covers the whole world target, like the world it lights.</summary>
+    private static void AllocateLightmap_Prefix(ref int width, ref int height)
+    {
+        if (!ModEntry.Active)
+            return;
+        width = L.World.X;
+        height = L.World.Y;
+    }
+
+    /// <summary>Draw the world across both screens, the UI on the bottom screen, and screen fades on both.</summary>
     private static bool RenderScreenBuffer_Prefix(Game1 __instance, RenderTarget2D target_screen)
     {
-        if (!ModEntry.Active || __instance.takingMapScreenshot || LocalMultiplayer.IsLocalMultiplayer() || target_screen == null || target_screen.IsContentLost)
+        if (!ModEntry.Active || __instance.takingMapScreenshot || LocalMultiplayer.IsLocalMultiplayer() || target_screen?.IsContentLost == true)
             return true;
+        if (target_screen == null)
+            return DrawUiOnly(__instance);
         try
         {
             var device = Game1.graphics.GraphicsDevice;
             var batch = Game1.spriteBatch;
-            LogDiagnostics(__instance, target_screen);
             device.SetRenderTarget(null);
             device.Clear(Color.Black);
             // Copy the world's colour but keep the window opaque: Stardew's lighting pass can leave the world
             // target's alpha at 0, and GameNative's compositor (unlike a Windows desktop) honours window alpha.
             batch.Begin(SpriteSortMode.Deferred, OpaqueColorOnly, SamplerState.LinearClamp, DepthStencilState.Default, RasterizerState.CullNone);
-            batch.Draw(target_screen, new Vector2(L.Top.X, L.Top.Y), target_screen.Bounds, Color.White, 0f, Vector2.Zero, Game1.options.zoomLevel, SpriteEffects.None, 1f);
-            batch.Draw(target_screen, new Vector2(L.Bottom.X, L.Bottom.Bottom - target_screen.Height / 4f), target_screen.Bounds, Color.White, 0f, Vector2.Zero, 0.25f, SpriteEffects.None, 1f); // DEBUG thumbnail
-            for (int i = 0; i < 4; i++) // DEBUG markers: 200x200 magenta squares at x=0,600 of the top half and bottom half
-            {
-                int mx = (i % 2) * 600, my = i < 2 ? 0 : L.Bottom.Y;
-                batch.Draw(Game1.staminaRect, new Rectangle(mx + 100, my + 100, 200, 200), Color.Magenta);
-            }
-            // DEBUG: a marker that moves every frame, and the frame number, on the top screen.
-            int moving = (int)(_frames * 8 % (L.Top.Width - 120));
-            batch.Draw(Game1.staminaRect, new Rectangle(L.Top.X + moving, L.Top.Y + 500, 120, 120), Color.Lime);
-            batch.DrawString(Game1.dialogueFont, $"frame {_frames}", new Vector2(L.Top.X + 1000, L.Top.Y + 150), Color.Yellow);
+            // Top screen: the world's first rows. Bottom screen: the world after the rows hidden by the hinge,
+            // magnified to the bottom screen's pixel density so both show it at the same physical size.
+            float zoom = Game1.options.zoomLevel;
+            var topRows = new Rectangle(0, 0, target_screen.Width, (int)Math.Ceiling(L.Top.Bottom / zoom));
+            batch.Draw(target_screen, Vector2.Zero, topRows, Color.White, 0f, Vector2.Zero, zoom, SpriteEffects.None, 1f);
+            var world = L.BottomWorld;
+            var bottomSource = new Rectangle((int)Math.Round(world.X / zoom), (int)Math.Round(world.Y / zoom),
+                (int)Math.Round(world.Width / zoom), (int)Math.Round(world.Height / zoom));
+            batch.Draw(target_screen, L.Bottom, bottomSource, Color.White);
             batch.End();
-            if (__instance.uiScreen != null)
+            batch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.LinearClamp, DepthStencilState.Default, RasterizerState.CullNone);
+            // The game draws its fade to black in the UI layer, which only covers the bottom screen.
+            if ((Game1.fadeToBlack || Game1.globalFade) && Game1.fadeToBlackAlpha > 0f)
             {
-                batch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.LinearClamp, DepthStencilState.Default, RasterizerState.CullNone);
-                batch.Draw(__instance.uiScreen, new Vector2(L.Bottom.X, L.Bottom.Y), __instance.uiScreen.Bounds, Color.White, 0f, Vector2.Zero, Game1.options.uiScale, SpriteEffects.None, 1f);
-                batch.End();
+                float alpha = Game1.gameMode == 0 ? 1f - Game1.fadeToBlackAlpha : Game1.fadeToBlackAlpha;
+                batch.Draw(Game1.fadeToBlackRect, L.Top, Color.Black * alpha);
             }
+            if (__instance.uiScreen != null)
+                batch.Draw(__instance.uiScreen, new Vector2(L.Bottom.X, L.Bottom.Y), __instance.uiScreen.Bounds, Color.White, 0f, Vector2.Zero, Game1.options.uiScale, SpriteEffects.None, 1f);
+            batch.End();
             return false;
         }
         catch (Exception ex)
@@ -157,7 +237,29 @@ internal static class Patches
         }
     }
 
-    private static int _frames;
+    /// <summary>
+    /// Title and loading screens (no save loaded, so no world render target): the game drew straight to the window;
+    /// put the UI layer on the bottom screen over it, as the game would at the window's top-left.
+    /// </summary>
+    private static bool DrawUiOnly(Game1 game)
+    {
+        if (game.uiScreen == null)
+            return true;
+        try
+        {
+            var batch = Game1.spriteBatch;
+            Game1.graphics.GraphicsDevice.SetRenderTarget(null);
+            batch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.LinearClamp, DepthStencilState.Default, RasterizerState.CullNone);
+            batch.Draw(game.uiScreen, new Vector2(L.Bottom.X, L.Bottom.Y), game.uiScreen.Bounds, Color.White, 0f, Vector2.Zero, Game1.options.uiScale, SpriteEffects.None, 1f);
+            batch.End();
+            return false;
+        }
+        catch (Exception ex)
+        {
+            ModEntry.Log.Log($"renderScreenBuffer patch failed: {ex}", LogLevel.Error);
+            return true;
+        }
+    }
 
     /// <summary>Writes the source colour, leaves the (cleared, opaque) destination alpha alone.</summary>
     private static readonly BlendState OpaqueColorOnly = new()
@@ -168,37 +270,6 @@ internal static class Patches
         AlphaSourceBlend = Blend.Zero,
         AlphaDestinationBlend = Blend.One,
     };
-
-    /// <summary>Every ~5 s: render target sizes, scales, viewports, and a few world pixels (to tell "not drawn" from "not shown").</summary>
-    private static void LogDiagnostics(Game1 game, RenderTarget2D world)
-    {
-        if (_frames++ % 300 != 0)
-            return;
-        string sample = "";
-        try
-        {
-            var data = new Color[world.Width * world.Height];
-            world.GetData(data);
-            int lit = 0, opaque = 0;
-            for (int i = 0; i < data.Length; i += 997)
-            {
-                if (data[i].R + data[i].G + data[i].B > 60)
-                    lit++;
-                if (data[i].A > 200)
-                    opaque++;
-            }
-            sample = $"lit samples {lit}/{data.Length / 997}, opaque {opaque}";
-        }
-        catch (Exception ex)
-        {
-            sample = "sample failed: " + ex.Message;
-        }
-        ModEntry.Log.Log(
-            $"diag: world {world.Width}x{world.Height} ({sample}), ui {game.uiScreen?.Width}x{game.uiScreen?.Height}, " +
-            $"zoom {Game1.options.zoomLevel}, uiScale {Game1.options.uiScale}, viewport {Game1.viewport}, uiViewport {Game1.uiViewport}, " +
-            $"backbuffer {Game1.graphics.PreferredBackBufferWidth}x{Game1.graphics.PreferredBackBufferHeight}, mode {Game1.gameMode}, fade {Game1.fadeToBlackAlpha}",
-            LogLevel.Info);
-    }
 
     /// <summary>No mouse cursor while the pointer is on the bottom (touch) screen.</summary>
     private static bool DrawMouseCursor_Prefix()

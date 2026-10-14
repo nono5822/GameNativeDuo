@@ -6,7 +6,10 @@
 // Same device, same imported textures, same queue, so the game's buffers have exactly one reader.
 //
 // The second output never makes the main screen wait: if its previous frame is still in flight or no swapchain
-// image is free, that frame is simply skipped on the second screen.
+// image is free, that frame is simply skipped on the second screen. In particular the GPU never waits on the
+// second display: images are acquired with a fence that is polled on later frames, never with a semaphore the
+// queue would wait on. (A semaphore wait that the second display's compositor did not release in time hung the
+// shared queue, and the main screen with it: kgsl "GPU hang detected", context banned.)
 //
 // Kept in its own file to keep upstream merges cheap; VulkanRendererContext only has one-line hooks
 // (marked GameNativeDuo) that declare these members and call duoRenderSecondary() after each present.
@@ -24,7 +27,8 @@ struct DuoSecondary {
     std::vector<VkImageView> views;
     std::vector<VkFramebuffer> fbs;
     std::vector<VkSemaphore> renderDone;  // one per swapchain image
-    VkSemaphore acquired[MAX_FRAMES_IN_FLIGHT]{};
+    VkFence acquireFence = VK_NULL_HANDLE;  // signalled when the acquired image is really free
+    int pendingImage = -1;                  // acquired, waiting for acquireFence
     VkFence fences[MAX_FRAMES_IN_FLIGHT]{};
     VkCommandBuffer cmd[MAX_FRAMES_IN_FLIGHT]{};
     uint32_t frame = 0;
@@ -41,8 +45,11 @@ void VulkanRendererContext::duoDestroySecondary() {
         for (auto fb : s->fbs) if (fb != VK_NULL_HANDLE) vk_.DestroyFramebuffer(device, fb, nullptr);
         for (auto v : s->views) if (v != VK_NULL_HANDLE) vk_.DestroyImageView(device, v, nullptr);
         for (auto sem : s->renderDone) if (sem != VK_NULL_HANDLE) vk_.DestroySemaphore(device, sem, nullptr);
+        if (s->acquireFence != VK_NULL_HANDLE) {
+            if (s->pendingImage >= 0) vk_.WaitForFences(device, 1, &s->acquireFence, VK_TRUE, 100000000ULL);  // 100 ms
+            vk_.DestroyFence(device, s->acquireFence, nullptr);
+        }
         for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-            if (s->acquired[i] != VK_NULL_HANDLE) vk_.DestroySemaphore(device, s->acquired[i], nullptr);
             if (s->fences[i] != VK_NULL_HANDLE) vk_.DestroyFence(device, s->fences[i], nullptr);
             if (s->cmd[i] != VK_NULL_HANDLE) vk_.FreeCommandBuffers(device, cmdPool, 1, &s->cmd[i]);
         }
@@ -167,8 +174,9 @@ bool VulkanRendererContext::duoSetSecondary(ANativeWindow* win, float ox, float 
     cai.commandPool = cmdPool;
     cai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     cai.commandBufferCount = 1;
+    VkFenceCreateInfo acquireFenceCi{}; acquireFenceCi.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    if (vk_.CreateFence(device, &acquireFenceCi, nullptr, &s->acquireFence) != VK_SUCCESS) return fail("fence");
     for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        if (vk_.CreateSemaphore(device, &semCi, nullptr, &s->acquired[i]) != VK_SUCCESS) return fail("semaphore");
         if (vk_.CreateFence(device, &fenceCi, nullptr, &s->fences[i]) != VK_SUCCESS) return fail("fence");
         if (vk_.AllocateCommandBuffers(device, &cai, &s->cmd[i]) != VK_SUCCESS) return fail("command buffer");
     }
@@ -178,6 +186,17 @@ bool VulkanRendererContext::duoSetSecondary(ANativeWindow* win, float ox, float 
     return true;
 }
 
+// Called on the render thread before window textures are destroyed: the main screen only waits for its own
+// frames, but the second screen's last command buffer may still sample those textures.
+void VulkanRendererContext::duoWaitSecondary() {
+    DuoSecondary* s = duoSecondary;
+    if (!s) return;
+    for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        if (s->fences[i] == VK_NULL_HANDLE || vk_.GetFenceStatus(device, s->fences[i]) == VK_SUCCESS) continue;
+        vk_.WaitForFences(device, 1, &s->fences[i], VK_TRUE, UINT64_MAX);
+    }
+}
+
 // Called on the render thread right after the main screen's present (frameMutex held shared, frameDraws current).
 void VulkanRendererContext::duoRenderSecondary() {
     DuoSecondary* s = duoSecondary;
@@ -185,15 +204,24 @@ void VulkanRendererContext::duoRenderSecondary() {
     const uint32_t f = s->frame;
     if (vk_.GetFenceStatus(device, s->fences[f]) != VK_SUCCESS) return;  // previous frame still on the GPU: skip
 
-    uint32_t img = 0;
-    VkResult r = vk_.AcquireNextImageKHR(device, s->swapchain, 0, s->acquired[f], VK_NULL_HANDLE, &img);
-    if (r == VK_ERROR_OUT_OF_DATE_KHR || r == VK_ERROR_SURFACE_LOST_KHR) {
-        s->broken = true;
-        RLOG_E("duo: second screen surface out of date (%d)", (int)r);
-        return;
+    VkResult r;
+    if (s->pendingImage < 0) {
+        uint32_t acquiredImg = 0;
+        vk_.ResetFences(device, 1, &s->acquireFence);
+        r = vk_.AcquireNextImageKHR(device, s->swapchain, 0, VK_NULL_HANDLE, s->acquireFence, &acquiredImg);
+        if (r == VK_ERROR_OUT_OF_DATE_KHR || r == VK_ERROR_SURFACE_LOST_KHR) {
+            s->broken = true;
+            RLOG_E("duo: second screen surface out of date (%d)", (int)r);
+            return;
+        }
+        if (r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR) return;  // no free image right now: skip
+        if (acquiredImg >= s->fbs.size()) { s->broken = true; return; }
+        s->pendingImage = (int)acquiredImg;
     }
-    if (r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR) return;  // no free image right now: skip
-    if (img >= s->fbs.size()) return;
+    // The display may still be scanning the image out; draw into it on a later frame instead of making the GPU wait.
+    if (vk_.GetFenceStatus(device, s->acquireFence) != VK_SUCCESS) return;
+    const uint32_t img = (uint32_t)s->pendingImage;
+    s->pendingImage = -1;
 
     VkCommandBuffer cb = s->cmd[f];
     vk_.ResetFences(device, 1, &s->fences[f]);
@@ -248,11 +276,7 @@ void VulkanRendererContext::duoRenderSecondary() {
         return;
     }
 
-    VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    VkSubmitInfo si{}; si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    si.waitSemaphoreCount = 1;
-    si.pWaitSemaphores = &s->acquired[f];
-    si.pWaitDstStageMask = &waitStage;
+    VkSubmitInfo si{}; si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;  // no wait: the image is already free (acquireFence)
     si.commandBufferCount = 1;
     si.pCommandBuffers = &cb;
     si.signalSemaphoreCount = 1;

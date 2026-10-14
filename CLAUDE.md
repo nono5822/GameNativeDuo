@@ -39,7 +39,7 @@ Upstream lands ~4-5 commits/day; `XServerScreen.kt` (~6,800 lines) changes almos
 | `app/build.gradle.kts` | `applicationId = "app.gamenative.duo"` |
 | `build.gradle.kts` (root) | `buildscript` pins D8/R8 `com.android.tools:r8` (see Known issues) |
 | `com/winlator/renderer/VulkanRenderer.java` | `duoViewRect` crop in `updateTransform`, `setDuoViewRect`, `duoSetSecondary`/`duoClearSecondary` + their natives |
-| `cpp/winlator/VulkanRendererContext.{h,cpp}` | declarations, `duoRenderSecondary()` after present, `duoDestroySecondary()` in the destructor (new code in `DuoSecondaryOutput.cpp`) |
+| `cpp/winlator/VulkanRendererContext.{h,cpp}` | declarations, `duoRenderSecondary()` after both present paths, `duoWaitSecondary()` before the `deleteQueue` flush, `duoDestroySecondary()` in the destructor (new code in `DuoSecondaryOutput.cpp`) |
 | `cpp/CMakeLists.txt` | `DuoSecondaryOutput.cpp` source line |
 | `modern/jniLibs/arm64-v8a/libvulkan_renderer.so` | **rebuilt by us** (see `duo/native/README.md`); rebuild after upstream renderer changes |
 | `AndroidManifest.xml` | 3 launcher labels -> `@string/duo_app_name` |
@@ -89,6 +89,10 @@ no CPU frame copies, data over pixels, idle at 0 fps when nothing changes.
   prefix, sets the container's screen size (`ScreenSplit.recommendedFor`) and `WINEDLLOVERRIDES`, turns on screen
   split, and records the previous values in `files/duo/mods/<containerId>.json` so turning it off restores them.
 - Balatro: Lovely v0.10.0 (`winmm.dll`, MIT, licence alongside) + the `GameNativeDuo-split` Lua mod.
+- Stardew Valley: SMAPI + `duo/mods-src/stardew` (world continues across both screens, UI on the bottom). Never force
+  `Game1.ShouldDrawOnBuffer` on the title/loading screens: it hangs the GPU (see `duo/notes/`).
+- Physical screen alignment (`ScreenCalibration`: hinge gap, pixel-density scale, shift) is per device, defaults in
+  `DeviceProfile`, tuned in-game with a two-finger long press on the bottom screen, and written into `layout.json`.
 - Mods only add code to games the user owns; never anything that touches DRM or decrypts game files.
 
 ## Conventions

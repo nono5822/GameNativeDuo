@@ -36,6 +36,51 @@ public sealed class ModEntry : Mod
 
         Patches.Apply(new Harmony(ModManifest.UniqueID));
         helper.Events.Input.ButtonPressed += OnButtonPressed;
+        helper.Events.GameLoop.UpdateTicked += (_, e) =>
+        {
+            if (e.IsMultipleOf(6))
+                ReloadCalibration();
+        };
+        _layoutWritten = LayoutWriteTime();
+    }
+
+    private static DateTime _layoutWritten;
+
+    private static DateTime LayoutWriteTime()
+    {
+        try
+        {
+            return System.IO.File.GetLastWriteTimeUtc(Layout.FilePath);
+        }
+        catch
+        {
+            return default;
+        }
+    }
+
+    /// <summary>Picks up new calibration values while the game runs (GameNative Duo's calibration sliders).</summary>
+    private void ReloadCalibration()
+    {
+        try
+        {
+            DateTime written = LayoutWriteTime();
+            if (written == _layoutWritten || Layout == null)
+                return;
+            _layoutWritten = written;
+            Layout? fresh = Layout.Load(out _);
+            if (fresh == null || (fresh.Gap == Layout.Gap && fresh.BottomScale == Layout.BottomScale && fresh.BottomShift == Layout.BottomShift))
+                return;
+            Layout.Gap = fresh.Gap;
+            Layout.BottomScale = fresh.BottomScale;
+            Layout.BottomShift = fresh.BottomShift;
+            Monitor.Log($"Calibration: gap {Layout.Gap}, bottom scale {Layout.BottomScale}, bottom shift {Layout.BottomShift}", LogLevel.Trace);
+            if (Active && Patches.WorldTargetTooSmall(Game1.game1))
+                Patches.CreateRenderTargets(Game1.game1);
+        }
+        catch (Exception ex)
+        {
+            Monitor.Log($"Failed to reload the layout: {ex}", LogLevel.Error);
+        }
     }
 
     /// <summary>

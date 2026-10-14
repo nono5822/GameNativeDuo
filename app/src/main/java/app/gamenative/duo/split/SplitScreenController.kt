@@ -14,6 +14,8 @@ import android.view.WindowManager
 import android.widget.FrameLayout
 import app.gamenative.duo.DualScreenHost
 import app.gamenative.duo.display.DeviceProfile
+import app.gamenative.duo.display.ScreenCalibration
+import app.gamenative.duo.display.ScreenCalibrationStore
 import app.gamenative.duo.display.realSize
 import com.winlator.container.Container
 import com.winlator.renderer.VulkanRenderer
@@ -25,7 +27,8 @@ import timber.log.Timber
  * Shows one tall X screen across both screens: the top screen keeps upstream's renderer, cropped to the
  * upper part, and the same renderer (same GPU device and imported window buffers) also draws the lower part
  * into a surface on the bottom screen. No pixels are copied and the game's buffers have a single reader.
- * Taps on the bottom screen become mouse clicks at the matching X screen position.
+ * Taps on the bottom screen become mouse clicks at the matching X screen position. A two-finger long press on the
+ * bottom screen opens [ScreenCalibrationPanel] to line the physical screens up.
  *
  * When the bottom screen is missing or off, the top screen goes back to showing the whole X screen.
  */
@@ -39,6 +42,7 @@ class SplitScreenController(
     private val topRenderer: VulkanRenderer? get() = xServer.renderer as? VulkanRenderer
     private var presentation: SplitBottomPresentation? = null
     private var split: ScreenSplit? = null
+    private var calibration = ScreenCalibrationStore.load(context, profile)
 
     /** Applies or removes the split to match the current displays. Safe to call on every display change. */
     fun update() {
@@ -65,8 +69,12 @@ class SplitScreenController(
             dismissPresentation()
             split = newSplit
             top.setDuoViewRect(newSplit.top)
-            LayoutFile.write(container, newSplit)
-            presentation = SplitBottomPresentation(context, bottomDisplay, xServer, top, newSplit.bottom).also { it.show() }
+            LayoutFile.write(container, newSplit, calibration)
+            presentation = SplitBottomPresentation(
+                context, bottomDisplay, xServer, top, newSplit.bottom, calibration, profile.calibration,
+                onCalibrationChange = ::onCalibrationChange,
+                onCalibrationDone = { ScreenCalibrationStore.save(context, profile, it) },
+            ).also { it.show() }
             Timber.tag(DualScreenHost.TAG).i(
                 "Screen split on: X screen %dx%d, top %s, bottom %s on display %d",
                 xServer.screenInfo.width, xServer.screenInfo.height,
@@ -76,6 +84,11 @@ class SplitScreenController(
             Timber.tag(DualScreenHost.TAG).e(t, "Failed to update screen split")
             stop()
         }
+    }
+
+    private fun onCalibrationChange(new: ScreenCalibration) {
+        calibration = new
+        split?.let { LayoutFile.write(container, it, new) }
     }
 
     fun stop() {
@@ -123,6 +136,10 @@ private class SplitBottomPresentation(
     private val xServer: XServer,
     private val topRenderer: VulkanRenderer,
     private val rect: FloatArray,
+    private var calibration: ScreenCalibration,
+    private val calibrationDefaults: ScreenCalibration,
+    private val onCalibrationChange: (ScreenCalibration) -> Unit,
+    private val onCalibrationDone: (ScreenCalibration) -> Unit,
 ) : Presentation(outerContext, display),
     SurfaceHolder.Callback {
     private var buttonDown = false
@@ -130,6 +147,9 @@ private class SplitBottomPresentation(
     private var attachTries = 0
     private var surfaceSize: Pair<Int, Int>? = null
     private var holder: SurfaceHolder? = null
+    private var root: FrameLayout? = null
+    private var calibrationPanel: ScreenCalibrationPanel? = null
+    private val openCalibration = Runnable { showCalibration() }
 
     /** The top renderer initialises asynchronously; retry until it accepts the second screen. */
     private val attach = object : Runnable {
@@ -162,12 +182,11 @@ private class SplitBottomPresentation(
             holder.addCallback(this@SplitBottomPresentation)
             setOnTouchListener { v, event -> onTouch(v.width, v.height, event) }
         }
-        setContentView(
-            FrameLayout(context).apply {
-                setBackgroundColor(Color.BLACK)
-                addView(surfaceView)
-            },
-        )
+        root = FrameLayout(context).apply {
+            setBackgroundColor(Color.BLACK)
+            addView(surfaceView)
+        }
+        setContentView(root!!)
     }
 
     override fun surfaceCreated(holder: SurfaceHolder) {}
@@ -190,7 +209,37 @@ private class SplitBottomPresentation(
         }
     }
 
+    private fun showCalibration() {
+        if (calibrationPanel != null) return
+        try {
+            val panel = ScreenCalibrationPanel(
+                context,
+                calibration,
+                calibrationDefaults,
+                onChange = {
+                    calibration = it
+                    onCalibrationChange(it)
+                },
+                onDone = {
+                    calibration = it
+                    onCalibrationDone(it)
+                    hideCalibration()
+                },
+            )
+            root?.addView(panel, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+            calibrationPanel = panel
+        } catch (t: Throwable) {
+            Timber.tag(DualScreenHost.TAG).e(t, "Failed to open screen calibration")
+        }
+    }
+
+    private fun hideCalibration() {
+        calibrationPanel?.let { root?.removeView(it) }
+        calibrationPanel = null
+    }
+
     override fun onStop() {
+        handler.removeCallbacks(openCalibration)
         if (buttonDown) inject { xServer.injectPointerButtonRelease(Pointer.Button.BUTTON_LEFT) }
         buttonDown = false
         super.onStop()
@@ -199,6 +248,13 @@ private class SplitBottomPresentation(
     private fun onTouch(width: Int, height: Int, event: MotionEvent): Boolean {
         val pos = DuoViewport.surfaceToScreen(rect, width, height, event.x, event.y)
         when (event.actionMasked) {
+            // Two fingers held still for a second open the calibration; a second finger never drags in the game.
+            MotionEvent.ACTION_POINTER_DOWN -> if (event.pointerCount == 2) {
+                if (buttonDown) inject { xServer.injectPointerButtonRelease(Pointer.Button.BUTTON_LEFT) }
+                buttonDown = false
+                handler.postDelayed(openCalibration, 900)
+            }
+            MotionEvent.ACTION_POINTER_UP -> handler.removeCallbacks(openCalibration)
             MotionEvent.ACTION_DOWN -> if (pos != null) {
                 inject {
                     xServer.injectPointerMove(pos.first, pos.second)
@@ -209,7 +265,9 @@ private class SplitBottomPresentation(
             MotionEvent.ACTION_MOVE -> if (pos != null && buttonDown) {
                 inject { xServer.injectPointerMove(pos.first, pos.second) }
             }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> if (buttonDown) {
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                handler.removeCallbacks(openCalibration)
+                if (!buttonDown) return true
                 inject {
                     if (pos != null) xServer.injectPointerMove(pos.first, pos.second)
                     xServer.injectPointerButtonRelease(Pointer.Button.BUTTON_LEFT)
