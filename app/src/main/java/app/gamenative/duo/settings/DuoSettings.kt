@@ -22,10 +22,13 @@ data class DuoContainerSettings(
      * Needs a matching container screen size and a game or mod that puts its UI in the lower part.
      */
     val screenSplit: Boolean = false,
+    /** How the X screen is cut: "fill" (stretch both parts to the full width) or "native" (1:1 per display). */
+    val splitLayout: String = "fill",
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("bottomPanelEnabled", bottomPanelEnabled)
         put("screenSplit", screenSplit)
+        put("splitLayout", splitLayout)
     }
 
     companion object {
@@ -34,6 +37,7 @@ data class DuoContainerSettings(
             return DuoContainerSettings(
                 bottomPanelEnabled = json.optBoolean("bottomPanelEnabled", fallback.bottomPanelEnabled),
                 screenSplit = json.optBoolean("screenSplit", fallback.screenSplit),
+                splitLayout = json.optString("splitLayout", fallback.splitLayout),
             )
         }
     }

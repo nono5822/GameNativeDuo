@@ -188,6 +188,7 @@ public:
 
     bool verboseLog = true;
     void setVerboseLog(bool v) { verboseLog = v; }
+    struct DuoSecondary* duoSecondary = nullptr; bool duoSetSecondary(ANativeWindow* win, float ox, float oy, float sx, float sy); void duoClearSecondary(); void duoDestroySecondary(); void duoRenderSecondary(); void duoWaitSecondary(); // GameNativeDuo: second screen output, see DuoSecondaryOutput.cpp
     void dumpRendererInfo();
 
     std::string adrenoDriverPath;

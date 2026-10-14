@@ -38,9 +38,12 @@ Upstream lands ~4-5 commits/day; `XServerScreen.kt` (~6,800 lines) changes almos
 | `ui/screen/xserver/XServerScreen.kt` | import + one `DualScreenHost.attach(...)` line after the external-display controllers start |
 | `app/build.gradle.kts` | `applicationId = "app.gamenative.duo"` |
 | `build.gradle.kts` (root) | `buildscript` pins D8/R8 `com.android.tools:r8` (see Known issues) |
-| `com/winlator/renderer/VulkanRenderer.java` | `duoViewRect` crop in `updateTransform`, `duoMirror` frame forwarding, `setDuoViewRect`/`setDuoMirror`/`duoRelease` |
+| `com/winlator/renderer/VulkanRenderer.java` | `duoViewRect` crop in `updateTransform`, `setDuoViewRect`, `duoSetSecondary`/`duoClearSecondary` + their natives |
+| `cpp/winlator/VulkanRendererContext.{h,cpp}` | declarations, `duoRenderSecondary()` after both present paths, `duoWaitSecondary()` before the `deleteQueue` flush, `duoDestroySecondary()` in the destructor (new code in `DuoSecondaryOutput.cpp`) |
+| `cpp/CMakeLists.txt` | `DuoSecondaryOutput.cpp` source line |
+| `modern/jniLibs/arm64-v8a/libvulkan_renderer.so` | **rebuilt by us** (see `duo/native/README.md`); rebuild after upstream renderer changes |
 | `AndroidManifest.xml` | 3 launcher labels -> `@string/duo_app_name` |
-| `com/winlator/container/Container.java` | `AppPaths` for default drives/MEDIACONV paths; `setDrives`/`setEnvVars` rewrite old paths |
+| `com/winlator/container/Container.java` | `AppPaths` for default drives/MEDIACONV paths; `setDrives`/`setEnvVars` rewrite old paths; `getBox64Version` strips labels like " (Default)" |
 | `com/winlator/core/DXVKHelper.java`, `WineUtils.java` | `AppPaths` instead of `/data/data/app.gamenative` |
 | `xenvironment/components/BionicProgramLauncherComponent.java` | `AppPaths` for gamepad mem files; sets `EVSHIM_BASE_PATH` |
 | `com/winlator/winhandler/WinHandler.java` | sets `EVSHIM_BASE_PATH` in the app process before `loadLibrary("evshim")` (else the controller is dead) |
@@ -86,6 +89,10 @@ no CPU frame copies, data over pixels, idle at 0 fps when nothing changes.
   prefix, sets the container's screen size (`ScreenSplit.recommendedFor`) and `WINEDLLOVERRIDES`, turns on screen
   split, and records the previous values in `files/duo/mods/<containerId>.json` so turning it off restores them.
 - Balatro: Lovely v0.10.0 (`winmm.dll`, MIT, licence alongside) + the `GameNativeDuo-split` Lua mod.
+- Stardew Valley: SMAPI + `duo/mods-src/stardew` (world continues across both screens, UI on the bottom). Never force
+  `Game1.ShouldDrawOnBuffer` on the title/loading screens: it hangs the GPU (see `duo/notes/`).
+- Physical screen alignment (`ScreenCalibration`: hinge gap, pixel-density scale, shift) is per device, defaults in
+  `DeviceProfile`, tuned in-game with a two-finger long press on the bottom screen, and written into `layout.json`.
 - Mods only add code to games the user owns; never anything that touches DRM or decrypts game files.
 
 ## Conventions
@@ -115,6 +122,8 @@ adb logcat -s GNDuo                         # devkit logs
 
 ## Known issues / open questions
 
+- Work in progress and its full history: `duo/notes/` (start with the newest file).
+
 - AGP 8.8's bundled D8 turns upstream's giant `XServerScreen` composable (on full, non-incremental compiles: CLI, CI)
   into dex that ART rejects (`VerifyError ... register vN has type Conflict`) the moment a game launches. Incremental
   Android Studio builds dodged it by luck. Fixed by pinning `com.android.tools:r8` in the root `build.gradle.kts`.
@@ -134,6 +143,8 @@ adb logcat -s GNDuo                         # devkit logs
 ## Upstream candidates
 
 - The D8/R8 pin (or an AGP bump) for the `XServerScreen` VerifyError.
+- `Container.getBox64Version()` label stripping: GameNative's known config for Stardew Valley stores "0.3.7 (Default)",
+  so no box64 gets extracted and x86_64-Proton containers die instantly (`unable to open file .../usr/bin/box64`).
 
 - `AppPaths` (package-independent data paths) — fixes upstream's `.gold` build too.
 - A "second display host" extension point + renderer frame-export hook, so the devkit could become a plugin.

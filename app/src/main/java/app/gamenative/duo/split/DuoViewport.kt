@@ -7,6 +7,7 @@ import app.gamenative.duo.display.DeviceProfile
 import app.gamenative.duo.display.realSize
 import kotlin.math.min
 import kotlin.math.roundToInt
+import org.json.JSONObject
 
 /**
  * Maths for showing a rectangle of the X screen on an Android surface, shared by the renderer hook
@@ -48,6 +49,20 @@ object DuoViewport {
     }
 }
 
+/** How a tall X screen is cut into the two screens. */
+enum class SplitLayout(val id: String) {
+    /** Both parts as wide as the X screen; the bottom part is scaled to fit the bottom display. */
+    FILL("fill"),
+
+    /** Each part at its display's own resolution, 1:1 (see [ScreenSplit.native]). */
+    NATIVE("native"),
+    ;
+
+    companion object {
+        fun fromId(id: String?): SplitLayout = entries.firstOrNull { it.id == id } ?: FILL
+    }
+}
+
 /**
  * One tall X screen cut into the part shown on the top screen and the part shown on the bottom screen.
  * The game draws its world in [top] and its UI in [bottom] (e.g. via a mod that knows the layout).
@@ -57,6 +72,21 @@ class ScreenSplit(val top: FloatArray, val bottom: FloatArray) {
         other is ScreenSplit && top.contentEquals(other.top) && bottom.contentEquals(other.bottom)
 
     override fun hashCode(): Int = 31 * top.contentHashCode() + bottom.contentHashCode()
+
+    /** Smallest X screen that holds both parts. */
+    fun screenSize(): Pair<Int, Int> =
+        maxOf(top[0] + top[2], bottom[0] + bottom[2]).roundToInt() to maxOf(top[1] + top[3], bottom[1] + bottom[3]).roundToInt()
+
+    /** The layout as written to the game's prefix for mods (see `GameNativeDuo/layout.json`). */
+    fun toJson(): JSONObject {
+        fun rect(r: FloatArray) = JSONObject()
+            .put("x", r[0].roundToInt())
+            .put("y", r[1].roundToInt())
+            .put("w", r[2].roundToInt())
+            .put("h", r[3].roundToInt())
+        val (w, h) = screenSize()
+        return JSONObject().put("screen", JSONObject().put("w", w).put("h", h)).put("top", rect(top)).put("bottom", rect(bottom))
+    }
 
     companion object {
         /**
@@ -71,6 +101,45 @@ class ScreenSplit(val top: FloatArray, val bottom: FloatArray) {
                 top = floatArrayOf(0f, 0f, screenW.toFloat(), topH.toFloat()),
                 bottom = floatArrayOf(0f, topH.toFloat(), screenW.toFloat(), (screenH - topH).toFloat()),
             )
+        }
+
+        /**
+         * Native layout: the X screen is the top display's own resolution stacked on the bottom display's, with the
+         * bottom part centred. Each part maps 1:1 to its display's pixels; the game decides what to draw where
+         * (e.g. a mod puts the world on top and the UI below). Sizes are as the displays are currently rotated.
+         */
+        fun native(topW: Int, topH: Int, bottomW: Int, bottomH: Int): ScreenSplit {
+            val w = maxOf(topW, bottomW)
+            return ScreenSplit(
+                top = floatArrayOf(((w - topW) / 2).toFloat(), 0f, topW.toFloat(), topH.toFloat()),
+                bottom = floatArrayOf(((w - bottomW) / 2).toFloat(), topH.toFloat(), bottomW.toFloat(), bottomH.toFloat()),
+            )
+        }
+
+        /** [native] for this device's displays (top in landscape), or null without a bottom screen. */
+        fun nativeFor(context: Context): ScreenSplit? = displaySizes(context)?.let { (t, b) ->
+            native(t.first, t.second, b.first, b.second)
+        }
+
+        /** Container screen size for [layout] on this device, or null without a bottom screen. */
+        fun recommendedFor(context: Context, layout: SplitLayout): Pair<Int, Int>? = when (layout) {
+            SplitLayout.FILL -> recommendedFor(context)
+            SplitLayout.NATIVE -> nativeFor(context)?.screenSize()
+        }
+
+        /** (top w, h) in landscape and (bottom w, h) as currently shown, or null without a bottom screen. */
+        private fun displaySizes(context: Context): Pair<Pair<Int, Int>, Pair<Int, Int>>? = try {
+            val bottom = DeviceProfile.detect().findBottomDisplay(context)
+            val top = context.getSystemService(DisplayManager::class.java)?.getDisplay(Display.DEFAULT_DISPLAY)
+            if (bottom == null || top == null) {
+                null
+            } else {
+                val t = top.realSize()
+                val b = bottom.realSize()
+                (maxOf(t.x, t.y) to minOf(t.x, t.y)) to (b.x to b.y)
+            }
+        } catch (t: Throwable) {
+            null
         }
 
         /** X screen size whose top and bottom parts match both displays' shapes exactly at [width] pixels wide. */

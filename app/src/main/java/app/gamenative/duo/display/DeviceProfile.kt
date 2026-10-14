@@ -15,6 +15,8 @@ data class DeviceProfile(
     val displayName: String,
     /** True when the game's (top) screen is Android's default display and the bottom screen is a secondary one. */
     val topIsDefault: Boolean,
+    /** Default physical screen alignment; users fine-tune it on the device (see [ScreenCalibrationStore]). */
+    val calibration: ScreenCalibration = ScreenCalibration(),
     private val matcher: (manufacturer: String, model: String) -> Boolean,
 ) {
     fun matches(manufacturer: String, model: String): Boolean = matcher(manufacturer, model)
@@ -41,6 +43,8 @@ data class DeviceProfile(
             id = "ayn-thor",
             displayName = "AYN Thor",
             topIsDefault = true,
+            // Tuned by eye on a Thor; the scale matches the panel specs (top 6" 1920x1080 ~367 ppi, bottom 3.92" 1240x1080 ~419 ppi).
+            calibration = ScreenCalibration(gapPx = 249, bottomScale = 1.142f),
         ) { manufacturer, model -> manufacturer.equals("AYN", ignoreCase = true) && model.contains("Thor", ignoreCase = true) }
 
         /** Unknown devices: assume the game is on the default display and any presentation display is the bottom screen. */

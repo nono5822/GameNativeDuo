@@ -515,7 +515,7 @@ public class Container {
 
     public void setBox86Version(String box86Version) { this.box86Version = box86Version; }
 
-    public String getBox64Version() { return box64Version; }
+    public String getBox64Version() { return box64Version != null ? box64Version.replaceAll(" *\\([^)]*\\)$", "") : null; } // GameNativeDuo: known configs can store the dropdown label "0.3.7 (Default)", which matches no box64 package
 
     public void setBox64Version(String box64Version) { this.box64Version = box64Version; }
 

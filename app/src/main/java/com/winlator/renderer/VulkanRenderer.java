@@ -72,7 +72,6 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
     private final java.util.concurrent.atomic.AtomicLong sourceFrames = new java.util.concurrent.atomic.AtomicLong();
     private volatile boolean frameGenArmed = false;
     private volatile float[] duoViewRect = null; // GameNativeDuo: {x, y, w, h} of the X screen to show; null = upstream behaviour
-    private volatile VulkanRenderer duoMirror = null; // GameNativeDuo: second renderer (bottom screen) that gets every presented frame too
 
     public void setFlatPresentationEnabled(boolean enabled) {
         if (flatPresentationEnabled == enabled) return;
@@ -155,6 +154,8 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
     private native void nativeUpdateWindowContentAHB(long handle, long id, long ahbPtr,
         short width, short height, int x, int y);
     private native void nativeSetTransform(long handle, float ox, float oy, float sx, float sy);
+    private native boolean nativeDuoSetSecondary(long handle, Surface surface, float ox, float oy, float sx, float sy); // GameNativeDuo
+    private native void nativeDuoClearSecondary(long handle); // GameNativeDuo
     private native void nativeSetPointerPos(long handle, short x, short y);
     private native void nativeSetCursorVisible(long handle, boolean visible);
     private native void nativeUpdateCursorImage(long handle, java.nio.ByteBuffer pixels,
@@ -516,7 +517,6 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
     }
 
     public void onUpdateWindowContentDirect(Window window, Drawable pixmap, short xOff, short yOff) {
-        VulkanRenderer duoM = duoMirror; if (duoM != null) duoM.onUpdateWindowContentDirect(window, pixmap, xOff, yOff); // GameNativeDuo
         if (!flatPresentationEnabled) return;
         if (hudRef != null && !nativeMode) hudRef.update();
         if (nativeHandle == 0 || pixmap == null) return;
@@ -990,8 +990,8 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
     public boolean isFullscreen() { return fullscreen; }
     public void toggleFullscreen() { fullscreen = !fullscreen; synchronized (lock) { updateTransform(); } xServerView.queueEvent(this::updateScene); }
     public void setDuoViewRect(float[] rect) { duoViewRect = rect; synchronized (lock) { updateTransform(); } } // GameNativeDuo
-    public void setDuoMirror(VulkanRenderer mirror) { duoMirror = mirror; } // GameNativeDuo
-    public void duoRelease() { synchronized (lock) { if (nativeHandle != 0) { nativeDestroy(nativeHandle); nativeHandle = 0; } } } // GameNativeDuo: frees a mirror's native context
+    public boolean duoSetSecondary(Surface surface, float[] t) { synchronized (lock) { return nativeHandle != 0 && t != null && nativeDuoSetSecondary(nativeHandle, surface, t[0], t[1], t[2], t[3]); } } // GameNativeDuo: draw this renderer's scene on a second screen too
+    public void duoClearSecondary() { synchronized (lock) { if (nativeHandle != 0) nativeDuoClearSecondary(nativeHandle); } } // GameNativeDuo
     public void setScreenOffsetYRelativeToCursor(boolean b) { screenOffsetYRelativeToCursor = b; synchronized (lock) { updateTransform(); } }
     public boolean isScreenOffsetYRelativeToCursor() { return screenOffsetYRelativeToCursor; }
     public void setMagnifierZoom(float zoom) { magnifierZoom = zoom; }
