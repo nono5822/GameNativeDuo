@@ -1233,7 +1233,8 @@ class LibraryViewModel @Inject constructor(
                 } else {
                     entries
                 }
-            }.sortedWith(sortComparator).mapIndexed { idx, entry ->
+            }.let { entries -> if (currentTab == app.gamenative.ui.enums.LibraryTab.DUAL_SCREEN) entries.filter { app.gamenative.duo.mods.DuoModCatalog.hasMod(it.item.appId) } else entries } // GameNativeDuo
+            .sortedWith(sortComparator).mapIndexed { idx, entry ->
                 entry.item.copy(index = idx, isInstalled = entry.isInstalled)
             }
 

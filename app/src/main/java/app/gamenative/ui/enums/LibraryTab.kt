@@ -46,6 +46,16 @@ enum class LibraryTab(
         installedOnly = false,
         icon = Icons.Rounded.Star,
     ),
+    DUAL_SCREEN( // GameNativeDuo: games with a bundled dual-screen mod (filtered in LibraryViewModel)
+        labelResId = R.string.duo_tab_dual_screen,
+        showCustom = true,
+        showSteam = true,
+        showGoG = true,
+        showEpic = true,
+        showAmazon = true,
+        installedOnly = false,
+        icon = app.gamenative.duo.mods.DuoModCatalog.tabIcon,
+    ), // GameNativeDuo
     STEAM(
         labelResId = R.string.tab_steam,
         showCustom = false,

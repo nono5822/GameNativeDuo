@@ -3,7 +3,7 @@
 # and WINEDLLOVERRIDES=winmm=n,b in the container's environment.
 [manifest]
 version = "0.1.0"
-dump_lua = true
+dump_lua = false
 priority = 0
 
 [[patches]]

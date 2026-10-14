@@ -46,6 +46,9 @@ Upstream lands ~4-5 commits/day; `XServerScreen.kt` (~6,800 lines) changes almos
 | `com/winlator/winhandler/WinHandler.java` | sets `EVSHIM_BASE_PATH` in the app process before `loadLibrary("evshim")` (else the controller is dead) |
 | `ui/component/dialog/ContainerConfigDialog.kt` | `containerId` param, Duo draft, tab inserted after Emulation, commit on Save, dirty check |
 | `ui/PluviaMain.kt`, `ui/screen/library/appscreen/BaseAppScreen.kt` | pass `containerId` to `ContainerConfigDialog` |
+| `ui/enums/LibraryTab.kt` | `DUAL_SCREEN` tab entry (games with a bundled dual-screen mod) |
+| `ui/model/LibraryViewModel.kt` | one filter line for the `DUAL_SCREEN` tab |
+| `ui/screen/library/LibraryAppScreen.kt` | `DualScreenToggle(...)` next to the Play button |
 | `.github/workflows/{app-release-signed,tagged-release,issues-contributors-only}.yml` | jobs guarded to run only in upstream repo |
 
 ## Why `app.gamenative.duo` and `AppPaths`
@@ -75,6 +78,15 @@ the id: prebuilt `libkgslshim.so` matches on that substring.
 
 Performance rules: the CPU is the bottleneck (Box64/FEX), so keep devkit work off it: low-priority threads,
 no CPU frame copies, data over pixels, idle at 0 fps when nothing changes.
+
+## Dual-screen mods (per game)
+
+- Bundled in `app/src/main/assets/duo/mods/<id>/` (the source of truth), listed in `duo/mods/DuoModCatalog.kt`.
+- The "Dual screen" toggle next to Play runs `DuoModInstaller`: copies files into the game folder and the Wine
+  prefix, sets the container's screen size (`ScreenSplit.recommendedFor`) and `WINEDLLOVERRIDES`, turns on screen
+  split, and records the previous values in `files/duo/mods/<containerId>.json` so turning it off restores them.
+- Balatro: Lovely v0.10.0 (`winmm.dll`, MIT, licence alongside) + the `GameNativeDuo-split` Lua mod.
+- Mods only add code to games the user owns; never anything that touches DRM or decrypts game files.
 
 ## Conventions
 

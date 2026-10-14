@@ -1,5 +1,10 @@
 package app.gamenative.duo.split
 
+import android.content.Context
+import android.hardware.display.DisplayManager
+import android.view.Display
+import app.gamenative.duo.display.DeviceProfile
+import app.gamenative.duo.display.realSize
 import kotlin.math.min
 import kotlin.math.roundToInt
 
@@ -71,5 +76,21 @@ class ScreenSplit(val top: FloatArray, val bottom: FloatArray) {
         /** X screen size whose top and bottom parts match both displays' shapes exactly at [width] pixels wide. */
         fun recommendedSize(width: Int, topAspect: Float, bottomAspect: Float): Pair<Int, Int> =
             width to ((width / topAspect).roundToInt() + (width / bottomAspect).roundToInt())
+
+        /** Container screen size ([width] wide) whose parts match this device's screens; null without a bottom screen. */
+        fun recommendedFor(context: Context, width: Int = 1280): Pair<Int, Int>? = try {
+            val bottom = DeviceProfile.detect().findBottomDisplay(context)
+            val top = context.getSystemService(DisplayManager::class.java)?.getDisplay(Display.DEFAULT_DISPLAY)
+            if (bottom == null || top == null) {
+                null
+            } else {
+                val t = top.realSize()
+                val b = bottom.realSize()
+                // The game always runs landscape on the top screen.
+                recommendedSize(width, maxOf(t.x, t.y).toFloat() / minOf(t.x, t.y), b.x.toFloat() / b.y)
+            }
+        } catch (t: Throwable) {
+            null
+        }
     }
 }

@@ -1,8 +1,6 @@
 package app.gamenative.duo.settings
 
 import android.content.Context
-import android.hardware.display.DisplayManager
-import android.view.Display
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -15,8 +13,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import app.gamenative.R
-import app.gamenative.duo.display.DeviceProfile
-import app.gamenative.duo.display.realSize
 import app.gamenative.duo.split.ScreenSplit
 import app.gamenative.ui.theme.settingsTileColorsAlt
 import com.alorma.compose.settings.ui.SettingsGroup
@@ -96,7 +92,7 @@ fun rememberDuoSettingsDraft(containerId: String?): DuoSettingsDraft {
 fun DuoSettingsTabContent(draft: DuoSettingsDraft) {
     val settings = draft.settings
     val context = LocalContext.current
-    val splitSize = remember { recommendedSplitSize(context) }
+    val splitSize = remember { ScreenSplit.recommendedFor(context) }
     SettingsGroup {
         SettingsSwitch(
             colors = settingsTileColorsAlt(),
@@ -121,21 +117,4 @@ fun DuoSettingsTabContent(draft: DuoSettingsDraft) {
             onCheckedChange = { draft.settings = settings.copy(screenSplit = it) },
         )
     }
-}
-
-/** Container screen size (1280 wide) whose parts match this device's top and bottom screens; null without a bottom screen. */
-private fun recommendedSplitSize(context: Context): Pair<Int, Int>? = try {
-    val bottom = DeviceProfile.detect().findBottomDisplay(context)
-    val top = context.getSystemService(DisplayManager::class.java)?.getDisplay(Display.DEFAULT_DISPLAY)
-    if (bottom == null || top == null) {
-        null
-    } else {
-        val t = top.realSize()
-        val b = bottom.realSize()
-        // The game always runs landscape on the top screen.
-        val topAspect = maxOf(t.x, t.y).toFloat() / minOf(t.x, t.y)
-        ScreenSplit.recommendedSize(1280, topAspect, b.x.toFloat() / b.y)
-    }
-} catch (t: Throwable) {
-    null
 }
