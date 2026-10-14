@@ -37,6 +37,8 @@ Upstream lands ~4-5 commits/day; `XServerScreen.kt` (~6,800 lines) changes almos
 |---|---|
 | `ui/screen/xserver/XServerScreen.kt` | import + one `DualScreenHost.attach(...)` line after the external-display controllers start |
 | `app/build.gradle.kts` | `applicationId = "app.gamenative.duo"` |
+| `build.gradle.kts` (root) | `buildscript` pins D8/R8 `com.android.tools:r8` (see Known issues) |
+| `com/winlator/renderer/VulkanRenderer.java` | `duoViewRect` crop in `updateTransform`, `duoMirror` frame forwarding, `setDuoViewRect`/`setDuoMirror`/`duoRelease` |
 | `AndroidManifest.xml` | 3 launcher labels -> `@string/duo_app_name` |
 | `com/winlator/container/Container.java` | `AppPaths` for default drives/MEDIACONV paths; `setDrives`/`setEnvVars` rewrite old paths |
 | `com/winlator/core/DXVKHelper.java`, `WineUtils.java` | `AppPaths` instead of `/data/data/app.gamenative` |
@@ -101,6 +103,14 @@ adb logcat -s GNDuo                         # devkit logs
 
 ## Known issues / open questions
 
+- AGP 8.8's bundled D8 turns upstream's giant `XServerScreen` composable (on full, non-incremental compiles: CLI, CI)
+  into dex that ART rejects (`VerifyError ... register vN has type Conflict`) the moment a game launches. Incremental
+  Android Studio builds dodged it by luck. Fixed by pinning `com.android.tools:r8` in the root `build.gradle.kts`.
+  Check a build with `adb shell cmd package compile -m verify -f app.gamenative.duo` + `adb logcat | grep 'Verification error'`.
+  Upstream candidate.
+- The CI artifact did not install over a local build (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`), so CI and local signing
+  currently differ despite `duo/debug.keystore`; investigate before relying on CI APKs.
+
 - Deep-link schemes (`gamenative://`, `app.gamenative://` for Nexus login) are shared with official GameNative,
   so Android may ask which app to open them with.
 - Frontends (Beacon, ES-DE) must target package `app.gamenative.duo` to launch games in the fork.
@@ -110,6 +120,8 @@ adb logcat -s GNDuo                         # devkit logs
 - Never add anything that bypasses or weakens DRM.
 
 ## Upstream candidates
+
+- The D8/R8 pin (or an AGP bump) for the `XServerScreen` VerifyError.
 
 - `AppPaths` (package-independent data paths) — fixes upstream's `.gold` build too.
 - A "second display host" extension point + renderer frame-export hook, so the devkit could become a plugin.

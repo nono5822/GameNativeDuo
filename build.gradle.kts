@@ -1,4 +1,7 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
+// GameNativeDuo: AGP 8.8's bundled D8 turns XServerScreen (full, non-incremental compiles, e.g. CI) into dex that ART
+// rejects with a VerifyError when a game starts. A newer D8 fixes it; see CLAUDE.md "Known issues".
+buildscript { repositories { google() }; dependencies { classpath("com.android.tools:r8:8.13.17") } } // GameNativeDuo
 plugins {
     alias(libs.plugins.android.application) apply false
     alias(libs.plugins.compose.compiler) apply false

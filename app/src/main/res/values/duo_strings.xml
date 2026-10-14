@@ -14,4 +14,7 @@
     <string name="duo_settings_tab">GameNative Duo</string>
     <string name="duo_settings_bottom_panel">Bottom-screen panel</string>
     <string name="duo_settings_bottom_panel_description">Show the GameNative Duo panel on the second screen while the game runs. Hidden anyway when External display mode or swap is on.</string>
+    <string name="duo_settings_screen_split">Screen split</string>
+    <string name="duo_settings_screen_split_description">Show one tall game screen across both screens: the upper part on top, the lower part below (tap it to click). Set the screen size to %1$d×%2$d and use a game or mod that puts its UI in the lower part. Replaces the bottom-screen panel.</string>
+    <string name="duo_settings_screen_split_no_display">Show one tall game screen across both screens. No second screen found on this device.</string>
 </resources>

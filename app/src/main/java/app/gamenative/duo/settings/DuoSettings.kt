@@ -17,9 +17,15 @@ import timber.log.Timber
 data class DuoContainerSettings(
     /** Show the devkit panel on the bottom screen while this container's game runs. */
     val bottomPanelEnabled: Boolean = true,
+    /**
+     * Show one tall X screen across both screens (upper part on top, lower part on the bottom screen).
+     * Needs a matching container screen size and a game or mod that puts its UI in the lower part.
+     */
+    val screenSplit: Boolean = false,
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("bottomPanelEnabled", bottomPanelEnabled)
+        put("screenSplit", screenSplit)
     }
 
     companion object {
@@ -27,6 +33,7 @@ data class DuoContainerSettings(
             val fallback = DuoContainerSettings()
             return DuoContainerSettings(
                 bottomPanelEnabled = json.optBoolean("bottomPanelEnabled", fallback.bottomPanelEnabled),
+                screenSplit = json.optBoolean("screenSplit", fallback.screenSplit),
             )
         }
     }

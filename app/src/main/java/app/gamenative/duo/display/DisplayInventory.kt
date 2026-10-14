@@ -1,6 +1,7 @@
 package app.gamenative.duo.display
 
 import android.content.Context
+import android.graphics.Point
 import android.hardware.display.DisplayManager
 import android.os.Build
 import android.view.Display
@@ -47,6 +48,10 @@ data class DisplaySnapshot(
         put("flags", JSONArray(flags))
     }
 }
+
+/** The display's size in its current rotation, i.e. what a window on it gets (the Thor's screens report portrait modes). */
+@Suppress("DEPRECATION")
+fun Display.realSize(): Point = Point().also { getRealSize(it) }
 
 object DisplayInventory {
     fun snapshot(context: Context): List<DisplaySnapshot> {
