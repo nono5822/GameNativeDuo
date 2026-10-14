@@ -10,6 +10,7 @@ import app.gamenative.duo.display.DisplayInventory
 import app.gamenative.duo.display.DisplaySnapshot
 import app.gamenative.duo.panel.BottomPanelController
 import app.gamenative.duo.settings.DuoSettingsStore
+import app.gamenative.duo.split.SplitScreenController
 import com.winlator.container.Container
 import com.winlator.xserver.XServer
 import java.io.File
@@ -66,7 +67,15 @@ class DualScreenSession internal constructor(
     private val lastChangeKeys = mutableMapOf<Int, String>()
     val profile: DeviceProfile = DeviceProfile.detect()
     val settings = DuoSettingsStore.load(context, container.id)
-    private val bottomPanel = BottomPanelController(context, container, profile, settings)
+
+    // The screen split owns the bottom screen when it is on, so the panel steps aside.
+    private val bottomPanel = BottomPanelController(
+        context,
+        container,
+        profile,
+        settings.copy(bottomPanelEnabled = settings.bottomPanelEnabled && !(settings.screenSplit && xServer != null)),
+    )
+    private val screenSplit = if (settings.screenSplit && xServer != null) SplitScreenController(context, xServer, profile) else null
     private var running = false
 
     private val displayListener = object : DisplayManager.DisplayListener {
@@ -97,6 +106,7 @@ class DualScreenSession internal constructor(
             Timber.tag(DualScreenHost.TAG).w(t, "Failed to unregister display listener")
         }
         bottomPanel.stop()
+        screenSplit?.stop()
         Timber.tag(DualScreenHost.TAG).i("Session ended")
     }
 
@@ -112,6 +122,7 @@ class DualScreenSession internal constructor(
             Timber.tag(DualScreenHost.TAG).e(t, "Failed to read displays")
         }
         bottomPanel.update()
+        screenSplit?.update()
     }
 
     private fun writeReport(displays: List<DisplaySnapshot>, reason: String) {

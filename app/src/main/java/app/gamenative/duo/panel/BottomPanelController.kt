@@ -15,6 +15,7 @@ import android.widget.TextView
 import app.gamenative.R
 import app.gamenative.duo.DualScreenHost
 import app.gamenative.duo.display.DeviceProfile
+import app.gamenative.duo.display.realSize
 import app.gamenative.duo.settings.DuoContainerSettings
 import com.winlator.container.Container
 import timber.log.Timber
@@ -94,16 +95,16 @@ private class BottomPanelPresentation(
             setBackgroundColor(Color.BLACK) // AMOLED: black pixels are off
             layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         }
-        val mode = display.mode
+        val size = display.realSize()
         root.addView(text(context.getString(R.string.duo_panel_title), 28f))
-        root.addView(text(context.getString(R.string.duo_panel_game, container.name), 18f))
+        root.addView(text(context.getString(R.string.duo_panel_game, container.name.ifBlank { container.id }), 18f))
         root.addView(
             text(
                 context.getString(
                     R.string.duo_panel_device,
                     DeviceProfile.detect().displayName,
-                    mode.physicalWidth,
-                    mode.physicalHeight,
+                    size.x,
+                    size.y,
                     display.refreshRate,
                 ),
                 14f,

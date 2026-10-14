@@ -1416,6 +1416,7 @@ internal fun AppScreenContent(
                                 focusRequester = playButtonFocusRequester,
                             )
                         }
+                        app.gamenative.duo.mods.DualScreenToggle(displayInfo.appId, displayInfo.installLocation, isInstalled && !isDownloading) // GameNativeDuo
 
                         // Download size / ETA text — inline only in landscape
                         if (isDownloading && !isPortrait) {

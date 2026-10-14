@@ -37,6 +37,8 @@ Upstream lands ~4-5 commits/day; `XServerScreen.kt` (~6,800 lines) changes almos
 |---|---|
 | `ui/screen/xserver/XServerScreen.kt` | import + one `DualScreenHost.attach(...)` line after the external-display controllers start |
 | `app/build.gradle.kts` | `applicationId = "app.gamenative.duo"` |
+| `build.gradle.kts` (root) | `buildscript` pins D8/R8 `com.android.tools:r8` (see Known issues) |
+| `com/winlator/renderer/VulkanRenderer.java` | `duoViewRect` crop in `updateTransform`, `duoMirror` frame forwarding, `setDuoViewRect`/`setDuoMirror`/`duoRelease` |
 | `AndroidManifest.xml` | 3 launcher labels -> `@string/duo_app_name` |
 | `com/winlator/container/Container.java` | `AppPaths` for default drives/MEDIACONV paths; `setDrives`/`setEnvVars` rewrite old paths |
 | `com/winlator/core/DXVKHelper.java`, `WineUtils.java` | `AppPaths` instead of `/data/data/app.gamenative` |
@@ -44,6 +46,9 @@ Upstream lands ~4-5 commits/day; `XServerScreen.kt` (~6,800 lines) changes almos
 | `com/winlator/winhandler/WinHandler.java` | sets `EVSHIM_BASE_PATH` in the app process before `loadLibrary("evshim")` (else the controller is dead) |
 | `ui/component/dialog/ContainerConfigDialog.kt` | `containerId` param, Duo draft, tab inserted after Emulation, commit on Save, dirty check |
 | `ui/PluviaMain.kt`, `ui/screen/library/appscreen/BaseAppScreen.kt` | pass `containerId` to `ContainerConfigDialog` |
+| `ui/enums/LibraryTab.kt` | `DUAL_SCREEN` tab entry (games with a bundled dual-screen mod) |
+| `ui/model/LibraryViewModel.kt` | one filter line for the `DUAL_SCREEN` tab |
+| `ui/screen/library/LibraryAppScreen.kt` | `DualScreenToggle(...)` next to the Play button |
 | `.github/workflows/{app-release-signed,tagged-release,issues-contributors-only}.yml` | jobs guarded to run only in upstream repo |
 
 ## Why `app.gamenative.duo` and `AppPaths`
@@ -74,6 +79,15 @@ the id: prebuilt `libkgslshim.so` matches on that substring.
 Performance rules: the CPU is the bottleneck (Box64/FEX), so keep devkit work off it: low-priority threads,
 no CPU frame copies, data over pixels, idle at 0 fps when nothing changes.
 
+## Dual-screen mods (per game)
+
+- Bundled in `app/src/main/assets/duo/mods/<id>/` (the source of truth), listed in `duo/mods/DuoModCatalog.kt`.
+- The "Dual screen" toggle next to Play runs `DuoModInstaller`: copies files into the game folder and the Wine
+  prefix, sets the container's screen size (`ScreenSplit.recommendedFor`) and `WINEDLLOVERRIDES`, turns on screen
+  split, and records the previous values in `files/duo/mods/<containerId>.json` so turning it off restores them.
+- Balatro: Lovely v0.10.0 (`winmm.dll`, MIT, licence alongside) + the `GameNativeDuo-split` Lua mod.
+- Mods only add code to games the user owns; never anything that touches DRM or decrypts game files.
+
 ## Conventions
 
 - Logcat tag `GNDuo` (Timber). Nothing in `app.gamenative.duo` may crash or stall a game session: catch and
@@ -101,6 +115,14 @@ adb logcat -s GNDuo                         # devkit logs
 
 ## Known issues / open questions
 
+- AGP 8.8's bundled D8 turns upstream's giant `XServerScreen` composable (on full, non-incremental compiles: CLI, CI)
+  into dex that ART rejects (`VerifyError ... register vN has type Conflict`) the moment a game launches. Incremental
+  Android Studio builds dodged it by luck. Fixed by pinning `com.android.tools:r8` in the root `build.gradle.kts`.
+  Check a build with `adb shell cmd package compile -m verify -f app.gamenative.duo` + `adb logcat | grep 'Verification error'`.
+  Upstream candidate.
+- The CI artifact did not install over a local build (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`), so CI and local signing
+  currently differ despite `duo/debug.keystore`; investigate before relying on CI APKs.
+
 - Deep-link schemes (`gamenative://`, `app.gamenative://` for Nexus login) are shared with official GameNative,
   so Android may ask which app to open them with.
 - Frontends (Beacon, ES-DE) must target package `app.gamenative.duo` to launch games in the fork.
@@ -110,6 +132,8 @@ adb logcat -s GNDuo                         # devkit logs
 - Never add anything that bypasses or weakens DRM.
 
 ## Upstream candidates
+
+- The D8/R8 pin (or an AGP bump) for the `XServerScreen` VerifyError.
 
 - `AppPaths` (package-independent data paths) — fixes upstream's `.gold` build too.
 - A "second display host" extension point + renderer frame-export hook, so the devkit could become a plugin.

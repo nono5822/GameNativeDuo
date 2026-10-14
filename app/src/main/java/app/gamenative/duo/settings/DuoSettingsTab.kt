@@ -5,6 +5,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -12,6 +13,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import app.gamenative.R
+import app.gamenative.duo.split.ScreenSplit
 import app.gamenative.ui.theme.settingsTileColorsAlt
 import com.alorma.compose.settings.ui.SettingsGroup
 import com.alorma.compose.settings.ui.SettingsSwitch
@@ -89,6 +91,8 @@ fun rememberDuoSettingsDraft(containerId: String?): DuoSettingsDraft {
 @Composable
 fun DuoSettingsTabContent(draft: DuoSettingsDraft) {
     val settings = draft.settings
+    val context = LocalContext.current
+    val splitSize = remember { ScreenSplit.recommendedFor(context) }
     SettingsGroup {
         SettingsSwitch(
             colors = settingsTileColorsAlt(),
@@ -96,6 +100,21 @@ fun DuoSettingsTabContent(draft: DuoSettingsDraft) {
             subtitle = { Text(text = stringResource(R.string.duo_settings_bottom_panel_description)) },
             state = settings.bottomPanelEnabled,
             onCheckedChange = { draft.settings = settings.copy(bottomPanelEnabled = it) },
+        )
+        SettingsSwitch(
+            colors = settingsTileColorsAlt(),
+            title = { Text(text = stringResource(R.string.duo_settings_screen_split)) },
+            subtitle = {
+                Text(
+                    text = if (splitSize != null) {
+                        stringResource(R.string.duo_settings_screen_split_description, splitSize.first, splitSize.second)
+                    } else {
+                        stringResource(R.string.duo_settings_screen_split_no_display)
+                    },
+                )
+            },
+            state = settings.screenSplit,
+            onCheckedChange = { draft.settings = settings.copy(screenSplit = it) },
         )
     }
 }

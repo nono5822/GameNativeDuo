@@ -1,0 +1,58 @@
+# GameNativeDuo screen split for Balatro (Lovely mod). See duo_split.lua.
+# Install: copy this folder to %AppData%/Balatro/Mods/, with Lovely's winmm.dll next to Balatro.exe
+# and WINEDLLOVERRIDES=winmm=n,b in the container's environment.
+[manifest]
+version = "0.1.0"
+dump_lua = false
+priority = 0
+
+[[patches]]
+[patches.copy]
+target = "main.lua"
+position = "prepend"
+sources = ["duo_split.lua"]
+
+# Lay the room out in the upper part of a tall window (Balatro would otherwise refuse tall windows).
+[[patches]]
+[patches.pattern]
+target = "main.lua"
+pattern = "function love.resize(w, h)"
+position = "after"
+payload = "h = GNDuo.layout_height(w, h)"
+match_indent = true
+
+# Keep the anchor for the lower part in step with the room.
+[[patches]]
+[patches.pattern]
+target = "main.lua"
+pattern = "if G.HUD then G.HUD:recalculate() end"
+position = "before"
+payload = "GNDuo.update_bottom()"
+match_indent = true
+
+# ...but draw into a canvas that covers the whole window.
+[[patches]]
+[patches.pattern]
+target = "main.lua"
+pattern = "G.CANVAS = love.graphics.newCanvas(w*G.CANV_SCALE, h*G.CANV_SCALE, {type = '2d', readable = true})"
+position = "before"
+payload = "h = GNDuo.canvas_height(h)"
+match_indent = true
+
+# Move the run HUD into the lower part as soon as it exists.
+[[patches]]
+[patches.pattern]
+target = "game.lua"
+pattern = "self.HUD_blind = UIBox{"
+position = "before"
+payload = "GNDuo.move_hud(self.HUD)"
+match_indent = true
+
+# Stretch the animated background over the lower part as well.
+[[patches]]
+[patches.pattern]
+target = "game.lua"
+pattern = "G.SPLASH_BACK:translate_container()"
+position = "before"
+payload = "GNDuo.cover_bottom(G.SPLASH_BACK)"
+match_indent = true
