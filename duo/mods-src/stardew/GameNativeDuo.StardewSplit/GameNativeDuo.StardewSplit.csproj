@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    GameNativeDuo screen split for Stardew Valley (SMAPI mod).
+    Build: dotnet build -c Release -p:GamePath=<folder with Stardew Valley.dll + SMAPI>
+    The built DLL and manifest.json are copied to app/src/main/assets/duo/mods/stardew/mod/ (see duo/mods-src/README.md).
+  -->
+  <PropertyGroup>
+    <AssemblyName>GameNativeDuo.StardewSplit</AssemblyName>
+    <RootNamespace>GameNativeDuo.StardewSplit</RootNamespace>
+    <Version>0.1.0</Version>
+    <TargetFramework>net6.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <EnableHarmony>true</EnableHarmony>
+    <EnableModDeploy>false</EnableModDeploy>
+    <EnableModZip>false</EnableModZip>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Pathoschild.Stardew.ModBuildConfig" Version="4.4.0" />
+  </ItemGroup>
+</Project>

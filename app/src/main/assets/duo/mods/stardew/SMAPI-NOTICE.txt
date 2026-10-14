@@ -1,0 +1,4 @@
+SMAPI 4.5.2 (Stardew Modding API) by Pathoschild and contributors, redistributed unmodified.
+Licence: GNU LGPL 3.0 (SMAPI-LICENSE.txt). Source: https://github.com/Pathoschild/SMAPI/tree/4.5.2
+Files: the Windows payload of SMAPI-4.5.2-installer.zip (internal/windows/install.dat),
+sha256 of the installer zip: dd01ddca7b566bfe0d3b3d2d03833496abc56c53da976241f2ab443f5484acc4

@@ -30,6 +30,7 @@ VulkanRendererContext::~VulkanRendererContext() {
     if (renderThread.joinable()) renderThread.join();
     std::lock_guard<std::mutex> lk(renderMutex);
     vk_.DeviceWaitIdle(device);
+    duoDestroySecondary(); // GameNativeDuo
     for (auto& [id, wt] : texMap) destroyWinTex(wt);
     texMap.clear();
     
@@ -1523,6 +1524,7 @@ ok=true;}catch(...){}
         if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_ERROR_SURFACE_LOST_KHR || genPresentOutOfDate) {
             fbResized.store(true);
         }
+        duoRenderSecondary(); // GameNativeDuo
     } else {
         vk_.WaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
     }

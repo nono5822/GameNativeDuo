@@ -38,7 +38,10 @@ Upstream lands ~4-5 commits/day; `XServerScreen.kt` (~6,800 lines) changes almos
 | `ui/screen/xserver/XServerScreen.kt` | import + one `DualScreenHost.attach(...)` line after the external-display controllers start |
 | `app/build.gradle.kts` | `applicationId = "app.gamenative.duo"` |
 | `build.gradle.kts` (root) | `buildscript` pins D8/R8 `com.android.tools:r8` (see Known issues) |
-| `com/winlator/renderer/VulkanRenderer.java` | `duoViewRect` crop in `updateTransform`, `duoMirror` frame forwarding, `setDuoViewRect`/`setDuoMirror`/`duoRelease` |
+| `com/winlator/renderer/VulkanRenderer.java` | `duoViewRect` crop in `updateTransform`, `setDuoViewRect`, `duoSetSecondary`/`duoClearSecondary` + their natives |
+| `cpp/winlator/VulkanRendererContext.{h,cpp}` | declarations, `duoRenderSecondary()` after present, `duoDestroySecondary()` in the destructor (new code in `DuoSecondaryOutput.cpp`) |
+| `cpp/CMakeLists.txt` | `DuoSecondaryOutput.cpp` source line |
+| `modern/jniLibs/arm64-v8a/libvulkan_renderer.so` | **rebuilt by us** (see `duo/native/README.md`); rebuild after upstream renderer changes |
 | `AndroidManifest.xml` | 3 launcher labels -> `@string/duo_app_name` |
 | `com/winlator/container/Container.java` | `AppPaths` for default drives/MEDIACONV paths; `setDrives`/`setEnvVars` rewrite old paths; `getBox64Version` strips labels like " (Default)" |
 | `com/winlator/core/DXVKHelper.java`, `WineUtils.java` | `AppPaths` instead of `/data/data/app.gamenative` |
@@ -114,6 +117,8 @@ adb logcat -s GNDuo                         # devkit logs
   which app a log line comes from: `adb logcat --pid=$(adb shell pidof app.gamenative.duo)`.
 
 ## Known issues / open questions
+
+- Work in progress and its full history: `duo/notes/` (start with the newest file).
 
 - AGP 8.8's bundled D8 turns upstream's giant `XServerScreen` composable (on full, non-incremental compiles: CLI, CI)
   into dex that ART rejects (`VerifyError ... register vN has type Conflict`) the moment a game launches. Incremental

@@ -3,10 +3,13 @@ package app.gamenative.duo.mods
 import android.content.Context
 import app.gamenative.duo.DualScreenHost
 import app.gamenative.duo.settings.DuoSettingsStore
+import app.gamenative.duo.split.LayoutFile
 import app.gamenative.duo.split.ScreenSplit
+import app.gamenative.duo.split.SplitLayout
 import app.gamenative.utils.ContainerUtils
 import com.winlator.core.envvars.EnvVars
 import java.io.File
+import java.io.InputStream
 import java.security.MessageDigest
 import org.json.JSONArray
 import org.json.JSONObject
@@ -14,11 +17,15 @@ import timber.log.Timber
 
 /**
  * Turns a game's dual-screen mod on and off. Turning it on records everything it changes in
- * `files/duo/mods/<containerId>.json`, so turning it off puts the container back exactly as it was. Files are
- * only removed when they are still the ones we copied. Call from a background thread: it copies files.
+ * `files/duo/mods/<containerId>.json`, so turning it off puts the container back exactly as it was:
+ * - a file that already existed with the same content is left alone (and never removed);
+ * - a file that existed with different content is kept as `<name>.duo-backup` and restored;
+ * - our files are only removed if still unchanged, and folders only if left empty.
+ * Call from a background thread: it copies files.
  */
 object DuoModInstaller {
     private const val ENV_DLL_OVERRIDES = "WINEDLLOVERRIDES"
+    private const val BACKUP_SUFFIX = ".duo-backup"
 
     fun isEnabled(context: Context, appId: String): Boolean = stateFile(context, appId).isFile
 
@@ -27,29 +34,45 @@ object DuoModInstaller {
         val container = ContainerUtils.getOrCreateContainer(context, mod.appId)
         val driveC = File(container.rootDir, ".wine/drive_c")
         val state = JSONObject()
+            .put("gameDir", gameDir.absolutePath)
+            .put("driveC", driveC.absolutePath)
 
-        val copied = JSONArray()
-        mod.gameFiles.forEach { (asset, rel) -> copied.put(copyAsset(context, asset, File(gameDir, rel))) }
-        mod.prefixFiles.forEach { (asset, rel) -> copied.put(copyAsset(context, asset, File(driveC, rel))) }
-        state.put("files", copied)
+        val files = JSONArray()
+        mod.gameFiles.forEach { (asset, rel) -> copyAssetTree(context, asset, File(gameDir, rel), files) }
+        mod.prefixFiles.forEach { (asset, rel) -> copyAssetTree(context, asset, File(driveC, rel), files) }
+        mod.gameFileCopies.forEach { (src, dst) ->
+            File(gameDir, src).inputStream().use { install(it, File(gameDir, dst), files) }
+        }
+        state.put("files", files)
 
         state.put("previousScreenSize", container.screenSize)
-        val size = ScreenSplit.recommendedFor(context)
-        if (size != null) container.screenSize = "${size.first}x${size.second}"
+        ScreenSplit.recommendedFor(context, mod.splitLayout)?.let { container.screenSize = "${it.first}x${it.second}" }
 
-        val envVars = EnvVars(container.envVars)
-        state.put("previousDllOverrides", if (envVars.has(ENV_DLL_OVERRIDES)) envVars.get(ENV_DLL_OVERRIDES) else JSONObject.NULL)
-        envVars.put(ENV_DLL_OVERRIDES, addOverrides(envVars.get(ENV_DLL_OVERRIDES), mod.dllOverrides))
-        container.envVars = envVars.toString()
+        if (mod.dllOverrides.isNotEmpty()) {
+            val envVars = EnvVars(container.envVars)
+            state.put("previousDllOverrides", if (envVars.has(ENV_DLL_OVERRIDES)) envVars.get(ENV_DLL_OVERRIDES) else JSONObject.NULL)
+            envVars.put(ENV_DLL_OVERRIDES, addOverrides(envVars.get(ENV_DLL_OVERRIDES), mod.dllOverrides))
+            container.envVars = envVars.toString()
+        }
+
+        mod.launchExecutable?.let {
+            state.put("previousExecutablePath", container.executablePath)
+            container.executablePath = it
+        }
         container.saveData()
 
         val settings = DuoSettingsStore.load(context, container.id)
         state.put("previousScreenSplit", settings.screenSplit)
-        DuoSettingsStore.save(context, container.id, settings.copy(screenSplit = true))
+        state.put("previousSplitLayout", settings.splitLayout)
+        DuoSettingsStore.save(context, container.id, settings.copy(screenSplit = true, splitLayout = mod.splitLayout.id))
+        if (mod.splitLayout == SplitLayout.NATIVE) ScreenSplit.nativeFor(context)?.let { LayoutFile.write(container, it) }
 
         state.put("mod", mod.id)
         stateFile(context, mod.appId).apply { parentFile?.mkdirs() }.writeText(state.toString(2))
-        Timber.tag(DualScreenHost.TAG).i("Enabled dual-screen mod %s for %s (screen %s)", mod.id, container.id, container.screenSize)
+        Timber.tag(DualScreenHost.TAG).i(
+            "Enabled dual-screen mod %s for %s (%d files, screen %s)",
+            mod.id, container.id, files.length(), container.screenSize,
+        )
         true
     } catch (t: Throwable) {
         Timber.tag(DualScreenHost.TAG).e(t, "Failed to enable dual-screen mod %s", mod.id)
@@ -61,34 +84,50 @@ object DuoModInstaller {
         val stateFile = stateFile(context, mod.appId)
         val state = JSONObject(stateFile.readText())
         val container = ContainerUtils.getContainer(context, mod.appId)
+        val roots = listOfNotNull(state.optString("gameDir"), state.optString("driveC")).filter { it.isNotEmpty() }.map { File(it) }
 
         val files = state.optJSONArray("files") ?: JSONArray()
-        for (i in 0 until files.length()) {
+        for (i in files.length() - 1 downTo 0) {
             val entry = files.getJSONObject(i)
             val file = File(entry.getString("path"))
             if (file.isFile && sha256(file) == entry.getString("sha256")) file.delete()
-            // Remove the mod's own folder once it is empty; never parents beyond it.
-            file.parentFile?.takeIf { it.name.startsWith("GameNativeDuo") && it.list()?.isEmpty() == true }?.delete()
+            val backup = File(file.path + BACKUP_SUFFIX)
+            if (entry.optBoolean("backup") && backup.isFile && !file.exists()) backup.renameTo(file)
+            pruneEmptyDirs(file.parentFile, roots)
         }
 
-        val ourSize = ScreenSplit.recommendedFor(context)?.let { "${it.first}x${it.second}" }
+        val ourSize = ScreenSplit.recommendedFor(context, mod.splitLayout)?.let { "${it.first}x${it.second}" }
         // Restore the screen size unless the user changed it since.
         if (ourSize == null || container.screenSize == ourSize) {
             container.screenSize = state.optString("previousScreenSize", container.screenSize)
         }
 
-        val envVars = EnvVars(container.envVars)
-        val previous = state.opt("previousDllOverrides")
-        if (previous == null || previous == JSONObject.NULL) {
-            envVars.remove(ENV_DLL_OVERRIDES)
-        } else {
-            envVars.put(ENV_DLL_OVERRIDES, previous.toString())
+        if (state.has("previousDllOverrides")) {
+            val envVars = EnvVars(container.envVars)
+            val previous = state.opt("previousDllOverrides")
+            if (previous == null || previous == JSONObject.NULL) {
+                envVars.remove(ENV_DLL_OVERRIDES)
+            } else {
+                envVars.put(ENV_DLL_OVERRIDES, previous.toString())
+            }
+            container.envVars = envVars.toString()
         }
-        container.envVars = envVars.toString()
+
+        if (state.has("previousExecutablePath") && container.executablePath == mod.launchExecutable) {
+            container.executablePath = state.optString("previousExecutablePath", "")
+        }
         container.saveData()
 
         val settings = DuoSettingsStore.load(context, container.id)
-        DuoSettingsStore.save(context, container.id, settings.copy(screenSplit = state.optBoolean("previousScreenSplit", false)))
+        DuoSettingsStore.save(
+            context,
+            container.id,
+            settings.copy(
+                screenSplit = state.optBoolean("previousScreenSplit", false),
+                splitLayout = state.optString("previousSplitLayout", settings.splitLayout),
+            ),
+        )
+        LayoutFile.delete(container)
 
         stateFile.delete()
         Timber.tag(DualScreenHost.TAG).i("Disabled dual-screen mod %s for %s", mod.id, container.id)
@@ -98,10 +137,40 @@ object DuoModInstaller {
         false
     }
 
-    private fun copyAsset(context: Context, asset: String, target: File): JSONObject {
+    /** Copies an asset file, or an asset folder with everything in it, to [target]. */
+    private fun copyAssetTree(context: Context, asset: String, target: File, records: JSONArray) {
+        val children = context.assets.list(asset).orEmpty()
+        if (children.isEmpty()) {
+            context.assets.open(asset).use { install(it, target, records) }
+        } else {
+            children.forEach { copyAssetTree(context, "$asset/$it", File(target, it), records) }
+        }
+    }
+
+    /** Writes [source] to [target] following the rules in the class comment, and records what it did. */
+    private fun install(source: InputStream, target: File, records: JSONArray) {
         target.parentFile?.mkdirs()
-        context.assets.open(asset).use { input -> target.outputStream().use { input.copyTo(it) } }
-        return JSONObject().put("path", target.absolutePath).put("sha256", sha256(target))
+        val temp = File(target.path + ".duo-tmp")
+        temp.outputStream().use { source.copyTo(it) }
+        val hash = sha256(temp)
+        if (target.isFile && sha256(target) == hash) {
+            temp.delete()
+            return
+        }
+        val backedUp = target.isFile && target.renameTo(File(target.path + BACKUP_SUFFIX))
+        if (!temp.renameTo(target)) {
+            temp.delete()
+            error("Could not write $target")
+        }
+        records.put(JSONObject().put("path", target.absolutePath).put("sha256", hash).put("backup", backedUp))
+    }
+
+    private fun pruneEmptyDirs(start: File?, roots: List<File>) {
+        var dir = start
+        while (dir != null && roots.none { it == dir } && roots.any { dir!!.path.startsWith(it.path + File.separator) }) {
+            if (dir.list()?.isEmpty() != true || !dir.delete()) return
+            dir = dir.parentFile
+        }
     }
 
     /** Adds Wine DLL overrides (`name=mode`, `;`-separated) to an existing value, replacing same-name entries. */
@@ -111,9 +180,18 @@ object DuoModInstaller {
         return (kept + overrides).joinToString(";")
     }
 
-    private fun sha256(file: File): String = MessageDigest.getInstance("SHA-256")
-        .digest(file.readBytes())
-        .joinToString("") { "%02x".format(it) }
+    private fun sha256(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+                val read = input.read(buffer)
+                if (read < 0) break
+                digest.update(buffer, 0, read)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
 
     private fun stateFile(context: Context, appId: String) =
         File(context.filesDir, "duo/mods/" + appId.replace(Regex("[^A-Za-z0-9_.-]"), "_") + ".json")

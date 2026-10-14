@@ -49,6 +49,7 @@ add_custom_command(
 add_library(vulkan_renderer SHARED
             winlator/vulkan_jni.cpp
             winlator/VulkanRendererContext.cpp
+            winlator/DuoSecondaryOutput.cpp # GameNativeDuo
             winlator/VulkanRendererScanout.cpp
             winlator/VulkanRendererLsfg.cpp
             lsfg/vk_dispatch.c

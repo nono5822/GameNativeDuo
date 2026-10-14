@@ -8,22 +8,24 @@ import android.os.Handler
 import android.os.Looper
 import android.view.Display
 import android.view.MotionEvent
+import android.view.SurfaceHolder
+import android.view.SurfaceView
 import android.view.WindowManager
 import android.widget.FrameLayout
 import app.gamenative.duo.DualScreenHost
 import app.gamenative.duo.display.DeviceProfile
 import app.gamenative.duo.display.realSize
+import com.winlator.container.Container
 import com.winlator.renderer.VulkanRenderer
-import com.winlator.widget.XServerView
 import com.winlator.xserver.Pointer
 import com.winlator.xserver.XServer
 import timber.log.Timber
 
 /**
  * Shows one tall X screen across both screens: the top screen keeps upstream's renderer, cropped to the
- * upper part; the bottom screen gets a second Vulkan renderer of the same X server, cropped to the lower
- * part. Both sample the same window buffers, so no pixels are copied. Taps on the bottom screen become
- * mouse clicks at the matching X screen position.
+ * upper part, and the same renderer (same GPU device and imported window buffers) also draws the lower part
+ * into a surface on the bottom screen. No pixels are copied and the game's buffers have a single reader.
+ * Taps on the bottom screen become mouse clicks at the matching X screen position.
  *
  * When the bottom screen is missing or off, the top screen goes back to showing the whole X screen.
  */
@@ -31,6 +33,8 @@ class SplitScreenController(
     private val context: Context,
     private val xServer: XServer,
     private val profile: DeviceProfile,
+    private val container: Container,
+    private val layout: SplitLayout,
 ) {
     private val topRenderer: VulkanRenderer? get() = xServer.renderer as? VulkanRenderer
     private var presentation: SplitBottomPresentation? = null
@@ -44,8 +48,13 @@ class SplitScreenController(
                 return
             }
             val bottomDisplay = profile.findBottomDisplay(context)
+            val screenW = xServer.screenInfo.width.toInt()
+            val screenH = xServer.screenInfo.height.toInt()
             val newSplit = bottomDisplay?.let {
-                ScreenSplit.of(xServer.screenInfo.width.toInt(), xServer.screenInfo.height.toInt(), topAspect())
+                when (layout) {
+                    SplitLayout.FILL -> ScreenSplit.of(screenW, screenH, topAspect())
+                    SplitLayout.NATIVE -> ScreenSplit.nativeFor(context)?.takeIf { it.screenSize() == screenW to screenH }
+                }
             }
             if (bottomDisplay == null || newSplit == null) {
                 if (bottomDisplay != null) logSizeHint(bottomDisplay)
@@ -56,6 +65,7 @@ class SplitScreenController(
             dismissPresentation()
             split = newSplit
             top.setDuoViewRect(newSplit.top)
+            LayoutFile.write(container, newSplit)
             presentation = SplitBottomPresentation(context, bottomDisplay, xServer, top, newSplit.bottom).also { it.show() }
             Timber.tag(DualScreenHost.TAG).i(
                 "Screen split on: X screen %dx%d, top %s, bottom %s on display %d",
@@ -96,7 +106,10 @@ class SplitScreenController(
 
     private fun logSizeHint(bottomDisplay: Display) {
         val size = bottomDisplay.realSize()
-        val (w, h) = ScreenSplit.recommendedSize(xServer.screenInfo.width.toInt(), topAspect(), size.x.toFloat() / size.y)
+        val (w, h) = when (layout) {
+            SplitLayout.FILL -> ScreenSplit.recommendedSize(xServer.screenInfo.width.toInt(), topAspect(), size.x.toFloat() / size.y)
+            SplitLayout.NATIVE -> ScreenSplit.nativeFor(context)?.screenSize() ?: return
+        }
         Timber.tag(DualScreenHost.TAG).w(
             "Screen split is on but the X screen %dx%d has no room for a bottom part; set the container's screen size to %dx%d",
             xServer.screenInfo.width, xServer.screenInfo.height, w, h,
@@ -110,57 +123,77 @@ private class SplitBottomPresentation(
     private val xServer: XServer,
     private val topRenderer: VulkanRenderer,
     private val rect: FloatArray,
-) : Presentation(outerContext, display) {
-    private var view: XServerView? = null
-    private var mirror: VulkanRenderer? = null
+) : Presentation(outerContext, display),
+    SurfaceHolder.Callback {
     private var buttonDown = false
+    private val handler = Handler(Looper.getMainLooper())
+    private var attachTries = 0
+    private var surfaceSize: Pair<Int, Int>? = null
+    private var holder: SurfaceHolder? = null
+
+    /** The top renderer initialises asynchronously; retry until it accepts the second screen. */
+    private val attach = object : Runnable {
+        override fun run() {
+            val h = holder ?: return
+            val (width, height) = surfaceSize ?: return
+            try {
+                val t = DuoViewport.transform(rect, width, height, xServer.screenInfo.width.toInt(), xServer.screenInfo.height.toInt())
+                if (topRenderer.duoSetSecondary(h.surface, t)) {
+                    Timber.tag(DualScreenHost.TAG).i("Second screen output attached (%dx%d)", width, height)
+                    return
+                }
+            } catch (t: Throwable) {
+                Timber.tag(DualScreenHost.TAG).e(t, "Failed to attach second screen output")
+                return
+            }
+            if (++attachTries <= 60) {
+                handler.postDelayed(this, 500)
+            } else {
+                Timber.tag(DualScreenHost.TAG).w("Second screen output could not be created")
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window?.addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL)
-        // The renderer registers X server listeners in its constructor; hold the locks the X thread uses
-        // while it walks those lists.
-        val xView = xServer.lock(XServer.Lockable.WINDOW_MANAGER, XServer.Lockable.INPUT_DEVICE).use {
-            XServerView(context, xServer, "vulkan")
+        // The top screen's renderer draws into this surface too (same GPU device, see DuoSecondaryOutput.cpp).
+        val surfaceView = SurfaceView(context).apply {
+            holder.addCallback(this@SplitBottomPresentation)
+            setOnTouchListener { v, event -> onTouch(v.width, v.height, event) }
         }
-        val renderer = xView.renderer as VulkanRenderer
-        renderer.setUnviewableWMClasses("explorer.exe")
-        renderer.setForceFullscreenWMClass(topRenderer.forceFullscreenWMClass)
-        renderer.setDuoViewRect(rect)
-        xView.setOnTouchListener { v, event -> onTouch(v.width, v.height, event) }
         setContentView(
             FrameLayout(context).apply {
                 setBackgroundColor(Color.BLACK)
-                addView(xView)
+                addView(surfaceView)
             },
         )
-        topRenderer.setDuoMirror(renderer)
-        view = xView
-        mirror = renderer
+    }
+
+    override fun surfaceCreated(holder: SurfaceHolder) {}
+
+    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+        this.holder = holder
+        surfaceSize = width to height
+        attachTries = 0
+        handler.removeCallbacks(attach)
+        attach.run()
+    }
+
+    override fun surfaceDestroyed(holder: SurfaceHolder) {
+        handler.removeCallbacks(attach)
+        this.holder = null
+        try {
+            topRenderer.duoClearSecondary()
+        } catch (t: Throwable) {
+            Timber.tag(DualScreenHost.TAG).w(t, "Failed to detach second screen output")
+        }
     }
 
     override fun onStop() {
-        topRenderer.setDuoMirror(null)
         if (buttonDown) inject { xServer.injectPointerButtonRelease(Pointer.Button.BUTTON_LEFT) }
-        val renderer = mirror ?: return super.onStop()
-        mirror = null
-        try {
-            xServer.lock(XServer.Lockable.WINDOW_MANAGER, XServer.Lockable.INPUT_DEVICE).use {
-                xServer.windowManager.removeOnWindowModificationListener(renderer)
-                xServer.pointer.removeOnPointerMotionListener(renderer)
-            }
-        } catch (t: Throwable) {
-            Timber.tag(DualScreenHost.TAG).w(t, "Failed to detach bottom renderer")
-        }
+        buttonDown = false
         super.onStop()
-        // The surface is destroyed with the window; free the renderer's native context after that.
-        Handler(Looper.getMainLooper()).post {
-            try {
-                renderer.duoRelease()
-            } catch (t: Throwable) {
-                Timber.tag(DualScreenHost.TAG).w(t, "Failed to release bottom renderer")
-            }
-        }
     }
 
     private fun onTouch(width: Int, height: Int, event: MotionEvent): Boolean {

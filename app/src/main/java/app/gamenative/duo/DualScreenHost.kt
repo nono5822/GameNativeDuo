@@ -10,6 +10,8 @@ import app.gamenative.duo.display.DisplayInventory
 import app.gamenative.duo.display.DisplaySnapshot
 import app.gamenative.duo.panel.BottomPanelController
 import app.gamenative.duo.settings.DuoSettingsStore
+import app.gamenative.duo.split.LayoutFile
+import app.gamenative.duo.split.SplitLayout
 import app.gamenative.duo.split.SplitScreenController
 import com.winlator.container.Container
 import com.winlator.xserver.XServer
@@ -75,7 +77,11 @@ class DualScreenSession internal constructor(
         profile,
         settings.copy(bottomPanelEnabled = settings.bottomPanelEnabled && !(settings.screenSplit && xServer != null)),
     )
-    private val screenSplit = if (settings.screenSplit && xServer != null) SplitScreenController(context, xServer, profile) else null
+    private val screenSplit = if (settings.screenSplit && xServer != null) {
+        SplitScreenController(context, xServer, profile, container, SplitLayout.fromId(settings.splitLayout))
+    } else {
+        null
+    }
     private var running = false
 
     private val displayListener = object : DisplayManager.DisplayListener {
@@ -95,6 +101,7 @@ class DualScreenSession internal constructor(
         running = true
         displayManager?.registerDisplayListener(displayListener, Handler(Looper.getMainLooper()))
         report("session start (container ${container.id}, profile ${profile.id}, $settings)")
+        if (screenSplit == null) LayoutFile.delete(container)
     }
 
     fun detach() {
