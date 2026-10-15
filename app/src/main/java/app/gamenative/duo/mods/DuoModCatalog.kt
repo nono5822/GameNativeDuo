@@ -70,6 +70,21 @@ object DuoModCatalog {
             launchExecutable = "StardewModdingAPI.exe",
             splitLayout = SplitLayout.NATIVE,
         ),
+        DuoGameMod(
+            id = "slime-rancher",
+            appId = "STEAM_433340",
+            title = "Slime Rancher",
+            // BepInEx 5.4.23.5 (https://github.com/BepInEx/BepInEx, MIT, unmodified; licence and notice alongside) loads
+            // through winhttp.dll. Our plugin (source: duo/mods-src/unity) is generic for Unity uGUI games.
+            gameFiles = mapOf(
+                "duo/mods/slime-rancher/bepinex" to "",
+                "duo/mods/slime-rancher/BepInEx-LICENSE.txt" to "BepInEx/LICENSE-BepInEx.txt",
+                "duo/mods/slime-rancher/BepInEx-NOTICE.txt" to "BepInEx/NOTICE-GameNativeDuo.txt",
+                "duo/mods/slime-rancher/plugin" to "BepInEx/plugins/GameNativeDuo-split",
+            ),
+            dllOverrides = listOf("winhttp=n,b"),
+            splitLayout = SplitLayout.NATIVE,
+        ),
     )
 
     private val byAppId = mods.associateBy { it.appId }

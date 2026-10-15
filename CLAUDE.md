@@ -74,7 +74,7 @@ the id: prebuilt `libkgslshim.so` matches on that substring.
    zero-copy via DRI3 `AHardwareBuffer`s + the Present extension.
 4. **Bridge**: local socket between Windows-side mods (inside Wine) and Android panels; compact binary
    messages, state capped ~30/s, commands back to the game; native panels from a JSON schema, WebView optional.
-5. **Engine adapters**: Ren'Py, RPG Maker MV/MZ, Unity (uGUI/UI Toolkit), Godot, Unreal (UMG); later a DXVK
+5. **Engine adapters**: Ren'Py, RPG Maker MV/MZ, Unity (uGUI/UI Toolkit; uGUI started, see below), Godot, Unreal (UMG); later a DXVK
    "UI split" that sends UI draws to a separate layer.
 6. **Community packages**: Git-based index, per-game presets that auto-apply (data-only by default, code mods
    need consent), device profiles, signing, compatibility reports.
@@ -92,7 +92,16 @@ no CPU frame copies, data over pixels, idle at 0 fps when nothing changes.
 - Stardew Valley: SMAPI + `duo/mods-src/stardew` (world continues across both screens, UI on the bottom). Never force
   `Game1.ShouldDrawOnBuffer` on the title/loading screens: it hangs the GPU (see `duo/notes/`).
 - Physical screen alignment (`ScreenCalibration`: hinge gap, pixel-density scale, shift) is per device, defaults in
-  `DeviceProfile`, tuned in-game with a two-finger long press on the bottom screen, and written into `layout.json`.
+  `DeviceProfile` (Thor: gap 249, scale 1.142, shift 0), tuned in-game with a two-finger long press on the bottom
+  screen, saved in `files/duo/calibration/<profile>.json`, and written into `layout.json` on every session start and
+  Dual screen toggle (mods re-read it live).
+- Unity (uGUI) games: BepInEx 5 (MIT, loads via `winhttp.dll`, override `winhttp=n,b`) + the generic plugin in
+  `duo/mods-src/unity` (cameras squeezed into the top part, root screen-space canvases moved to a bottom-screen UI
+  camera, `CanvasScaler` computed for the bottom screen's size). Needs the Mono backend (`*_Data/Managed`, no
+  `GameAssembly.dll`). First game: Slime Rancher (Unity 2019.4). Open: crosshair goes to the bottom screen (#5).
+- `layout.json` (`%AppData%\GameNativeDuo\` in the prefix) is the contract with in-game mods: `screen`, `top`,
+  `bottom` (window px, origin top-left), plus `gap`, `bottomScale`, `bottomShift`. Mods act only when the window
+  matches `screen`.
 - Mods only add code to games the user owns; never anything that touches DRM or decrypts game files.
 
 ## Conventions
@@ -120,9 +129,43 @@ adb logcat -s GNDuo                         # devkit logs
 - Official GameNative can be installed alongside and logs the same tags (`evshim`, `WinHandler`, ...). Check
   which app a log line comes from: `adb logcat --pid=$(adb shell pidof app.gamenative.duo)`.
 
+### Mods and native code
+
+```bash
+# In-game mods (references come from the game; pull them from the device's game folder first):
+dotnet build -c Release -p:GamePath=<Stardew folder incl. SMAPI>      # duo/mods-src/stardew/...
+dotnet build -c Release -p:ManagedPath=<Game_Data/Managed> -p:BepInExPath=<BepInEx/core>   # duo/mods-src/unity/...
+# then copy the DLL into app/src/main/assets/duo/mods/<id>/ (the bundled copy is what the Dual screen toggle installs)
+```
+
+- Game files on the device: `adb shell run-as app.gamenative.duo ...` under
+  `/data/user/0/app.gamenative.duo/Steam/steamapps/common/<game>`; the prefix is
+  `files/imagefs/home/xuser-<containerId>/.wine/drive_c`. Logs: SMAPI `.../AppData/Roaming/StardewValley/ErrorLogs/`,
+  BepInEx `<game>/BepInEx/LogOutput.log`.
+- `libvulkan_renderer.so` (bottom-screen output) is rebuilt per `duo/native/README.md` after any change in
+  `app/src/main/cpp/winlator/`.
+- Screenshots per screen: `adb exec-out screencap -p -d 4630946441858561667` (top), `-d 4630946482288158084` (bottom).
+
+### Debugging freezes and GPU hangs
+
+- A frozen screen with `BufferQueueProducer ... dequeueBuffer: attempting to exceed the max dequeued buffer count`
+  in logcat means a GPU context died. Check `adb shell dmesg | grep -A1 "GPU hang detected"`: the pid shows whose
+  context it was. The game's DXVK work is attributed to the **app's** pid too, so "our pid" does not mean "our
+  renderer". 3 hangs within 2 s ban the context (`gpu fault threshold exceeded`); fewer recover silently.
+  `CP: AHB bus error` lines are constant background noise.
+- Reproduce without the user: launch a game by intent and poll dmesg for the new pid:
+  `adb shell am start -a app.gamenative.LAUNCH_GAME -n app.gamenative.duo/app.gamenative.MainActivity --ei app_id <steam id> --es game_source STEAM`.
+  Bisect by switching mod features off between launches (this is how the Stardew hang was found).
+
 ## Known issues / open questions
 
 - Work in progress and its full history: `duo/notes/` (start with the newest file).
+- Unity games remember their last resolution: after turning Dual screen on, set the in-game resolution to the tall
+  window (1920x2160) once, or the game renders centred and unsplit. Could be automated (Unity's `-screen-width`/
+  `-screen-height` arguments or its registry keys).
+- Unity split, untested: taps on the bottom screen while a game has the mouse locked (first-person gameplay) will
+  likely turn the camera or fire; aiming may be off if a game aims at the window centre (the hinge) instead of the
+  camera's.
 
 - AGP 8.8's bundled D8 turns upstream's giant `XServerScreen` composable (on full, non-incremental compiles: CLI, CI)
   into dex that ART rejects (`VerifyError ... register vN has type Conflict`) the moment a game launches. Incremental
