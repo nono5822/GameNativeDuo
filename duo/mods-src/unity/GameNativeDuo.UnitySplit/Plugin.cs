@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using BepInEx;
 using BepInEx.Logging;
 using HarmonyLib;
@@ -11,47 +12,109 @@ namespace GameNativeDuo.UnitySplit
     /// <summary>
     /// Game on the top screen, UI on the bottom screen, for Unity games with uGUI. GameNative Duo shows one tall game
     /// window across both screens; this plugin squeezes every camera that renders to the window into the top part and
-    /// moves every screen-space canvas onto a UI camera that covers the bottom part, laid out for the bottom screen's
-    /// size. Taps on the bottom screen reach the UI through that camera. Nothing changes unless the window matches
-    /// GameNative Duo's layout.json, and every step catches its own errors so the game keeps running.
+    /// moves the game's screen-space UI to the screens the user chose (see <see cref="UiRouter"/>, rules from
+    /// ui.json). Bottom-screen touches arrive over GameNative Duo's bridge and go straight to uGUI
+    /// (<see cref="TouchInjector"/>). Nothing changes unless the window matches GameNative Duo's layout.json, and every
+    /// step catches its own errors so the game keeps running.
     /// </summary>
-    [BepInPlugin("app.gamenative.duo.unitysplit", "GameNative Duo Unity Split", "0.1.0")]
+    [BepInPlugin("app.gamenative.duo.unitysplit", "GameNative Duo Unity Split", "0.2.0")]
     public sealed class Plugin : BaseUnityPlugin
     {
+        private const string Engine = "unity-ugui";
+        private const float RescanSeconds = 0.5f;
+        private const float WatchSeconds = 2f;
+        private const float HelloSeconds = 2f;
+
         internal static ManualLogSource Log;
-        internal static Layout Layout;
+        internal static Plugin Instance;
+
+        internal Layout Layout;
+        internal readonly UiRouter Router = new UiRouter();
 
         /// <summary>True while the window matches <see cref="Layout"/>.</summary>
-        internal static bool Active;
+        internal bool Active;
 
-        /// <summary>Canvases moved to the bottom screen (their scaler is computed for the bottom screen's size).</summary>
-        internal static readonly HashSet<Canvas> MovedCanvases = new HashSet<Canvas>();
-
-        private const float RescanSeconds = 0.5f;
-
-        private Camera _uiCamera;
-        private float _nextScan;
-        private readonly Dictionary<Camera, Rect> _originalRects = new Dictionary<Camera, Rect>();
-        private readonly Dictionary<Camera, Rect> _appliedRects = new Dictionary<Camera, Rect>();
+        private UiRules _rules = UiRules.Empty;
+        private TouchInjector _touch;
+        private Bridge _bridge;
+        private readonly List<Bridge.Message> _messages = new List<Bridge.Message>();
+        private float _nextScan, _nextWatch, _nextHello;
+        private DateTime _layoutTime, _rulesTime;
+        private bool _dumpPending;
+        private uint _dumpRequest;
+        private bool _scaleErrorLogged;
 
         private void Awake()
         {
             Log = Logger;
-            string error;
-            Layout = Layout.Load(out error);
-            if (Layout == null)
-            {
-                Log.LogInfo("No GameNative Duo layout (" + error + "); the game runs unchanged.");
-                return;
-            }
-            Log.LogInfo("GameNative Duo layout: " + Layout);
+            Instance = this;
+            _touch = new TouchInjector(Router);
+            ReloadLayout();
+            ReloadRules();
             try
             {
-                new Harmony("app.gamenative.duo.unitysplit").PatchAll(typeof(CanvasScalerPatch));
+                new Harmony("app.gamenative.duo.unitysplit").PatchAll(typeof(ScalerPatch));
             }
             catch (Exception ex)
             {
                 Log.LogError("Could not patch CanvasScaler (UI keeps the full-window scale): " + ex);
+            }
+            Canvas.willRenderCanvases += OnWillRenderCanvases;
+        }
+
+        private void OnDestroy()
+        {
+            Canvas.willRenderCanvases -= OnWillRenderCanvases;
+            if (_bridge != null)
+                _bridge.Dispose();
+        }
+
+        private void Update()
+        {
+            try
+            {
+                float now = Time.unscaledTime;
+                if (now >= _nextWatch)
+                {
+                    _nextWatch = now + WatchSeconds;
+                    WatchFiles();
+                }
+                if (_bridge == null)
+                    return;
+                if (now >= _nextHello)
+                {
+                    _nextHello = now + HelloSeconds;
+                    _bridge.SendHello(Bridge.CapTouch | Bridge.CapUiRules | Bridge.CapElements, Engine);
+                }
+                _bridge.Drain(_messages);
+                if (_messages.Count == 0)
+                    return;
+                foreach (Bridge.Message m in _messages)
+                {
+                    switch (m.Type)
+                    {
+                        case Bridge.Touch:
+                            if (Active)
+                                _touch.Handle(m.Action, m.Pointer, m.X, m.Y);
+                            break;
+                        case Bridge.RulesChanged:
+                            ReloadRules();
+                            break;
+                        case Bridge.DumpElements:
+                            _dumpPending = true;
+                            _dumpRequest = m.Request;
+                            break;
+                    }
+                }
+                _messages.Clear();
+                // Without the split there is no frame hook to answer from; answer now.
+                if (_dumpPending && !Active)
+                    WriteElements();
+            }
+            catch (Exception ex)
+            {
+                _messages.Clear();
+                Log.LogError("GameNative Duo bridge update failed: " + ex);
             }
         }
 
@@ -67,15 +130,16 @@ namespace GameNativeDuo.UnitySplit
                     Active = active;
                     Log.LogInfo("Screen split " + (active ? "on" : "off") + " (window " + Screen.width + "x" + Screen.height + ")");
                     if (!active)
-                        RestoreAll();
+                    {
+                        _touch.CancelAll();
+                        Router.RestoreAll();
+                    }
                     _nextScan = 0f;
                 }
                 if (!Active || Time.unscaledTime < _nextScan)
                     return;
                 _nextScan = Time.unscaledTime + RescanSeconds;
-                EnsureUiCamera();
-                PlaceCameras();
-                MoveCanvases();
+                Router.Scan();
             }
             catch (Exception ex)
             {
@@ -84,130 +148,143 @@ namespace GameNativeDuo.UnitySplit
             }
         }
 
-        /// <summary>An orthographic camera over the bottom screen that renders only the moved canvases.</summary>
-        private void EnsureUiCamera()
+        /// <summary>Once per frame, after uGUI's layout and before rendering.</summary>
+        private void OnWillRenderCanvases()
         {
-            if (_uiCamera != null)
+            if (!Active)
                 return;
-            var go = new GameObject("GameNativeDuo UI camera");
-            DontDestroyOnLoad(go);
-            _uiCamera = go.AddComponent<Camera>();
-            _uiCamera.clearFlags = CameraClearFlags.SolidColor;
-            _uiCamera.backgroundColor = Color.black;
-            _uiCamera.cullingMask = 0; // set to the moved canvases' layers
-            _uiCamera.orthographic = true;
-            _uiCamera.depth = 100f;
-            _uiCamera.nearClipPlane = 0.1f;
-            _uiCamera.farClipPlane = 1000f;
-            _uiCamera.useOcclusionCulling = false;
-            _uiCamera.allowHDR = false;
-            _uiCamera.allowMSAA = false;
-            _uiCamera.rect = Layout.Viewport(Layout.Bottom);
-        }
-
-        /// <summary>
-        /// Every camera that draws to the window is squeezed into the top screen, keeping its own placement inside it
-        /// (a minimap camera keeps its corner). A rect the game changes later is taken as its new original.
-        /// </summary>
-        private void PlaceCameras()
-        {
-            Rect top = Layout.Viewport(Layout.Top);
-            foreach (Camera cam in Camera.allCameras)
+            try
             {
-                if (cam == null || cam == _uiCamera || cam.targetTexture != null)
-                    continue;
-                Rect applied;
-                if (!_appliedRects.TryGetValue(cam, out applied) || cam.rect != applied)
-                    _originalRects[cam] = cam.rect;
-                Rect o = _originalRects[cam];
-                var r = new Rect(top.x + o.x * top.width, top.y + o.y * top.height, o.width * top.width, o.height * top.height);
-                cam.rect = r;
-                _appliedRects[cam] = cam.rect;
+                Router.ApplyFrame();
+                if (_dumpPending)
+                    WriteElements();
+            }
+            catch (Exception ex)
+            {
+                _dumpPending = false;
+                Log.LogError("Screen split frame update failed: " + ex);
             }
         }
 
-        /// <summary>Screen-space canvases (overlay, or bound to a game camera) render through the bottom-screen UI camera.</summary>
-        private void MoveCanvases()
+        private void WriteElements()
         {
-            int mask = _uiCamera.cullingMask;
-            foreach (Canvas canvas in FindObjectsOfType<Canvas>())
+            _dumpPending = false;
+            try
             {
-                if (canvas == null || !canvas.isRootCanvas || canvas.renderMode == RenderMode.WorldSpace)
-                    continue;
-                if (canvas.renderMode == RenderMode.ScreenSpaceCamera && canvas.worldCamera == _uiCamera)
-                    continue;
-                canvas.renderMode = RenderMode.ScreenSpaceCamera;
-                canvas.worldCamera = _uiCamera;
-                canvas.planeDistance = 10f;
-                mask |= 1 << canvas.gameObject.layer;
-                MovedCanvases.Add(canvas);
-                Log.LogDebug("Moved canvas '" + canvas.name + "' (layer " + canvas.gameObject.layer + ", order " + canvas.sortingOrder + ") to the bottom screen");
+                Router.WriteElements(Path.Combine(Layout.Dir, "elements.json"));
             }
-            _uiCamera.cullingMask = mask;
-            MovedCanvases.RemoveWhere(c => c == null);
+            catch (Exception ex)
+            {
+                Log.LogError("Could not write the UI element list: " + ex);
+            }
+            if (_bridge != null)
+                _bridge.SendElementsWritten(_dumpRequest);
         }
 
-        private void RestoreAll()
+        /// <summary>layout.json and ui.json are rewritten by the app while the game runs (calibration, layout editor).</summary>
+        private void WatchFiles()
         {
-            foreach (var pair in _originalRects)
+            if (Modified(Layout.FilePath, ref _layoutTime))
+                ReloadLayout();
+            if (Modified(UiRules.FilePath, ref _rulesTime))
+                ReloadRules();
+        }
+
+        private static bool Modified(string path, ref DateTime last)
+        {
+            DateTime t = File.Exists(path) ? File.GetLastWriteTimeUtc(path) : DateTime.MinValue;
+            if (t == last)
+                return false;
+            last = t;
+            return true;
+        }
+
+        private void ReloadLayout()
+        {
+            _layoutTime = File.Exists(Layout.FilePath) ? File.GetLastWriteTimeUtc(Layout.FilePath) : DateTime.MinValue;
+            string error;
+            Layout layout = Layout.Load(out error);
+            if (layout == null)
             {
-                if (pair.Key != null)
-                    pair.Key.rect = pair.Value;
+                if (Layout == null)
+                    Log.LogInfo("No GameNative Duo layout (" + error + "); the game runs unchanged.");
+                return;
             }
-            _originalRects.Clear();
-            _appliedRects.Clear();
-            foreach (Canvas canvas in MovedCanvases)
+            if (!layout.SameGeometry(Layout))
             {
-                if (canvas != null && canvas.worldCamera == _uiCamera)
-                    canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+                Log.LogInfo("GameNative Duo layout: " + layout);
+                if (Active)
+                {
+                    _touch.CancelAll();
+                    Router.RestoreAll();
+                    Active = false; // LateUpdate re-checks the window against the new layout
+                }
             }
-            MovedCanvases.Clear();
+            Layout = layout;
+            Router.SetLayout(layout);
+            if (layout.BridgePort > 0)
+            {
+                if (_bridge == null)
+                {
+                    try
+                    {
+                        _bridge = new Bridge(layout.BridgePort);
+                        _nextHello = 0f;
+                        Log.LogInfo("GameNative Duo bridge: talking to the app on port " + layout.BridgePort);
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.LogError("GameNative Duo bridge unavailable (touch falls back to the mouse): " + ex);
+                    }
+                }
+                else if (_bridge.AppPort != layout.BridgePort)
+                {
+                    _bridge.AppPort = layout.BridgePort;
+                    _nextHello = 0f;
+                }
+            }
+        }
+
+        private void ReloadRules()
+        {
+            _rulesTime = File.Exists(UiRules.FilePath) ? File.GetLastWriteTimeUtc(UiRules.FilePath) : DateTime.MinValue;
+            string error;
+            _rules = UiRules.Load(out error);
+            if (error.Length > 0)
+                Log.LogWarning(error);
+            Log.LogInfo("UI layout: " + _rules.Count + " element rule(s)");
+            Router.SetRules(_rules);
+        }
+
+        internal void OnScaleError(Exception ex)
+        {
+            if (_scaleErrorLogged)
+                return;
+            _scaleErrorLogged = true;
+            Log.LogError("CanvasScaler patch failed: " + ex);
         }
     }
 
     /// <summary>
-    /// uGUI's CanvasScaler sizes UI from the whole window (Screen.width/height); a moved canvas is scaled for the
-    /// bottom screen instead, with Unity's own formula, so the UI is laid out as if the game ran on that screen.
+    /// uGUI's CanvasScaler sizes UI from the whole window; a canvas on one screen is laid out for that screen's size
+    /// instead (Unity's own formula), times the size the user chose for it.
     /// </summary>
-    [HarmonyPatch(typeof(CanvasScaler), "HandleScaleWithScreenSize")]
-    internal static class CanvasScalerPatch
+    [HarmonyPatch(typeof(CanvasScaler), "SetScaleFactor")]
+    internal static class ScalerPatch
     {
-        private static void Postfix(CanvasScaler __instance)
+        private static void Prefix(CanvasScaler __instance, ref float scaleFactor)
         {
+            Plugin p = Plugin.Instance;
+            if (p == null || !p.Active)
+                return;
             try
             {
-                if (!Plugin.Active)
-                    return;
-                Canvas canvas = __instance.GetComponent<Canvas>();
-                if (canvas == null || !Plugin.MovedCanvases.Contains(canvas))
-                    return;
-                Vector2 screen = new Vector2(Plugin.Layout.Bottom.width, Plugin.Layout.Bottom.height);
-                Vector2 reference = __instance.referenceResolution;
-                float scale;
-                switch (__instance.screenMatchMode)
-                {
-                    case CanvasScaler.ScreenMatchMode.Expand:
-                        scale = Mathf.Min(screen.x / reference.x, screen.y / reference.y);
-                        break;
-                    case CanvasScaler.ScreenMatchMode.Shrink:
-                        scale = Mathf.Max(screen.x / reference.x, screen.y / reference.y);
-                        break;
-                    default:
-                        float logW = Mathf.Log(screen.x / reference.x, 2f);
-                        float logH = Mathf.Log(screen.y / reference.y, 2f);
-                        scale = Mathf.Pow(2f, Mathf.Lerp(logW, logH, __instance.matchWidthOrHeight));
-                        break;
-                }
-                SetScaleFactor(__instance, scale);
+                p.Router.AdjustScale(__instance, ref scaleFactor);
             }
             catch (Exception ex)
             {
-                Plugin.Log.LogError("CanvasScaler patch failed: " + ex);
+                p.OnScaleError(ex);
             }
         }
-
-        private static readonly System.Reflection.MethodInfo SetScaleFactorMethod = AccessTools.Method(typeof(CanvasScaler), "SetScaleFactor");
-
-        private static void SetScaleFactor(CanvasScaler scaler, float scale) => SetScaleFactorMethod.Invoke(scaler, new object[] { scale });
     }
 }

@@ -74,6 +74,8 @@ the id: prebuilt `libkgslshim.so` matches on that substring.
    zero-copy via DRI3 `AHardwareBuffer`s + the Present extension.
 4. **Bridge**: local socket between Windows-side mods (inside Wine) and Android panels; compact binary
    messages, state capped ~30/s, commands back to the game; native panels from a JSON schema, WebView optional.
+   **Started**: UDP on 127.0.0.1 (`duo/bridge/DuoBridge.kt`) carrying native touch, UI-layout reloads and element
+   lists; spec in `duo/docs/engine-adapter-contract.md` (what every engine adapter implements).
 5. **Engine adapters**: Ren'Py, RPG Maker MV/MZ, Unity (uGUI/UI Toolkit; uGUI started, see below), Godot, Unreal (UMG); later a DXVK
    "UI split" that sends UI draws to a separate layer.
 6. **Community packages**: Git-based index, per-game presets that auto-apply (data-only by default, code mods
@@ -98,10 +100,17 @@ no CPU frame copies, data over pixels, idle at 0 fps when nothing changes.
 - Unity (uGUI) games: BepInEx 5 (MIT, loads via `winhttp.dll`, override `winhttp=n,b`) + the generic plugin in
   `duo/mods-src/unity` (cameras squeezed into the top part, root screen-space canvases moved to a bottom-screen UI
   camera, `CanvasScaler` computed for the bottom screen's size). Needs the Mono backend (`*_Data/Managed`, no
-  `GameAssembly.dll`). First game: Slime Rancher (Unity 2019.4). Open: crosshair goes to the bottom screen (#5).
+  `GameAssembly.dll`). First game: Slime Rancher (Unity 2019.4). Crosshairs/reticles stay on top by name.
+- **UI layout** (per game, user-editable): each UI element on the bottom screen, the top screen or hidden, resized and
+  shifted. `duo/ui/` (store, controller, editor), user layouts in `files/duo/ui/<game>.json`, presets bundled as
+  `assets/duo/mods/<mod>/ui-layout.json`, handed to the mod as `ui.json`. The editor opens with a two-finger long press
+  on the bottom screen -> "Edit UI layout".
+- **Native touch**: bottom-screen fingers go over the bridge into the engine's UI (Unity: `EventSystem`), never through
+  the X mouse (a mouse shows a cursor, flips games to keyboard/mouse prompts and counts as gameplay clicks). Games
+  without a bridge mod get mouse clicks. Setting "Native touch on the bottom screen".
 - `layout.json` (`%AppData%\GameNativeDuo\` in the prefix) is the contract with in-game mods: `screen`, `top`,
-  `bottom` (window px, origin top-left), plus `gap`, `bottomScale`, `bottomShift`. Mods act only when the window
-  matches `screen`.
+  `bottom` (window px, origin top-left), plus `gap`, `bottomScale`, `bottomShift`, `bridge.port`. Mods act only when
+  the window matches `screen`. `ui.json` (UI layout) and `elements.json` (for the editor) sit next to it.
 - Mods only add code to games the user owns; never anything that touches DRM or decrypts game files.
 
 ## Conventions
@@ -145,6 +154,8 @@ dotnet build -c Release -p:ManagedPath=<Game_Data/Managed> -p:BepInExPath=<BepIn
 - `libvulkan_renderer.so` (bottom-screen output) is rebuilt per `duo/native/README.md` after any change in
   `app/src/main/cpp/winlator/`.
 - Screenshots per screen: `adb exec-out screencap -p -d 4630946441858561667` (top), `-d 4630946482288158084` (bottom).
+- Touch the bottom screen from adb: `adb shell input -d 4 tap|swipe ...`; multi-touch (e.g. the two-finger menu) needs
+  `sendevent` on `/dev/input/event5` (`fts_ts_3`), see `duo/notes/2026-10-19-ui-layout-native-touch.md`.
 
 ### Debugging freezes and GPU hangs
 
@@ -163,9 +174,8 @@ dotnet build -c Release -p:ManagedPath=<Game_Data/Managed> -p:BepInExPath=<BepIn
 - Unity games remember their last resolution: after turning Dual screen on, set the in-game resolution to the tall
   window (1920x2160) once, or the game renders centred and unsplit. Could be automated (Unity's `-screen-width`/
   `-screen-height` arguments or its registry keys).
-- Unity split, untested: taps on the bottom screen while a game has the mouse locked (first-person gameplay) will
-  likely turn the camera or fire; aiming may be off if a game aims at the window centre (the hinge) instead of the
-  camera's.
+- Unity split, untested: aiming may be off if a game aims at the window centre (the hinge) instead of the camera's.
+- Bridge sockets must bind IPv4 127.0.0.1 explicitly: `InetAddress.getLoopbackAddress()` is `::1` on the Thor.
 
 - AGP 8.8's bundled D8 turns upstream's giant `XServerScreen` composable (on full, non-incremental compiles: CLI, CI)
   into dex that ART rejects (`VerifyError ... register vN has type Conflict`) the moment a game launches. Incremental

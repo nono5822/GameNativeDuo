@@ -116,5 +116,13 @@ fun DuoSettingsTabContent(draft: DuoSettingsDraft) {
             state = settings.screenSplit,
             onCheckedChange = { draft.settings = settings.copy(screenSplit = it) },
         )
+        SettingsSwitch(
+            colors = settingsTileColorsAlt(),
+            enabled = settings.screenSplit,
+            title = { Text(text = stringResource(R.string.duo_settings_native_touch)) },
+            subtitle = { Text(text = stringResource(R.string.duo_settings_native_touch_description)) },
+            state = settings.nativeTouch,
+            onCheckedChange = { draft.settings = settings.copy(nativeTouch = it) },
+        )
     }
 }

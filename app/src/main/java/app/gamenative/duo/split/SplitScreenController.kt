@@ -10,13 +10,18 @@ import android.view.Display
 import android.view.MotionEvent
 import android.view.SurfaceHolder
 import android.view.SurfaceView
+import android.view.View
+import android.view.ViewConfiguration
 import android.view.WindowManager
 import android.widget.FrameLayout
 import app.gamenative.duo.DualScreenHost
+import app.gamenative.duo.bridge.DuoBridge
 import app.gamenative.duo.display.DeviceProfile
 import app.gamenative.duo.display.ScreenCalibration
 import app.gamenative.duo.display.ScreenCalibrationStore
 import app.gamenative.duo.display.realSize
+import app.gamenative.duo.ui.UiLayoutController
+import app.gamenative.duo.ui.UiLayoutEditor
 import com.winlator.container.Container
 import com.winlator.renderer.VulkanRenderer
 import com.winlator.xserver.Pointer
@@ -27,8 +32,10 @@ import timber.log.Timber
  * Shows one tall X screen across both screens: the top screen keeps upstream's renderer, cropped to the
  * upper part, and the same renderer (same GPU device and imported window buffers) also draws the lower part
  * into a surface on the bottom screen. No pixels are copied and the game's buffers have a single reader.
- * Taps on the bottom screen become mouse clicks at the matching X screen position. A two-finger long press on the
- * bottom screen opens [ScreenCalibrationPanel] to line the physical screens up.
+ * Bottom-screen touches go straight to the game's UI through the [DuoBridge] when the game's mod supports it
+ * ([nativeTouch]: no cursor, no mouse input the game could react to), else they become mouse clicks at the matching
+ * X screen position. A two-finger long press on the bottom screen opens [DuoMenuPanel]: the UI layout editor
+ * ([UiLayoutEditor]) and [ScreenCalibrationPanel] to line the physical screens up.
  *
  * When the bottom screen is missing or off, the top screen goes back to showing the whole X screen.
  */
@@ -38,6 +45,9 @@ class SplitScreenController(
     private val profile: DeviceProfile,
     private val container: Container,
     private val layout: SplitLayout,
+    private val bridge: DuoBridge?,
+    private val uiLayout: UiLayoutController?,
+    private val nativeTouch: Boolean,
 ) {
     private val topRenderer: VulkanRenderer? get() = xServer.renderer as? VulkanRenderer
     private var presentation: SplitBottomPresentation? = null
@@ -69,9 +79,11 @@ class SplitScreenController(
             dismissPresentation()
             split = newSplit
             top.setDuoViewRect(newSplit.top)
-            LayoutFile.write(container, newSplit, calibration)
+            LayoutFile.write(container, newSplit, calibration, bridge?.port ?: 0)
             presentation = SplitBottomPresentation(
-                context, bottomDisplay, xServer, top, newSplit.bottom, calibration, profile.calibration,
+                context, bottomDisplay, xServer, top, newSplit.top, newSplit.bottom, calibration, profile.calibration,
+                bridge = bridge.takeIf { nativeTouch },
+                uiLayout = uiLayout,
                 onCalibrationChange = ::onCalibrationChange,
                 onCalibrationDone = { ScreenCalibrationStore.save(context, profile, it) },
             ).also { it.show() }
@@ -88,7 +100,7 @@ class SplitScreenController(
 
     private fun onCalibrationChange(new: ScreenCalibration) {
         calibration = new
-        split?.let { LayoutFile.write(container, it, new) }
+        split?.let { LayoutFile.write(container, it, new, bridge?.port ?: 0) }
     }
 
     fun stop() {
@@ -135,21 +147,32 @@ private class SplitBottomPresentation(
     display: Display,
     private val xServer: XServer,
     private val topRenderer: VulkanRenderer,
+    private val topRect: FloatArray,
     private val rect: FloatArray,
     private var calibration: ScreenCalibration,
     private val calibrationDefaults: ScreenCalibration,
+    /** Native touch through the game's mod; null for mouse clicks only. */
+    private val bridge: DuoBridge?,
+    private val uiLayout: UiLayoutController?,
     private val onCalibrationChange: (ScreenCalibration) -> Unit,
     private val onCalibrationDone: (ScreenCalibration) -> Unit,
 ) : Presentation(outerContext, display),
     SurfaceHolder.Callback {
+    /** How the current gesture reaches the game, decided when its first finger lands. */
+    private enum class Gesture { NONE, MOUSE, NATIVE, IGNORED }
+
+    private var gesture = Gesture.NONE
     private var buttonDown = false
     private val handler = Handler(Looper.getMainLooper())
     private var attachTries = 0
     private var surfaceSize: Pair<Int, Int>? = null
     private var holder: SurfaceHolder? = null
     private var root: FrameLayout? = null
-    private var calibrationPanel: ScreenCalibrationPanel? = null
-    private val openCalibration = Runnable { showCalibration() }
+    private var overlay: View? = null
+    private val openMenu = Runnable { showMenu() }
+    private val menuStart = FloatArray(4)
+    private val point = FloatArray(2)
+    private var slop = 0f
 
     /** The top renderer initialises asynchronously; retry until it accepts the second screen. */
     private val attach = object : Runnable {
@@ -177,6 +200,7 @@ private class SplitBottomPresentation(
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window?.addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL)
+        slop = ViewConfiguration.get(context).scaledTouchSlop * 2f
         // The top screen's renderer draws into this surface too (same GPU device, see DuoSecondaryOutput.cpp).
         val surfaceView = SurfaceView(context).apply {
             holder.addCallback(this@SplitBottomPresentation)
@@ -209,52 +233,143 @@ private class SplitBottomPresentation(
         }
     }
 
-    private fun showCalibration() {
-        if (calibrationPanel != null) return
+    // ---- overlays: menu, layout editor, calibration ------------------------------------------------------------
+
+    private fun showOverlay(view: View) {
+        hideOverlay()
+        root?.addView(view, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        overlay = view
+    }
+
+    private fun hideOverlay() {
+        overlay?.let { root?.removeView(it) }
+        overlay = null
+    }
+
+    private fun showMenu() {
+        if (overlay != null) return
+        // The fingers that opened the menu must not finish as a tap or drag in the game.
+        endGesture(cancel = true)
+        gesture = Gesture.IGNORED
         try {
-            val panel = ScreenCalibrationPanel(
-                context,
-                calibration,
-                calibrationDefaults,
-                onChange = {
-                    calibration = it
-                    onCalibrationChange(it)
-                },
-                onDone = {
-                    calibration = it
-                    onCalibrationDone(it)
-                    hideCalibration()
-                },
+            showOverlay(
+                DuoMenuPanel(
+                    context,
+                    canEditUi = uiLayout?.canEdit == true,
+                    onEditUi = ::showEditor,
+                    onCalibrate = ::showCalibration,
+                    onClose = ::hideOverlay,
+                ),
             )
-            root?.addView(panel, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
-            calibrationPanel = panel
+        } catch (t: Throwable) {
+            Timber.tag(DualScreenHost.TAG).e(t, "Failed to open the bottom screen menu")
+        }
+    }
+
+    private fun showEditor() {
+        val ui = uiLayout ?: return
+        try {
+            showOverlay(UiLayoutEditor(context, ui, topRect, rect, onDone = ::hideOverlay))
+        } catch (t: Throwable) {
+            Timber.tag(DualScreenHost.TAG).e(t, "Failed to open the UI layout editor")
+            hideOverlay()
+        }
+    }
+
+    private fun showCalibration() {
+        try {
+            showOverlay(
+                ScreenCalibrationPanel(
+                    context,
+                    calibration,
+                    calibrationDefaults,
+                    onChange = {
+                        calibration = it
+                        onCalibrationChange(it)
+                    },
+                    onDone = {
+                        calibration = it
+                        onCalibrationDone(it)
+                        hideOverlay()
+                    },
+                ),
+            )
         } catch (t: Throwable) {
             Timber.tag(DualScreenHost.TAG).e(t, "Failed to open screen calibration")
         }
     }
 
-    private fun hideCalibration() {
-        calibrationPanel?.let { root?.removeView(it) }
-        calibrationPanel = null
-    }
-
     override fun onStop() {
-        handler.removeCallbacks(openCalibration)
-        if (buttonDown) inject { xServer.injectPointerButtonRelease(Pointer.Button.BUTTON_LEFT) }
-        buttonDown = false
+        handler.removeCallbacks(openMenu)
+        endGesture(cancel = true)
         super.onStop()
     }
 
+    // ---- touch -------------------------------------------------------------------------------------------------
+
     private fun onTouch(width: Int, height: Int, event: MotionEvent): Boolean {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> gesture = if (bridge?.hasMod(DuoBridge.CAP_TOUCH) == true) Gesture.NATIVE else Gesture.MOUSE
+            // Two fingers held still for a second open the menu.
+            MotionEvent.ACTION_POINTER_DOWN -> if (event.pointerCount == 2) {
+                for (i in 0..1) {
+                    menuStart[i * 2] = event.getX(i)
+                    menuStart[i * 2 + 1] = event.getY(i)
+                }
+                handler.postDelayed(openMenu, MENU_HOLD_MS)
+            } else {
+                handler.removeCallbacks(openMenu)
+            }
+            MotionEvent.ACTION_MOVE -> if (event.pointerCount == 2 && fingersMoved(event)) handler.removeCallbacks(openMenu)
+            MotionEvent.ACTION_POINTER_UP, MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> handler.removeCallbacks(openMenu)
+        }
+        when (gesture) {
+            Gesture.NATIVE -> nativeTouch(width, height, event)
+            Gesture.MOUSE -> mouseTouch(width, height, event)
+            Gesture.IGNORED, Gesture.NONE -> {}
+        }
+        if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) gesture = Gesture.NONE
+        return true
+    }
+
+    private fun fingersMoved(event: MotionEvent): Boolean = (0..1).any { i ->
+        Math.hypot((event.getX(i) - menuStart[i * 2]).toDouble(), (event.getY(i) - menuStart[i * 2 + 1]).toDouble()) > slop
+    }
+
+    /** Every finger goes to the game's UI as a touch at the matching window position (multi-touch, drags). */
+    private fun nativeTouch(width: Int, height: Int, event: MotionEvent) {
+        val b = bridge ?: return
+        fun send(action: Int, index: Int) {
+            val id = event.getPointerId(index)
+            if (id >= MAX_FINGERS) return
+            if (!DuoViewport.surfaceToScreenUnbounded(rect, width, height, event.getX(index), event.getY(index), point)) return
+            b.sendTouch(action, id, point[0], point[1])
+            fingerX[id] = point[0]
+            fingerY[id] = point[1]
+            val down = action == DuoBridge.TOUCH_DOWN || action == DuoBridge.TOUCH_MOVE
+            fingersDown = if (down) fingersDown or (1 shl id) else fingersDown and (1 shl id).inv()
+        }
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> send(DuoBridge.TOUCH_DOWN, event.actionIndex)
+            MotionEvent.ACTION_MOVE -> for (i in 0 until event.pointerCount) send(DuoBridge.TOUCH_MOVE, i)
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> send(DuoBridge.TOUCH_UP, event.actionIndex)
+            MotionEvent.ACTION_CANCEL -> for (i in 0 until event.pointerCount) send(DuoBridge.TOUCH_CANCEL, i)
+        }
+    }
+
+    /** Fingers down in the game (bit per pointer id) and where they last were, to cancel them if the gesture is taken away. */
+    private var fingersDown = 0
+    private val fingerX = FloatArray(MAX_FINGERS)
+    private val fingerY = FloatArray(MAX_FINGERS)
+
+    /** The first finger clicks and drags with the left mouse button; a second finger never drags in the game. */
+    private fun mouseTouch(width: Int, height: Int, event: MotionEvent) {
         val pos = DuoViewport.surfaceToScreen(rect, width, height, event.x, event.y)
         when (event.actionMasked) {
-            // Two fingers held still for a second open the calibration; a second finger never drags in the game.
-            MotionEvent.ACTION_POINTER_DOWN -> if (event.pointerCount == 2) {
-                if (buttonDown) inject { xServer.injectPointerButtonRelease(Pointer.Button.BUTTON_LEFT) }
+            MotionEvent.ACTION_POINTER_DOWN -> if (buttonDown) {
+                inject { xServer.injectPointerButtonRelease(Pointer.Button.BUTTON_LEFT) }
                 buttonDown = false
-                handler.postDelayed(openCalibration, 900)
             }
-            MotionEvent.ACTION_POINTER_UP -> handler.removeCallbacks(openCalibration)
             MotionEvent.ACTION_DOWN -> if (pos != null) {
                 inject {
                     xServer.injectPointerMove(pos.first, pos.second)
@@ -266,8 +381,7 @@ private class SplitBottomPresentation(
                 inject { xServer.injectPointerMove(pos.first, pos.second) }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                handler.removeCallbacks(openCalibration)
-                if (!buttonDown) return true
+                if (!buttonDown) return
                 inject {
                     if (pos != null) xServer.injectPointerMove(pos.first, pos.second)
                     xServer.injectPointerButtonRelease(Pointer.Button.BUTTON_LEFT)
@@ -275,7 +389,20 @@ private class SplitBottomPresentation(
                 buttonDown = false
             }
         }
-        return true
+    }
+
+    /** Ends the current gesture in the game: lifts the mouse button, or cancels native touches (no click). */
+    private fun endGesture(cancel: Boolean) {
+        if (buttonDown) inject { xServer.injectPointerButtonRelease(Pointer.Button.BUTTON_LEFT) }
+        buttonDown = false
+        val b = bridge
+        if (b != null && cancel) {
+            for (id in 0 until MAX_FINGERS) {
+                if (fingersDown and (1 shl id) != 0) b.sendTouch(DuoBridge.TOUCH_CANCEL, id, fingerX[id], fingerY[id])
+            }
+        }
+        fingersDown = 0
+        gesture = Gesture.NONE
     }
 
     private inline fun inject(block: () -> Unit) {
@@ -284,5 +411,10 @@ private class SplitBottomPresentation(
         } catch (t: Throwable) {
             Timber.tag(DualScreenHost.TAG).w(t, "Failed to inject bottom screen touch")
         }
+    }
+
+    private companion object {
+        const val MENU_HOLD_MS = 900L
+        const val MAX_FINGERS = 16
     }
 }

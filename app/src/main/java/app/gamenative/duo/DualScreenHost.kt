@@ -5,6 +5,7 @@ import android.hardware.display.DisplayManager
 import android.os.Handler
 import android.os.Looper
 import android.view.View
+import app.gamenative.duo.bridge.DuoBridge
 import app.gamenative.duo.display.DeviceProfile
 import app.gamenative.duo.display.DisplayInventory
 import app.gamenative.duo.display.DisplaySnapshot
@@ -13,6 +14,7 @@ import app.gamenative.duo.settings.DuoSettingsStore
 import app.gamenative.duo.split.LayoutFile
 import app.gamenative.duo.split.SplitLayout
 import app.gamenative.duo.split.SplitScreenController
+import app.gamenative.duo.ui.UiLayoutController
 import com.winlator.container.Container
 import com.winlator.xserver.XServer
 import java.io.File
@@ -77,8 +79,18 @@ class DualScreenSession internal constructor(
         profile,
         settings.copy(bottomPanelEnabled = settings.bottomPanelEnabled && !(settings.screenSplit && xServer != null)),
     )
-    private val screenSplit = if (settings.screenSplit && xServer != null) {
-        SplitScreenController(context, xServer, profile, container, SplitLayout.fromId(settings.splitLayout))
+    private val splitOn = settings.screenSplit && xServer != null
+
+    // Talks to the game's mod (native touch, UI layout); only worth a socket when the game is split.
+    private val bridge = if (splitOn) DuoBridge.open() else null
+    private val uiLayout = if (splitOn) UiLayoutController(context, container, bridge) else null
+    private val screenSplit = if (splitOn) {
+        SplitScreenController(
+            context, xServer!!, profile, container, SplitLayout.fromId(settings.splitLayout),
+            bridge = bridge,
+            uiLayout = uiLayout,
+            nativeTouch = settings.nativeTouch,
+        )
     } else {
         null
     }
@@ -102,6 +114,11 @@ class DualScreenSession internal constructor(
         displayManager?.registerDisplayListener(displayListener, Handler(Looper.getMainLooper()))
         report("session start (container ${container.id}, profile ${profile.id}, $settings)")
         if (screenSplit == null) LayoutFile.delete(container)
+        try {
+            uiLayout?.start()
+        } catch (t: Throwable) {
+            Timber.tag(DualScreenHost.TAG).e(t, "Failed to hand the UI layout to the game")
+        }
     }
 
     fun detach() {
@@ -114,6 +131,7 @@ class DualScreenSession internal constructor(
         }
         bottomPanel.stop()
         screenSplit?.stop()
+        bridge?.close()
         Timber.tag(DualScreenHost.TAG).i("Session ended")
     }
 

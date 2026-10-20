@@ -1,6 +1,6 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
-using System.Text.RegularExpressions;
 using UnityEngine;
 
 namespace GameNativeDuo.UnitySplit
@@ -8,17 +8,21 @@ namespace GameNativeDuo.UnitySplit
     /// <summary>
     /// Where the top and bottom screens sit inside the game window, from GameNative Duo's
     /// %AppData%\GameNativeDuo\layout.json, e.g.
-    /// {"screen":{"w":1920,"h":2160},"top":{"x":0,"y":0,"w":1920,"h":1080},"bottom":{"x":340,"y":1080,"w":1240,"h":1080},...}.
-    /// Rectangles are in window pixels with the origin at the top-left. Parsed by hand: old Unity Mono runtimes have
-    /// no JSON library.
+    /// {"screen":{"w":1920,"h":2160},"top":{"x":0,"y":0,"w":1920,"h":1080},"bottom":{"x":340,"y":1080,"w":1240,"h":1080},
+    ///  "bridge":{"port":40123},...}.
+    /// Rectangles are in window pixels with the origin at the top-left. "bridge" is the UDP port GameNative Duo listens
+    /// on for this session (see <see cref="Bridge"/>); absent when the app has no bridge.
     /// </summary>
     internal sealed class Layout
     {
         public int ScreenW, ScreenH;
         public RectInt Top, Bottom;
+        public int BridgePort;
 
-        public static string FilePath =>
-            Path.Combine(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "GameNativeDuo"), "layout.json");
+        public static string Dir =>
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "GameNativeDuo");
+
+        public static string FilePath => Path.Combine(Dir, "layout.json");
 
         public static Layout Load(out string error)
         {
@@ -30,14 +34,16 @@ namespace GameNativeDuo.UnitySplit
                     error = FilePath + " not found";
                     return null;
                 }
-                string json = File.ReadAllText(FilePath);
-                var screen = Object(json, "screen");
+                object json = MiniJson.Parse(File.ReadAllText(FilePath));
+                var screen = Need(json, "screen");
+                var bridge = MiniJson.Obj(json, "bridge");
                 return new Layout
                 {
-                    ScreenW = Int(screen, "w"),
-                    ScreenH = Int(screen, "h"),
-                    Top = Rect(Object(json, "top")),
-                    Bottom = Rect(Object(json, "bottom")),
+                    ScreenW = (int)MiniJson.Num(screen, "w", 0),
+                    ScreenH = (int)MiniJson.Num(screen, "h", 0),
+                    Top = Rect(Need(json, "top")),
+                    Bottom = Rect(Need(json, "bottom")),
+                    BridgePort = (int)MiniJson.Num(bridge, "port", 0),
                 };
             }
             catch (Exception ex)
@@ -54,25 +60,23 @@ namespace GameNativeDuo.UnitySplit
         public Rect Viewport(RectInt r) =>
             new Rect((float)r.x / ScreenW, 1f - (float)(r.y + r.height) / ScreenH, (float)r.width / ScreenW, (float)r.height / ScreenH);
 
+        public RectInt Region(DuoScreen screen) => screen == DuoScreen.Top ? Top : Bottom;
+
+        public bool SameGeometry(Layout o) =>
+            o != null && o.ScreenW == ScreenW && o.ScreenH == ScreenH && o.Top.Equals(Top) && o.Bottom.Equals(Bottom);
+
         public override string ToString() =>
-            string.Format("screen {0}x{1}, top {2}, bottom {3}", ScreenW, ScreenH, Top, Bottom);
+            string.Format("screen {0}x{1}, top {2}, bottom {3}, bridge port {4}", ScreenW, ScreenH, Top, Bottom, BridgePort);
 
-        private static string Object(string json, string key)
+        private static Dictionary<string, object> Need(object json, string key)
         {
-            Match m = Regex.Match(json, "\"" + key + "\"\\s*:\\s*\\{([^}]*)\\}");
-            if (!m.Success)
+            var o = MiniJson.Obj(json, key);
+            if (o == null)
                 throw new FormatException("no \"" + key + "\" object");
-            return m.Groups[1].Value;
+            return o;
         }
 
-        private static int Int(string obj, string key)
-        {
-            Match m = Regex.Match(obj, "\"" + key + "\"\\s*:\\s*(-?\\d+)");
-            if (!m.Success)
-                throw new FormatException("no \"" + key + "\" number");
-            return int.Parse(m.Groups[1].Value);
-        }
-
-        private static RectInt Rect(string obj) => new RectInt(Int(obj, "x"), Int(obj, "y"), Int(obj, "w"), Int(obj, "h"));
+        private static RectInt Rect(Dictionary<string, object> o) =>
+            new RectInt((int)MiniJson.Num(o, "x", 0), (int)MiniJson.Num(o, "y", 0), (int)MiniJson.Num(o, "w", 0), (int)MiniJson.Num(o, "h", 0));
     }
 }

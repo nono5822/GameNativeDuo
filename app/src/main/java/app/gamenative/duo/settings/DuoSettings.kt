@@ -24,11 +24,17 @@ data class DuoContainerSettings(
     val screenSplit: Boolean = false,
     /** How the X screen is cut: "fill" (stretch both parts to the full width) or "native" (1:1 per display). */
     val splitLayout: String = "fill",
+    /**
+     * Bottom-screen touches go straight to the game's UI through its GameNative Duo mod (no cursor, no mouse input
+     * the game reacts to). Games without such a mod get mouse clicks either way.
+     */
+    val nativeTouch: Boolean = true,
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("bottomPanelEnabled", bottomPanelEnabled)
         put("screenSplit", screenSplit)
         put("splitLayout", splitLayout)
+        put("nativeTouch", nativeTouch)
     }
 
     companion object {
@@ -38,6 +44,7 @@ data class DuoContainerSettings(
                 bottomPanelEnabled = json.optBoolean("bottomPanelEnabled", fallback.bottomPanelEnabled),
                 screenSplit = json.optBoolean("screenSplit", fallback.screenSplit),
                 splitLayout = json.optString("splitLayout", fallback.splitLayout),
+                nativeTouch = json.optBoolean("nativeTouch", fallback.nativeTouch),
             )
         }
     }

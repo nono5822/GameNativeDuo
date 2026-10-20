@@ -40,6 +40,17 @@ object DuoViewport {
         return x.toInt() to y.toInt()
     }
 
+    /**
+     * X screen coordinates under surface point ([sx], [sy]) as floats, also outside the shown rectangle (a finger
+     * dragged off it keeps reporting); null only when nothing is shown.
+     */
+    fun surfaceToScreenUnbounded(rect: FloatArray, surfaceW: Int, surfaceH: Int, sx: Float, sy: Float, out: FloatArray): Boolean {
+        val fit = fit(rect, surfaceW, surfaceH) ?: return false
+        out[0] = rect[0] + (sx - fit.offsetX) / fit.scale
+        out[1] = rect[1] + (sy - fit.offsetY) / fit.scale
+        return true
+    }
+
     private class Fit(val scale: Float, val offsetX: Float, val offsetY: Float)
 
     private fun fit(rect: FloatArray?, surfaceW: Int, surfaceH: Int): Fit? {
