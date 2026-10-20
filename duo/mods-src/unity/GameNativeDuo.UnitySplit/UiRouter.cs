@@ -27,14 +27,24 @@ namespace GameNativeDuo.UnitySplit
     }
 
     /// <summary>
-    /// Puts the game's uGUI on the screens the user chose. Game cameras are squeezed into the top screen; every
-    /// screen-space root canvas renders through a UI camera over the bottom screen, over the top screen, or a disabled
-    /// one (hidden). Single elements follow the user's <see cref="UiRules"/>: moved to the other screen (reparented
-    /// under a proxy there; a placeholder keeps their place), hidden (scale 0), resized or shifted.
+    /// Puts the game's UI on the screens the user chose.
     ///
-    /// Cost: canvases are scanned twice a second (the old plugin's cost); per frame only the elements the user
-    /// changed are touched, without allocations. Transforms the game animates (Slime Rancher's crosshair pulses its
-    /// scale every frame) keep working: whatever the game writes is taken as the new base and the rule applied on top.
+    /// Roots are what UI hangs from:
+    /// - screen-space canvases (uGUI): bound to a UI camera of ours over the bottom screen, the top screen, or a disabled
+    ///   one (hidden), laid out for that screen's size;
+    /// - "passive" canvases drawn by the game's own UI camera (world-space in front of it, like Subnautica's, or
+    ///   screen-space bound to it, like Hollow Knight's menus): left in place, since that camera moves to the bottom
+    ///   screen (<see cref="CameraPlacer"/>);
+    /// - camera roots: the children of a game's UI camera, for HUDs made of sprites rather than uGUI (Hollow Knight's
+    ///   masks, soul orb and geo counter hang from its HudCamera).
+    ///
+    /// Elements under a root follow the user's <see cref="UiRules"/>: resized, shifted, hidden (scale 0), and for uGUI,
+    /// moved to the other screen (reparented under a proxy there; a placeholder keeps their place).
+    ///
+    /// Cost: scans run when uGUI enables a canvas scaler or a scene loads, with a slow fallback (see Split); per frame
+    /// only cameras the game moved and elements the user changed are touched, without allocations. Whatever the game
+    /// writes to a changed element (Slime Rancher's crosshair pulses its scale every frame) becomes the new base and
+    /// the rule is applied on top.
     /// </summary>
     internal sealed class UiRouter
     {
@@ -44,6 +54,7 @@ namespace GameNativeDuo.UnitySplit
         private sealed class RootState
         {
             public Canvas Canvas;
+            public Transform Root;
             public CanvasScaler Scaler;
             public string Id;
             public DuoScreen Screen;
@@ -54,13 +65,26 @@ namespace GameNativeDuo.UnitySplit
             /// <summary>Our own canvas holding elements moved here from <see cref="Source"/>.</summary>
             public Canvas Source;
 
-            public bool IsProxy => Source != null || Id == null;
+            /// <summary>Drawn by the game's own UI camera (<see cref="Camera"/>); never re-bound.</summary>
+            public bool Passive;
+
+            /// <summary>Passive but screen-space: still laid out for its screen's size.</summary>
+            public bool ScaleForScreen;
+
+            /// <summary>The children of a game UI camera (no canvas).</summary>
+            public bool CameraRoot;
+
+            public Camera Camera;
+
+            public bool IsProxy => Source != null;
+
+            public bool Alive => CameraRoot ? Camera != null : Canvas != null;
         }
 
         private sealed class ElementState
         {
             public string Id;
-            public RectTransform Rt;
+            public Transform T;
             public UiRule Rule;
             public RootState SourceRoot;
             public RootState Root;
@@ -75,24 +99,35 @@ namespace GameNativeDuo.UnitySplit
             public bool Moved => !ReferenceEquals(Proxy, null);
         }
 
+        private struct DumpEntry
+        {
+            public string Id, Name;
+            public int Parent;
+            public DuoScreen Screen;
+            public Rect Rect;
+            public bool Graphic;
+        }
+
         private Layout _layout;
         private UiRules _rules = UiRules.Empty;
         private Camera _bottomCam, _topCam, _hiddenCam;
+        private readonly CameraPlacer _cameras = new CameraPlacer();
         private readonly Dictionary<Canvas, RootState> _roots = new Dictionary<Canvas, RootState>();
+        private readonly Dictionary<Camera, RootState> _cameraRoots = new Dictionary<Camera, RootState>();
         private readonly Dictionary<CanvasScaler, RootState> _byScaler = new Dictionary<CanvasScaler, RootState>();
         private readonly Dictionary<string, ElementState> _elements = new Dictionary<string, ElementState>();
         private readonly List<ElementState> _list = new List<ElementState>();
         private readonly Dictionary<long, RootState> _proxyCanvases = new Dictionary<long, RootState>();
         private readonly HashSet<string> _aimIds = new HashSet<string>();
-        private readonly Dictionary<Camera, Rect> _originalRects = new Dictionary<Camera, Rect>();
-        private readonly Dictionary<Camera, Rect> _appliedRects = new Dictionary<Camera, Rect>();
-        private readonly List<Canvas> _dead = new List<Canvas>();
+        private readonly List<Canvas> _deadCanvases = new List<Canvas>();
+        private readonly List<Camera> _deadCameras = new List<Camera>();
         private readonly Vector3[] _corners = new Vector3[4];
-        private int _dumpCount;
+        private readonly List<DumpEntry> _dump = new List<DumpEntry>();
 
         public void SetLayout(Layout layout)
         {
             _layout = layout;
+            _cameras.SetLayout(layout);
             if (_bottomCam != null)
                 _bottomCam.rect = layout.Viewport(layout.Bottom);
             if (_hiddenCam != null)
@@ -111,7 +146,7 @@ namespace GameNativeDuo.UnitySplit
                 return;
             foreach (RootState root in _roots.Values)
             {
-                if (root.IsProxy)
+                if (root.IsProxy || root.Passive)
                     continue;
                 UiRule rule = _rules.Get(root.Id);
                 root.Screen = RootScreen(rule);
@@ -121,12 +156,19 @@ namespace GameNativeDuo.UnitySplit
             ResolveElements();
         }
 
-        // ---- twice a second -------------------------------------------------------------------------------------
+        // ---- scans (on new canvases / scenes, plus a slow fallback) -------------------------------------------------
 
         public void Scan()
         {
             EnsureCameras();
-            PlaceCameras();
+            _cameras.Discover();
+            SortBottomCamera();
+
+            foreach (Camera cam in _cameras.GameUiCameras)
+            {
+                if (cam != null && !_cameraRoots.ContainsKey(cam))
+                    RegisterCameraRoot(cam);
+            }
 
             foreach (Canvas canvas in UnityEngine.Object.FindObjectsOfType<Canvas>())
             {
@@ -135,9 +177,12 @@ namespace GameNativeDuo.UnitySplit
                 RootState root;
                 if (!_roots.TryGetValue(canvas, out root))
                 {
-                    if (canvas.renderMode == RenderMode.WorldSpace || canvas.GetComponent<DuoOwned>() != null)
+                    if (canvas.GetComponent<DuoOwned>() != null)
                         continue;
-                    root = Register(canvas);
+                    Camera gameUiCamera = GameUiCameraFor(canvas);
+                    if (canvas.renderMode == RenderMode.WorldSpace && gameUiCamera == null)
+                        continue; // in-world UI (signs, name tags): part of the scene
+                    root = Register(canvas, gameUiCamera);
                 }
                 PlaceRoot(root);
             }
@@ -145,11 +190,19 @@ namespace GameNativeDuo.UnitySplit
             foreach (var pair in _roots)
             {
                 if (pair.Key == null)
-                    _dead.Add(pair.Key);
+                    _deadCanvases.Add(pair.Key);
             }
-            foreach (Canvas c in _dead)
-                Forget(c);
-            _dead.Clear();
+            foreach (Canvas c in _deadCanvases)
+                ForgetCanvas(c);
+            _deadCanvases.Clear();
+            foreach (var pair in _cameraRoots)
+            {
+                if (pair.Key == null)
+                    _deadCameras.Add(pair.Key);
+            }
+            foreach (Camera c in _deadCameras)
+                _cameraRoots.Remove(c);
+            _deadCameras.Clear();
 
             ResolveElements();
             foreach (ElementState st in _list)
@@ -164,33 +217,85 @@ namespace GameNativeDuo.UnitySplit
                 _topCam.enabled = HasCanvasOn(DuoScreen.Top);
         }
 
-        private RootState Register(Canvas canvas)
+        /// <summary>The game's UI cameras draw over the bottom screen: ours clears it first and draws below them.</summary>
+        private void SortBottomCamera()
         {
+            float min = float.MaxValue;
+            foreach (Camera cam in _cameras.GameUiCameras)
+            {
+                if (cam != null)
+                    min = Mathf.Min(min, cam.depth);
+            }
+            float depth = min == float.MaxValue ? 100f : min - 1f;
+            if (_bottomCam.depth != depth)
+                _bottomCam.depth = depth;
+        }
+
+        private RootState Register(Canvas canvas, Camera gameUiCamera)
+        {
+            // A screen-space canvas bound to the game's UI camera goes wherever that camera goes.
+            bool boundToGameUi = canvas.renderMode == RenderMode.ScreenSpaceCamera && gameUiCamera != null && canvas.worldCamera == gameUiCamera;
+            bool passive = canvas.renderMode == RenderMode.WorldSpace || boundToGameUi;
             var root = new RootState
             {
                 Canvas = canvas,
+                Root = canvas.transform,
                 Scaler = canvas.GetComponent<CanvasScaler>(),
                 Id = PathOf(canvas.transform),
                 OriginalMode = canvas.renderMode,
                 OriginalCamera = canvas.worldCamera,
+                Passive = passive,
+                ScaleForScreen = boundToGameUi,
+                Camera = passive ? gameUiCamera : null,
             };
             UiRule rule = _rules.Get(root.Id);
-            root.Screen = RootScreen(rule);
-            root.Scale = rule != null ? rule.Scale : 1f;
+            root.Screen = root.Passive ? DuoScreen.Bottom : RootScreen(rule);
+            root.Scale = rule != null && (!root.Passive || root.ScaleForScreen) ? rule.Scale : 1f;
             _roots[canvas] = root;
             if (root.Scaler != null)
                 _byScaler[root.Scaler] = root;
             FindAimElements(root);
-            Plugin.Log.LogDebug("Canvas '" + root.Id + "' (layer " + canvas.gameObject.layer + ", order " + canvas.sortingOrder + ") -> " + root.Screen);
+            Plugin.Log.LogDebug("Canvas '" + root.Id + "' (layer " + canvas.gameObject.layer + ", order " + canvas.sortingOrder + ") -> " +
+                (root.Passive ? "stays with the game's UI camera" : root.Screen.ToString()));
             return root;
+        }
+
+        private void RegisterCameraRoot(Camera cam)
+        {
+            var root = new RootState
+            {
+                Root = cam.transform,
+                Id = PathOf(cam.transform),
+                Passive = true,
+                CameraRoot = true,
+                Camera = cam,
+                Screen = DuoScreen.Bottom,
+            };
+            _cameraRoots[cam] = root;
+            Plugin.Log.LogInfo("UI under camera '" + root.Id + "' is editable (sprite HUD)");
+        }
+
+        private Camera GameUiCameraFor(Canvas canvas)
+        {
+            if (canvas.renderMode == RenderMode.ScreenSpaceCamera && _cameras.IsGameUiCamera(canvas.worldCamera))
+                return canvas.worldCamera;
+            if (canvas.renderMode != RenderMode.WorldSpace)
+                return null;
+            int layer = 1 << canvas.gameObject.layer;
+            foreach (Camera cam in _cameras.GameUiCameras)
+            {
+                if (cam != null && (cam.cullingMask & layer) != 0)
+                    return cam;
+            }
+            return null;
         }
 
         /// <summary>Crosshairs and reticles are aimed through the game view: unless the user says otherwise they stay on top.</summary>
         private void FindAimElements(RootState root)
         {
-            foreach (Transform t in root.Canvas.GetComponentsInChildren<Transform>(true))
+            foreach (Transform t in root.Root.GetComponentsInChildren<Transform>(true))
             {
-                if (t == root.Canvas.transform || !UiRules.IsAimElement(t.name))
+                if (t == root.Root || !UiRules.IsAimElement(t.name) || !(t is RectTransform))
                     continue;
                 string id = PathOf(t);
                 bool insideAnother = false;
@@ -209,7 +314,7 @@ namespace GameNativeDuo.UnitySplit
         private void PlaceRoot(RootState root)
         {
             Canvas c = root.Canvas;
-            if (c == null)
+            if (c == null || root.Passive || root.IsProxy)
                 return;
             Camera cam = CameraFor(root.Screen);
             if (c.renderMode != RenderMode.ScreenSpaceCamera || c.worldCamera != cam)
@@ -221,18 +326,20 @@ namespace GameNativeDuo.UnitySplit
             cam.cullingMask |= 1 << c.gameObject.layer;
         }
 
-        private void Forget(Canvas key)
+        private void ForgetCanvas(Canvas key)
         {
             RootState root = _roots[key];
             _roots.Remove(key);
             if (!ReferenceEquals(root.Scaler, null))
                 _byScaler.Remove(root.Scaler);
-            var stale = new List<long>();
+            List<long> stale = null;
             foreach (var pair in _proxyCanvases)
             {
-                if (pair.Value == root || pair.Value.Source == null)
-                    stale.Add(pair.Key);
+                if (pair.Value.Source == null)
+                    (stale ?? (stale = new List<long>())).Add(pair.Key);
             }
+            if (stale == null)
+                return;
             foreach (long k in stale)
             {
                 RootState proxy = _proxyCanvases[k];
@@ -248,7 +355,7 @@ namespace GameNativeDuo.UnitySplit
             {
                 ElementState st = _list[i];
                 UiRule rule = _rules.Get(st.Id);
-                if (st.Rt == null || rule == null)
+                if (st.T == null || rule == null)
                 {
                     Release(st);
                     _list.RemoveAt(i);
@@ -266,10 +373,9 @@ namespace GameNativeDuo.UnitySplit
                     continue;
                 RootState root;
                 Transform found = Find(pair.Key, out root);
-                var rt = found as RectTransform;
-                if (rt == null)
+                if (found == null)
                     continue;
-                var st = new ElementState { Id = pair.Key, Rt = rt, SourceRoot = root, Root = root };
+                var st = new ElementState { Id = pair.Key, T = found, SourceRoot = root, Root = root };
                 _elements[pair.Key] = st;
                 _list.Add(st);
                 Apply(st, pair.Value);
@@ -280,18 +386,20 @@ namespace GameNativeDuo.UnitySplit
         {
             st.Rule = rule;
             DuoScreen want = rule.Screen;
-            bool wantMove = (want == DuoScreen.Top || want == DuoScreen.Bottom) && want != st.SourceRoot.Screen;
+            // Only uGUI elements can change screens (sprites belong to their camera's world).
+            bool wantMove = (want == DuoScreen.Top || want == DuoScreen.Bottom) && want != st.SourceRoot.Screen &&
+                st.T is RectTransform && !st.SourceRoot.CameraRoot;
             if (st.Moved && (!wantMove || st.Root.Screen != want))
                 Return(st);
             if (wantMove && !st.Moved)
                 Move(st, want);
         }
 
-        // ---- moving single elements to the other screen -----------------------------------------------------------
+        // ---- moving single uGUI elements to the other screen -----------------------------------------------------
 
         private void Move(ElementState st, DuoScreen screen)
         {
-            RectTransform el = st.Rt;
+            var el = (RectTransform)st.T;
             Transform parent = el.parent;
             if (parent == null || st.SourceRoot.Canvas == null)
                 return;
@@ -323,10 +431,10 @@ namespace GameNativeDuo.UnitySplit
         private void Return(ElementState st)
         {
             GameObject ph = st.Placeholder;
-            if (st.Rt != null && ph != null)
+            if (st.T != null && ph != null)
             {
-                st.Rt.SetParent(ph.transform.parent, false);
-                st.Rt.SetSiblingIndex(ph.transform.GetSiblingIndex());
+                st.T.SetParent(ph.transform.parent, false);
+                st.T.SetSiblingIndex(ph.transform.GetSiblingIndex());
             }
             if (ph != null)
                 UnityEngine.Object.Destroy(ph);
@@ -343,12 +451,12 @@ namespace GameNativeDuo.UnitySplit
         /// <summary>Undoes everything done to one element.</summary>
         private void Release(ElementState st)
         {
-            if (st.Rt != null && st.HasApplied)
+            if (st.T != null && st.HasApplied)
             {
-                if (st.Rt.localScale == st.AppliedScale)
-                    st.Rt.localScale = st.BaseScale;
-                if (st.Rt.localPosition == st.AppliedPos)
-                    st.Rt.localPosition = st.BasePos;
+                if (st.T.localScale == st.AppliedScale)
+                    st.T.localScale = st.BaseScale;
+                if (st.T.localPosition == st.AppliedPos)
+                    st.T.localPosition = st.BasePos;
             }
             st.HasApplied = false;
             if (st.Moved)
@@ -356,8 +464,9 @@ namespace GameNativeDuo.UnitySplit
         }
 
         /// <summary>
-        /// One canvas per (game canvas, screen) for elements moved there, with the game canvas's scaler settings, so
-        /// a moved element keeps its size and anchoring relative to the screen it lands on.
+        /// One canvas per (game canvas, screen) for elements moved there. A game canvas with a CanvasScaler lends its
+        /// settings; one sized by the game's own code keeps its measured pixels per unit. Either way a moved element
+        /// keeps its size.
         /// </summary>
         private RootState ProxyCanvas(RootState source, DuoScreen screen)
         {
@@ -382,7 +491,12 @@ namespace GameNativeDuo.UnitySplit
             canvas.pixelPerfect = src.pixelPerfect;
             CanvasScaler s = source.Scaler;
             CanvasScaler scaler = go.AddComponent<CanvasScaler>();
-            if (s != null)
+            if (s == null)
+            {
+                scaler.uiScaleMode = CanvasScaler.ScaleMode.ConstantPixelSize;
+                scaler.scaleFactor = PixelsPerUnit(source);
+            }
+            else
             {
                 scaler.uiScaleMode = s.uiScaleMode;
                 scaler.referencePixelsPerUnit = s.referencePixelsPerUnit;
@@ -398,7 +512,7 @@ namespace GameNativeDuo.UnitySplit
             if (src.GetComponent<GraphicRaycaster>() != null)
                 go.AddComponent<GraphicRaycaster>();
             CameraFor(screen).cullingMask |= 1 << go.layer;
-            var root = new RootState { Canvas = canvas, Scaler = scaler, Screen = screen, Source = src };
+            var root = new RootState { Canvas = canvas, Root = canvas.transform, Scaler = scaler, Screen = screen, Source = src };
             _proxyCanvases[key] = root;
             _byScaler[scaler] = root;
             if (_topCam != null && screen == DuoScreen.Top)
@@ -406,11 +520,23 @@ namespace GameNativeDuo.UnitySplit
             return root;
         }
 
+        /// <summary>Screen pixels per canvas unit of a game canvas, as its camera draws it now.</summary>
+        private float PixelsPerUnit(RootState root)
+        {
+            var rt = root.Root as RectTransform;
+            Camera cam = CameraOf(root);
+            if (rt == null || cam == null || rt.rect.width <= 0f)
+                return 1f;
+            rt.GetWorldCorners(_corners);
+            float pixels = Mathf.Abs(cam.WorldToScreenPoint(_corners[3]).x - cam.WorldToScreenPoint(_corners[0]).x);
+            return pixels > 0f ? pixels / rt.rect.width : 1f;
+        }
+
         /// <summary>The proxy covers the same part of its screen as the element's old parent did of the game canvas.</summary>
         private void FitProxy(ElementState st)
         {
             var parent = st.Placeholder.transform.parent as RectTransform;
-            var root = st.SourceRoot.Canvas != null ? st.SourceRoot.Canvas.transform as RectTransform : null;
+            var root = st.SourceRoot.Root as RectTransform;
             if (parent == null || root == null)
                 return;
             Rect r = root.rect;
@@ -449,14 +575,18 @@ namespace GameNativeDuo.UnitySplit
             }
         }
 
-        // ---- every frame (Canvas.willRenderCanvases, after uGUI's layout) ------------------------------------------
+        // ---- every frame -----------------------------------------------------------------------------------------
 
+        /// <summary>Cameras back in place if the game moved them. Late in the frame, before rendering.</summary>
+        public void ApplyCameras() => _cameras.Apply();
+
+        /// <summary>Changed elements (Canvas.willRenderCanvases, after uGUI's layout).</summary>
         public void ApplyFrame()
         {
             for (int i = _list.Count - 1; i >= 0; i--)
             {
                 ElementState st = _list[i];
-                if (st.Rt == null || (st.Moved && st.Placeholder == null))
+                if (st.T == null || (st.Moved && st.Placeholder == null))
                 {
                     // Destroyed by the game, or its old parent was: it goes too.
                     Release(st);
@@ -496,45 +626,50 @@ namespace GameNativeDuo.UnitySplit
             bool want = rule.ChangesTransform;
             if (!want && !st.HasApplied)
                 return;
-            RectTransform rt = st.Rt;
-            Vector3 scale = rt.localScale;
-            Vector3 pos = rt.localPosition;
+            Transform t = st.T;
+            Vector3 scale = t.localScale;
+            Vector3 pos = t.localPosition;
             if (!st.HasApplied || scale != st.AppliedScale)
                 st.BaseScale = scale;
             if (!st.HasApplied || pos != st.AppliedPos)
                 st.BasePos = pos;
             if (!want)
             {
-                rt.localScale = st.BaseScale;
-                rt.localPosition = st.BasePos;
+                t.localScale = st.BaseScale;
+                t.localPosition = st.BasePos;
                 st.HasApplied = false;
                 return;
             }
             Vector3 ts = st.BaseScale * (rule.Screen == DuoScreen.Hidden ? 0f : rule.Scale);
             Vector3 tp = st.BasePos + Offset(st);
             if (scale != ts)
-                rt.localScale = ts;
+                t.localScale = ts;
             if (pos != tp)
-                rt.localPosition = tp;
+                t.localPosition = tp;
             st.AppliedScale = ts;
             st.AppliedPos = tp;
             st.HasApplied = true;
         }
 
-        /// <summary>The rule's offset (fractions of the screen the element is on) in the element's parent space.</summary>
+        /// <summary>
+        /// The rule's offset (fractions of the screen the element is on) in the element's parent space, through the
+        /// element's own camera at the element's depth (orthographic and perspective cameras alike).
+        /// </summary>
         private Vector3 Offset(ElementState st)
         {
             UiRule rule = st.Rule;
             if (rule.X == 0f && rule.Y == 0f)
                 return Vector3.zero;
-            DuoScreen screen = st.Root.Screen == DuoScreen.Top ? DuoScreen.Top : DuoScreen.Bottom;
-            Camera cam = CameraFor(screen);
-            if (cam == null || !cam.orthographic)
+            Camera cam = CameraOf(st.Root);
+            if (cam == null)
                 return Vector3.zero;
-            RectInt region = _layout.Region(screen);
-            float unitsPerPixel = 2f * cam.orthographicSize / Mathf.Max(1, cam.pixelHeight);
-            var world = new Vector3(rule.X * region.width * unitsPerPixel, -rule.Y * region.height * unitsPerPixel, 0f);
-            Transform parent = st.Rt.parent;
+            RectInt region = _layout.Region(st.Root.Screen == DuoScreen.Top ? DuoScreen.Top : DuoScreen.Bottom);
+            // From the base position, so the offset does not depend on itself.
+            Transform parent = st.T.parent;
+            Vector3 baseWorld = parent != null ? parent.TransformPoint(st.BasePos) : st.BasePos;
+            Vector3 p = cam.WorldToScreenPoint(baseWorld);
+            Vector3 world = cam.ScreenToWorldPoint(new Vector3(p.x + rule.X * region.width, p.y - rule.Y * region.height, p.z)) -
+                cam.ScreenToWorldPoint(p);
             return parent != null ? parent.InverseTransformVector(world) : world;
         }
 
@@ -542,7 +677,7 @@ namespace GameNativeDuo.UnitySplit
         public void AdjustScale(CanvasScaler scaler, ref float scaleFactor)
         {
             RootState root;
-            if (_layout == null || !_byScaler.TryGetValue(scaler, out root))
+            if (_layout == null || !_byScaler.TryGetValue(scaler, out root) || (root.Passive && !root.ScaleForScreen))
                 return;
             if (scaler.uiScaleMode == CanvasScaler.ScaleMode.ScaleWithScreenSize)
             {
@@ -581,14 +716,12 @@ namespace GameNativeDuo.UnitySplit
             return _roots.TryGetValue(c.rootCanvas, out root) && root.Screen == DuoScreen.Hidden;
         }
 
-        // ---- cameras ----------------------------------------------------------------------------------------------
+        // ---- our cameras -----------------------------------------------------------------------------------------
 
         private void EnsureCameras()
         {
             if (_bottomCam == null)
-            {
                 _bottomCam = NewUiCamera("GameNativeDuo UI camera (bottom)", _layout.Bottom, CameraClearFlags.SolidColor);
-            }
             if (_topCam == null)
             {
                 // Draws over the game on the top screen, so it keeps the game's picture.
@@ -601,12 +734,16 @@ namespace GameNativeDuo.UnitySplit
                 _hiddenCam = NewUiCamera("GameNativeDuo UI camera (hidden)", _layout.Bottom, CameraClearFlags.Nothing);
                 _hiddenCam.enabled = false;
             }
+            _cameras.SetOurs(_bottomCam, _topCam, _hiddenCam);
         }
 
         private Camera NewUiCamera(string name, RectInt region, CameraClearFlags clear)
         {
             var go = new GameObject(name);
             UnityEngine.Object.DontDestroyOnLoad(go);
+            // Far from the game world: our canvases sit in front of these cameras, and nothing of the game's (e.g.
+            // world-space UI on the same "UI" layer) may end up in their view, or ours in its cameras' view.
+            go.transform.position = new Vector3(-30000f, -30000f, -30000f);
             Camera cam = go.AddComponent<Camera>();
             cam.clearFlags = clear;
             cam.backgroundColor = Color.black;
@@ -632,6 +769,9 @@ namespace GameNativeDuo.UnitySplit
             }
         }
 
+        /// <summary>The camera that draws a root: the game's own UI camera for passive roots, else ours.</summary>
+        private Camera CameraOf(RootState root) => root.Passive ? root.Camera : CameraFor(root.Screen);
+
         private static DuoScreen RootScreen(UiRule rule) =>
             rule == null || rule.Screen == DuoScreen.Default ? DuoScreen.Bottom : rule.Screen;
 
@@ -639,7 +779,7 @@ namespace GameNativeDuo.UnitySplit
         {
             foreach (RootState r in _roots.Values)
             {
-                if (r.Screen == screen && r.Canvas != null)
+                if (!r.Passive && r.Screen == screen && r.Canvas != null)
                     return true;
             }
             foreach (RootState r in _proxyCanvases.Values)
@@ -650,26 +790,6 @@ namespace GameNativeDuo.UnitySplit
             return false;
         }
 
-        /// <summary>
-        /// Every camera that draws to the window is squeezed into the top screen, keeping its own placement inside it
-        /// (a minimap camera keeps its corner). A rect the game changes later is taken as its new original.
-        /// </summary>
-        private void PlaceCameras()
-        {
-            Rect top = _layout.Viewport(_layout.Top);
-            foreach (Camera cam in Camera.allCameras)
-            {
-                if (cam == null || cam == _bottomCam || cam == _topCam || cam == _hiddenCam || cam.targetTexture != null)
-                    continue;
-                Rect applied;
-                if (!_appliedRects.TryGetValue(cam, out applied) || cam.rect != applied)
-                    _originalRects[cam] = cam.rect;
-                Rect o = _originalRects[cam];
-                cam.rect = new Rect(top.x + o.x * top.width, top.y + o.y * top.height, o.width * top.width, o.height * top.height);
-                _appliedRects[cam] = cam.rect;
-            }
-        }
-
         /// <summary>Puts everything back as the game made it (the window no longer matches the layout).</summary>
         public void RestoreAll()
         {
@@ -677,21 +797,16 @@ namespace GameNativeDuo.UnitySplit
                 Release(st);
             _list.Clear();
             _elements.Clear();
-            foreach (var pair in _originalRects)
-            {
-                if (pair.Key != null)
-                    pair.Key.rect = pair.Value;
-            }
-            _originalRects.Clear();
-            _appliedRects.Clear();
+            _cameras.RestoreAll();
             foreach (RootState root in _roots.Values)
             {
-                if (root.Canvas == null)
+                if (root.Canvas == null || root.Passive)
                     continue;
                 root.Canvas.renderMode = root.OriginalMode;
                 root.Canvas.worldCamera = root.OriginalCamera;
             }
             _roots.Clear();
+            _cameraRoots.Clear();
             _byScaler.Clear();
             foreach (RootState proxy in _proxyCanvases.Values)
             {
@@ -703,7 +818,7 @@ namespace GameNativeDuo.UnitySplit
                 _topCam.enabled = false;
         }
 
-        // ---- element ids --------------------------------------------------------------------------------------------
+        // ---- element ids -------------------------------------------------------------------------------------------
 
         /// <summary>
         /// "Scene root/child/grandchild" by object names, "#n" for the n-th of same-named siblings. '/' and '#' in
@@ -760,20 +875,33 @@ namespace GameNativeDuo.UnitySplit
         {
             foreach (RootState r in _roots.Values)
             {
-                if (r.IsProxy || r.Canvas == null)
-                    continue;
-                if (id.Length > r.Id.Length && id[r.Id.Length] == '/' && id.StartsWith(r.Id, StringComparison.Ordinal))
+                Transform t = FindUnder(r, id);
+                if (t != null)
                 {
-                    Transform t = FindPath(r.Canvas.transform, id.Substring(r.Id.Length + 1));
-                    if (t != null)
-                    {
-                        root = r;
-                        return t;
-                    }
+                    root = r;
+                    return t;
+                }
+            }
+            foreach (RootState r in _cameraRoots.Values)
+            {
+                Transform t = FindUnder(r, id);
+                if (t != null)
+                {
+                    root = r;
+                    return t;
                 }
             }
             root = null;
             return null;
+        }
+
+        private static Transform FindUnder(RootState r, string id)
+        {
+            if (r.IsProxy || !r.Alive)
+                return null;
+            if (id.Length <= r.Id.Length || id[r.Id.Length] != '/' || !id.StartsWith(r.Id, StringComparison.Ordinal))
+                return null;
+            return FindPath(r.Root, id.Substring(r.Id.Length + 1));
         }
 
         private static Transform FindPath(Transform start, string path)
@@ -811,13 +939,30 @@ namespace GameNativeDuo.UnitySplit
         /// </summary>
         public void WriteElements(string path)
         {
+            _dump.Clear();
+            foreach (RootState root in _roots.Values)
+                WalkRoot(root);
+            foreach (RootState root in _cameraRoots.Values)
+                WalkRoot(root);
             var sb = new StringBuilder(32 * 1024);
             sb.Append("{\"engine\":\"unity-ugui\",\"screen\":{\"w\":").Append(Screen.width).Append(",\"h\":").Append(Screen.height).Append("},\"elements\":[");
-            _dumpCount = 0;
-            foreach (RootState root in _roots.Values)
+            for (int i = 0; i < _dump.Count; i++)
             {
-                if (!root.IsProxy && root.Canvas != null && root.Canvas.gameObject.activeInHierarchy)
-                    Walk(sb, root.Canvas.transform, root.Id, -1, 0, root.Screen);
+                DumpEntry e = _dump[i];
+                if (i > 0)
+                    sb.Append(',');
+                sb.Append("{\"id\":");
+                MiniJson.Quote(sb, e.Id);
+                sb.Append(",\"name\":");
+                MiniJson.Quote(sb, e.Name);
+                sb.Append(",\"parent\":").Append(e.Parent);
+                sb.Append(",\"screen\":\"").Append(UiRule.ScreenId(e.Screen)).Append('"');
+                sb.Append(",\"x\":").Append(Mathf.RoundToInt(e.Rect.x));
+                sb.Append(",\"y\":").Append(Mathf.RoundToInt(e.Rect.y));
+                sb.Append(",\"w\":").Append(Mathf.RoundToInt(e.Rect.width));
+                sb.Append(",\"h\":").Append(Mathf.RoundToInt(e.Rect.height));
+                sb.Append(",\"graphic\":").Append(e.Graphic ? "true" : "false");
+                sb.Append('}');
             }
             sb.Append("]}");
             string tmp = path + ".tmp";
@@ -825,74 +970,135 @@ namespace GameNativeDuo.UnitySplit
             if (File.Exists(path))
                 File.Delete(path);
             File.Move(tmp, path);
+            _dump.Clear();
         }
 
-        private void Walk(StringBuilder sb, Transform t, string id, int parent, int depth, DuoScreen screen)
+        private void WalkRoot(RootState root)
         {
-            if (_dumpCount >= MaxDumpElements)
+            if (root.IsProxy || !root.Alive || !root.Root.gameObject.activeInHierarchy)
                 return;
+            Walk(root.Root, root.Id, -1, 0, root.Screen, CameraOf(root), root.CameraRoot);
+        }
+
+        /// <summary>
+        /// Adds <paramref name="t"/> and its children (parents before children); returns their window rectangle, which
+        /// for sprite HUDs is the union of the children's (a container sprite has no size of its own).
+        /// </summary>
+        private Rect Walk(Transform t, string id, int parent, int depth, DuoScreen screen, Camera cam, bool sprites)
+        {
+            if (_dump.Count >= MaxDumpElements)
+                return new Rect();
             DuoPlaceholder ph = t.GetComponent<DuoPlaceholder>();
-            ElementState moved = null;
             if (ph != null)
             {
+                ElementState moved;
                 if (ph.Target == null || !_elements.TryGetValue(id, out moved))
-                    return;
+                    return new Rect();
                 t = ph.Target;
                 screen = moved.Root.Screen;
+                cam = CameraOf(moved.Root);
             }
             UiRule rule = _rules.Get(id);
             if (!t.gameObject.activeInHierarchy && (rule == null || rule.Implicit))
-                return;
-            var rt = t as RectTransform;
-            if (rt == null)
-                return;
+                return new Rect();
             if (rule != null && rule.Screen == DuoScreen.Hidden)
                 screen = DuoScreen.Hidden;
 
-            Rect r = WindowRect(rt, screen);
-            int index = parent;
-            // Zero-sized holders are common (anchor points): skip them but keep their children.
-            if (depth == 0 || (r.width >= 2f && r.height >= 2f) || (rule != null && !rule.Implicit) || screen == DuoScreen.Hidden)
+            var rt = t as RectTransform;
+            bool graphic;
+            Rect own;
+            if (rt != null)
             {
-                index = _dumpCount++;
-                if (index > 0)
-                    sb.Append(',');
-                sb.Append("{\"id\":");
-                MiniJson.Quote(sb, id);
-                sb.Append(",\"name\":");
-                MiniJson.Quote(sb, t.name);
-                sb.Append(",\"parent\":").Append(parent);
-                sb.Append(",\"screen\":\"").Append(UiRule.ScreenId(screen)).Append('"');
-                sb.Append(",\"x\":").Append(Mathf.RoundToInt(r.x));
-                sb.Append(",\"y\":").Append(Mathf.RoundToInt(r.y));
-                sb.Append(",\"w\":").Append(Mathf.RoundToInt(r.width));
-                sb.Append(",\"h\":").Append(Mathf.RoundToInt(r.height));
-                sb.Append(",\"graphic\":").Append(t.GetComponent<Graphic>() != null ? "true" : "false");
-                sb.Append('}');
+                own = WindowRect(rt, cam);
+                graphic = t.GetComponent<Graphic>() != null;
             }
-            if (depth >= MaxDumpDepth)
-                return;
-            Dictionary<string, int> seen = null;
-            for (int i = 0; i < t.childCount; i++)
+            else if (sprites)
             {
-                Transform c = t.GetChild(i);
-                string name = Clean(c.name);
-                if (seen == null)
-                    seen = new Dictionary<string, int>();
-                int n;
-                seen.TryGetValue(name, out n);
-                seen[name] = ++n;
-                Walk(sb, c, id + "/" + (n > 1 ? name + "#" + n.ToString(CultureInfo.InvariantCulture) : name), index, depth + 1, screen);
+                Renderer r = t.GetComponent<Renderer>();
+                graphic = r != null && r.enabled;
+                own = graphic ? WindowRect(r.bounds, cam) : new Rect();
             }
+            else
+            {
+                return new Rect(); // a plain transform inside a canvas: nothing to show
+            }
+
+            int index = _dump.Count;
+            _dump.Add(new DumpEntry { Id = id, Name = t.name, Parent = parent, Screen = screen, Rect = own, Graphic = graphic });
+            Rect union = own;
+            if (depth < MaxDumpDepth)
+            {
+                Dictionary<string, int> seen = null;
+                for (int i = 0; i < t.childCount; i++)
+                {
+                    Transform c = t.GetChild(i);
+                    string name = Clean(c.name);
+                    if (seen == null)
+                        seen = new Dictionary<string, int>();
+                    int n;
+                    seen.TryGetValue(name, out n);
+                    seen[name] = ++n;
+                    string childId = id + "/" + (n > 1 ? name + "#" + n.ToString(CultureInfo.InvariantCulture) : name);
+                    union = Union(union, Walk(c, childId, index, depth + 1, screen, cam, sprites));
+                }
+            }
+            DumpEntry entry = _dump[index];
+            if (sprites)
+                entry.Rect = union;
+            // Zero-sized holders are common in uGUI (anchor points): keep them only when something refers to them.
+            bool keep = depth == 0 || (entry.Rect.width >= 2f && entry.Rect.height >= 2f) || (rule != null && !rule.Implicit) ||
+                screen == DuoScreen.Hidden;
+            if (keep)
+            {
+                _dump[index] = entry;
+                return union;
+            }
+            // Drop it; its children point at this entry's parent instead, and later indices shift down by one.
+            for (int i = index + 1; i < _dump.Count; i++)
+            {
+                DumpEntry c = _dump[i];
+                if (c.Parent == index)
+                    c.Parent = parent;
+                else if (c.Parent > index)
+                    c.Parent--;
+                _dump[i] = c;
+            }
+            _dump.RemoveAt(index);
+            return union;
+        }
+
+        private static Rect Union(Rect a, Rect b)
+        {
+            if (a.width <= 0f || a.height <= 0f)
+                return b;
+            if (b.width <= 0f || b.height <= 0f)
+                return a;
+            return Rect.MinMaxRect(Mathf.Min(a.xMin, b.xMin), Mathf.Min(a.yMin, b.yMin), Mathf.Max(a.xMax, b.xMax), Mathf.Max(a.yMax, b.yMax));
         }
 
         /// <summary>An element's bounding box in window pixels (origin top-left).</summary>
-        private Rect WindowRect(RectTransform rt, DuoScreen screen)
+        private Rect WindowRect(RectTransform rt, Camera cam)
         {
-            Camera cam = CameraFor(screen);
             if (cam == null)
                 return new Rect();
             rt.GetWorldCorners(_corners);
+            return Project(cam);
+        }
+
+        private Rect WindowRect(Bounds b, Camera cam)
+        {
+            if (cam == null)
+                return new Rect();
+            Vector3 min = b.min, max = b.max;
+            _corners[0] = new Vector3(min.x, min.y, min.z);
+            _corners[1] = new Vector3(max.x, max.y, min.z);
+            _corners[2] = new Vector3(min.x, max.y, max.z);
+            _corners[3] = new Vector3(max.x, min.y, max.z);
+            return Project(cam);
+        }
+
+        private Rect Project(Camera cam)
+        {
             float minX = float.MaxValue, minY = float.MaxValue, maxX = float.MinValue, maxY = float.MinValue;
             for (int i = 0; i < 4; i++)
             {

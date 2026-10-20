@@ -13,9 +13,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import app.gamenative.R
+import app.gamenative.duo.mods.DuoModInstaller
 import app.gamenative.duo.split.ScreenSplit
 import app.gamenative.ui.theme.settingsTileColorsAlt
 import com.alorma.compose.settings.ui.SettingsGroup
+import com.alorma.compose.settings.ui.SettingsMenuLink
 import com.alorma.compose.settings.ui.SettingsSwitch
 import org.json.JSONObject
 
@@ -60,7 +62,13 @@ class DuoSettingsDraft internal constructor(
     val isDirty: Boolean get() = settings != initial
 
     fun commit() {
-        if (isDirty) DuoSettingsStore.save(context, containerId, settings)
+        if (!isDirty) return
+        DuoSettingsStore.save(context, containerId, settings)
+        // A dual-screen mod sized the container's screen for the old resolution.
+        val scale = settings.splitScale
+        if (containerId != null && scale != initial.splitScale) {
+            Thread({ DuoModInstaller.applySplitScale(context, containerId, scale) }, "GNDuo-split-scale").start()
+        }
     }
 
     companion object {
@@ -123,6 +131,17 @@ fun DuoSettingsTabContent(draft: DuoSettingsDraft) {
             subtitle = { Text(text = stringResource(R.string.duo_settings_native_touch_description)) },
             state = settings.nativeTouch,
             onCheckedChange = { draft.settings = settings.copy(nativeTouch = it) },
+        )
+        SettingsMenuLink(
+            colors = settingsTileColorsAlt(),
+            enabled = settings.screenSplit,
+            title = { Text(text = stringResource(R.string.duo_settings_split_scale, (settings.splitScale * 100).toInt())) },
+            subtitle = { Text(text = stringResource(R.string.duo_settings_split_scale_description)) },
+            onClick = {
+                // Tap to cycle 100% -> 75% -> 50%.
+                val scales = DuoContainerSettings.SPLIT_SCALES
+                draft.settings = settings.copy(splitScale = scales[(scales.indexOf(settings.splitScale) + 1) % scales.size])
+            },
         )
     }
 }

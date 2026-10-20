@@ -28,6 +28,12 @@ namespace GameNativeDuo.UnitySplit
         }
 
         private readonly Dictionary<int, Finger> _fingers = new Dictionary<int, Finger>();
+
+        /// <summary>What the last moving finger is over, for games that draw dragged items at their own cursor (<see cref="Quirks"/>).</summary>
+        internal static RaycastResult FingerRaycast;
+
+        /// <summary>Number of fingers down in the game.</summary>
+        internal static int FingersDown;
         private readonly List<RaycastResult> _hits = new List<RaycastResult>();
         private readonly UiRouter _router;
 
@@ -92,6 +98,7 @@ namespace GameNativeDuo.UnitySplit
                 eligibleForClick = true,
             };
             f.Data = d;
+            FingersDown++;
             GameObject target = Raycast(es, d);
             d.pointerPressRaycast = d.pointerCurrentRaycast;
             Hover(d, target);
@@ -146,6 +153,7 @@ namespace GameNativeDuo.UnitySplit
         {
             PointerEventData d = f.Data;
             f.Data = null;
+            FingersDown = Mathf.Max(0, FingersDown - 1);
             GameObject over = d.pointerCurrentRaycast.gameObject;
             ExecuteEvents.Execute(d.pointerPress, d, ExecuteEvents.pointerUpHandler);
             GameObject clickHandler = ExecuteEvents.GetEventHandler<IPointerClickHandler>(over);
@@ -180,6 +188,7 @@ namespace GameNativeDuo.UnitySplit
             }
             _hits.Clear();
             d.pointerCurrentRaycast = best;
+            FingerRaycast = best;
             return best.gameObject;
         }
 

@@ -29,15 +29,23 @@ data class DuoContainerSettings(
      * the game reacts to). Games without such a mod get mouse clicks either way.
      */
     val nativeTouch: Boolean = true,
+    /**
+     * Resolution of the split game window as a fraction of the screens' own (1, 0.75, 0.5). Lower renders far fewer
+     * pixels (the tall window is twice a 1080p frame at 1) and the renderer scales both screens up.
+     */
+    val splitScale: Float = 1f,
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("bottomPanelEnabled", bottomPanelEnabled)
         put("screenSplit", screenSplit)
         put("splitLayout", splitLayout)
         put("nativeTouch", nativeTouch)
+        put("splitScale", splitScale.toDouble())
     }
 
     companion object {
+        val SPLIT_SCALES = listOf(1f, 0.75f, 0.5f)
+
         fun fromJson(json: JSONObject): DuoContainerSettings {
             val fallback = DuoContainerSettings()
             return DuoContainerSettings(
@@ -45,6 +53,8 @@ data class DuoContainerSettings(
                 screenSplit = json.optBoolean("screenSplit", fallback.screenSplit),
                 splitLayout = json.optString("splitLayout", fallback.splitLayout),
                 nativeTouch = json.optBoolean("nativeTouch", fallback.nativeTouch),
+                splitScale = json.optDouble("splitScale", fallback.splitScale.toDouble()).toFloat()
+                    .takeIf { it in SPLIT_SCALES } ?: fallback.splitScale,
             )
         }
     }

@@ -72,6 +72,11 @@ object DuoModCatalog {
             splitLayout = SplitLayout.NATIVE,
         ),
         unityGame(id = "slime-rancher", appId = "STEAM_433340", title = "Slime Rancher"),
+        unityGame(id = "subnautica", appId = "STEAM_264710", title = "Subnautica"),
+        // Team Cherry's camera code is handled by the plugin's quirks (HUD camera to the bottom screen).
+        unityGame(id = "hollow-knight", appId = "STEAM_367520", title = "Hollow Knight"),
+        unityGame(id = "silksong", appId = "STEAM_1030300", title = "Hollow Knight: Silksong"),
+        unityGame(id = "risk-of-rain-2", appId = "STEAM_632360", title = "Risk of Rain 2"),
     )
 
     /**

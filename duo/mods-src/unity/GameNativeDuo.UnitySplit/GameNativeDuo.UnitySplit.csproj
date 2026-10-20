@@ -7,7 +7,7 @@
   <PropertyGroup>
     <AssemblyName>GameNativeDuo.UnitySplit</AssemblyName>
     <RootNamespace>GameNativeDuo.UnitySplit</RootNamespace>
-    <Version>0.2.0</Version>
+    <Version>0.2.1</Version>
     <TargetFramework>net46</TargetFramework>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
@@ -23,5 +23,7 @@
     <Reference Include="UnityEngine.CoreModule" Condition="Exists('$(ManagedPath)/UnityEngine.CoreModule.dll')"><HintPath>$(ManagedPath)/UnityEngine.CoreModule.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine.UI"><HintPath>$(ManagedPath)/UnityEngine.UI.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine.UIModule" Condition="Exists('$(ManagedPath)/UnityEngine.UIModule.dll')"><HintPath>$(ManagedPath)/UnityEngine.UIModule.dll</HintPath><Private>false</Private></Reference>
+    <!-- Unity 2021+ assemblies are built against .NET Standard 2.1: needed to compile against them (the plugin itself still targets net46). -->
+    <Reference Include="netstandard" Condition="Exists('$(ManagedPath)/netstandard.dll')"><HintPath>$(ManagedPath)/netstandard.dll</HintPath><Private>false</Private></Reference>
   </ItemGroup>
 </Project>

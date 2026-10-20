@@ -48,6 +48,8 @@ class SplitScreenController(
     private val bridge: DuoBridge?,
     private val uiLayout: UiLayoutController?,
     private val nativeTouch: Boolean,
+    /** Render scale of the native layout (see DuoContainerSettings.splitScale). */
+    private val scale: Float = 1f,
 ) {
     private val topRenderer: VulkanRenderer? get() = xServer.renderer as? VulkanRenderer
     private var presentation: SplitBottomPresentation? = null
@@ -67,7 +69,7 @@ class SplitScreenController(
             val newSplit = bottomDisplay?.let {
                 when (layout) {
                     SplitLayout.FILL -> ScreenSplit.of(screenW, screenH, topAspect())
-                    SplitLayout.NATIVE -> ScreenSplit.nativeFor(context)?.takeIf { it.screenSize() == screenW to screenH }
+                    SplitLayout.NATIVE -> ScreenSplit.nativeFor(context, scale)?.takeIf { it.screenSize() == screenW to screenH }
                 }
             }
             if (bottomDisplay == null || newSplit == null) {
@@ -133,7 +135,7 @@ class SplitScreenController(
         val size = bottomDisplay.realSize()
         val (w, h) = when (layout) {
             SplitLayout.FILL -> ScreenSplit.recommendedSize(xServer.screenInfo.width.toInt(), topAspect(), size.x.toFloat() / size.y)
-            SplitLayout.NATIVE -> ScreenSplit.nativeFor(context)?.screenSize() ?: return
+            SplitLayout.NATIVE -> ScreenSplit.nativeFor(context, scale)?.screenSize() ?: return
         }
         Timber.tag(DualScreenHost.TAG).w(
             "Screen split is on but the X screen %dx%d has no room for a bottom part; set the container's screen size to %dx%d",

@@ -64,6 +64,33 @@ object DuoModInstaller {
         prefixFiles.forEach { (rel, bytes) -> install(bytes.inputStream(), inside(driveC, rel), files) }
     }
 
+    /**
+     * The split resolution changed: resizes the container's screen if a dual-screen mod set it, keeping the undo
+     * record in step. Call from a background thread.
+     */
+    fun applySplitScale(context: Context, appId: String, scale: Float) {
+        try {
+            val file = stateFile(context, appId)
+            if (!file.isFile) return
+            val state = JSONObject(file.readText())
+            val layout = SplitLayout.fromId(state.optString("splitLayout").ifEmpty { SplitLayout.NATIVE.id })
+            val size = ScreenSplit.recommendedFor(context, layout, scale)?.let { "${it.first}x${it.second}" } ?: return
+            val container = ContainerUtils.getContainer(context, appId)
+            container.screenSize = size
+            container.saveData()
+            state.put("screenSize", size)
+            file.writeText(state.toString(2))
+            if (layout == SplitLayout.NATIVE) {
+                ScreenSplit.nativeFor(context, scale)?.let {
+                    LayoutFile.write(container, it, ScreenCalibrationStore.load(context, DeviceProfile.detect()))
+                }
+            }
+            Timber.tag(DualScreenHost.TAG).i("Split resolution for %s: %s (%.0f%%)", appId, size, scale * 100)
+        } catch (t: Throwable) {
+            Timber.tag(DualScreenHost.TAG).e(t, "Failed to apply the split resolution for %s", appId)
+        }
+    }
+
     /** [rel] under [root], refusing anything that would land outside it ("..", absolute paths). */
     private fun inside(root: File, rel: String): File {
         val target = File(root, rel).canonicalFile
@@ -103,7 +130,11 @@ object DuoModInstaller {
         state.put("files", files)
 
         state.put("previousScreenSize", container.screenSize)
-        ScreenSplit.recommendedFor(context, mod.splitLayout)?.let { container.screenSize = "${it.first}x${it.second}" }
+        val scale = DuoSettingsStore.load(context, container.id).splitScale
+        ScreenSplit.recommendedFor(context, mod.splitLayout, scale)?.let {
+            container.screenSize = "${it.first}x${it.second}"
+            state.put("screenSize", container.screenSize)
+        }
 
         if (mod.dllOverrides.isNotEmpty()) {
             val envVars = EnvVars(container.envVars)
@@ -123,7 +154,7 @@ object DuoModInstaller {
         state.put("previousSplitLayout", settings.splitLayout)
         DuoSettingsStore.save(context, container.id, settings.copy(screenSplit = true, splitLayout = mod.splitLayout.id))
         if (mod.splitLayout == SplitLayout.NATIVE) {
-            ScreenSplit.nativeFor(context)?.let {
+            ScreenSplit.nativeFor(context, scale)?.let {
                 LayoutFile.write(container, it, ScreenCalibrationStore.load(context, DeviceProfile.detect()))
             }
         }
@@ -168,7 +199,9 @@ object DuoModInstaller {
             pruneEmptyDirs(file.parentFile, roots)
         }
 
-        val ourSize = ScreenSplit.recommendedFor(context, splitLayout)?.let { "${it.first}x${it.second}" }
+        // The size we set (recorded; older records: what we would set now).
+        val ourSize = state.optString("screenSize").ifEmpty { null }
+            ?: ScreenSplit.recommendedFor(context, splitLayout)?.let { "${it.first}x${it.second}" }
         // Restore the screen size unless the user changed it since.
         if (ourSize == null || container.screenSize == ourSize) {
             container.screenSize = state.optString("previousScreenSize", container.screenSize)

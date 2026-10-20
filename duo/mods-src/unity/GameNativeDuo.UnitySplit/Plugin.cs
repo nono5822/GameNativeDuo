@@ -17,16 +17,37 @@ namespace GameNativeDuo.UnitySplit
     /// (<see cref="TouchInjector"/>). Nothing changes unless the window matches GameNative Duo's layout.json, and every
     /// step catches its own errors so the game keeps running.
     /// </summary>
-    [BepInPlugin("app.gamenative.duo.unitysplit", "GameNative Duo Unity Split", "0.2.0")]
+    [BepInPlugin("app.gamenative.duo.unitysplit", "GameNative Duo Unity Split", "0.2.1")]
     public sealed class Plugin : BaseUnityPlugin
     {
+        internal static ManualLogSource Log;
+
+        /// <summary>
+        /// The work happens on an object of our own: some games destroy BepInEx's manager object while loading
+        /// (Subnautica does), which would stop the split and close the bridge.
+        /// </summary>
+        private void Awake()
+        {
+            Log = Logger;
+            var go = new GameObject("GameNativeDuo");
+            go.hideFlags = HideFlags.HideAndDontSave;
+            DontDestroyOnLoad(go);
+            go.AddComponent<Split>();
+        }
+    }
+
+    /// <summary>The screen split itself; see <see cref="Plugin"/>.</summary>
+    internal sealed class Split : MonoBehaviour
+    {
         private const string Engine = "unity-ugui";
-        private const float RescanSeconds = 0.5f;
+        /// <summary>Fallback scan interval; new canvases and scenes trigger a scan right away (see <see cref="RequestScan"/>).</summary>
+        private const float RescanSeconds = 2f;
+        private const float StatsSeconds = 30f;
         private const float WatchSeconds = 2f;
         private const float HelloSeconds = 2f;
 
-        internal static ManualLogSource Log;
-        internal static Plugin Instance;
+        private static ManualLogSource Log => Plugin.Log;
+        internal static Split Instance;
 
         internal Layout Layout;
         internal readonly UiRouter Router = new UiRouter();
@@ -38,7 +59,13 @@ namespace GameNativeDuo.UnitySplit
         private TouchInjector _touch;
         private Bridge _bridge;
         private readonly List<Bridge.Message> _messages = new List<Bridge.Message>();
-        private float _nextScan, _nextWatch, _nextHello;
+        private float _nextScan, _nextWatch, _nextHello, _nextStats;
+        private static volatile bool _scanRequested;
+        private int _cameraCount = -1;
+        private readonly FrameStats _stats = new FrameStats();
+
+        /// <summary>Something new may need placing (a canvas was enabled, a scene loaded): scan before this frame renders.</summary>
+        internal static void RequestScan() => _scanRequested = true;
         private DateTime _layoutTime, _rulesTime;
         private bool _dumpPending;
         private uint _dumpRequest;
@@ -46,24 +73,35 @@ namespace GameNativeDuo.UnitySplit
 
         private void Awake()
         {
-            Log = Logger;
             Instance = this;
             _touch = new TouchInjector(Router);
             ReloadLayout();
             ReloadRules();
+            var harmony = new Harmony("app.gamenative.duo.unitysplit");
             try
             {
-                new Harmony("app.gamenative.duo.unitysplit").PatchAll(typeof(ScalerPatch));
+                harmony.PatchAll(typeof(ScalerPatch));
             }
             catch (Exception ex)
             {
                 Log.LogError("Could not patch CanvasScaler (UI keeps the full-window scale): " + ex);
             }
+            try
+            {
+                harmony.PatchAll(typeof(ScalerEnablePatch));
+            }
+            catch (Exception ex)
+            {
+                Log.LogWarning("New canvases are found by the periodic scan only: " + ex.Message);
+            }
+            Quirks.Apply(harmony);
             Canvas.willRenderCanvases += OnWillRenderCanvases;
+            UnityEngine.SceneManagement.SceneManager.sceneLoaded += (scene, mode) => RequestScan();
         }
 
         private void OnDestroy()
         {
+            Log.LogWarning("GameNative Duo split stopped: its object was destroyed");
             Canvas.willRenderCanvases -= OnWillRenderCanvases;
             if (_bridge != null)
                 _bridge.Dispose();
@@ -136,10 +174,29 @@ namespace GameNativeDuo.UnitySplit
                     }
                     _nextScan = 0f;
                 }
-                if (!Active || Time.unscaledTime < _nextScan)
+                if (!Active)
                     return;
-                _nextScan = Time.unscaledTime + RescanSeconds;
-                Router.Scan();
+                float now = Time.unscaledTime;
+                _stats.Add(Time.unscaledDeltaTime);
+                if (now >= _nextStats)
+                {
+                    _nextStats = now + StatsSeconds;
+                    _stats.Log();
+                }
+                // A new camera (cutscene, menu) would draw over both screens until placed: a count check is enough.
+                int cameras = Camera.allCamerasCount;
+                if (cameras != _cameraCount)
+                {
+                    _cameraCount = cameras;
+                    _scanRequested = true;
+                }
+                if (_scanRequested || now >= _nextScan)
+                {
+                    _scanRequested = false;
+                    _nextScan = now + RescanSeconds;
+                    Router.Scan();
+                }
+                Router.ApplyCameras();
             }
             catch (Exception ex)
             {
@@ -155,6 +212,8 @@ namespace GameNativeDuo.UnitySplit
                 return;
             try
             {
+                // Again here: game LateUpdates after ours may have moved a camera; tk2d reads its rect in OnPreCull.
+                Router.ApplyCameras();
                 Router.ApplyFrame();
                 if (_dumpPending)
                     WriteElements();
@@ -274,7 +333,7 @@ namespace GameNativeDuo.UnitySplit
     {
         private static void Prefix(CanvasScaler __instance, ref float scaleFactor)
         {
-            Plugin p = Plugin.Instance;
+            Split p = Split.Instance;
             if (p == null || !p.Active)
                 return;
             try
@@ -285,6 +344,53 @@ namespace GameNativeDuo.UnitySplit
             {
                 p.OnScaleError(ex);
             }
+        }
+    }
+
+    /// <summary>uGUI enables a CanvasScaler with almost every new screen of UI: place it before it is drawn.</summary>
+    [HarmonyPatch(typeof(CanvasScaler), "OnEnable")]
+    internal static class ScalerEnablePatch
+    {
+        private static void Postfix() => Split.RequestScan();
+    }
+
+    /// <summary>
+    /// Frame times while the split is on, logged every 30 s (average, 95th percentile, worst): the numbers to compare
+    /// against the game with the split off. Allocation-free ring buffer.
+    /// </summary>
+    internal sealed class FrameStats
+    {
+        private readonly float[] _times = new float[2048];
+        private readonly float[] _sorted = new float[2048];
+        private int _count;
+
+        public void Add(float seconds)
+        {
+            if (_count < _times.Length)
+                _times[_count++] = seconds;
+        }
+
+        public void Log()
+        {
+            if (_count < 10)
+            {
+                _count = 0;
+                return;
+            }
+            float sum = 0f, worst = 0f;
+            for (int i = 0; i < _count; i++)
+            {
+                sum += _times[i];
+                worst = Mathf.Max(worst, _times[i]);
+                _sorted[i] = _times[i];
+            }
+            System.Array.Sort(_sorted, 0, _count);
+            float avg = sum / _count;
+            float p95 = _sorted[(int)(_count * 0.95f)];
+            Plugin.Log.LogInfo(string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                "Frames: {0:0.0} fps average, {1:0.0} ms average, {2:0.0} ms 95th percentile, {3:0.0} ms worst ({4} frames)",
+                1f / avg, avg * 1000f, p95 * 1000f, worst * 1000f, _count));
+            _count = 0;
         }
     }
 }

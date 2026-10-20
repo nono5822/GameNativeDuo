@@ -90,6 +90,7 @@ class DualScreenSession internal constructor(
             bridge = bridge,
             uiLayout = uiLayout,
             nativeTouch = settings.nativeTouch,
+            scale = settings.splitScale,
         )
     } else {
         null
