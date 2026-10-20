@@ -43,6 +43,7 @@ Upstream lands ~4-5 commits/day; `XServerScreen.kt` (~6,800 lines) changes almos
 | `cpp/CMakeLists.txt` | `DuoSecondaryOutput.cpp` source line |
 | `modern/jniLibs/arm64-v8a/libvulkan_renderer.so` | **rebuilt by us** (see `duo/native/README.md`); rebuild after upstream renderer changes |
 | `AndroidManifest.xml` | 3 launcher labels -> `@string/duo_app_name` |
+| `ui/theme/Color.kt` | `PluviaPrimary`/`customPrimary`/`PluviaPurple` -> logo blue `#5B8DF6`, `PluviaPink` -> logo purple (values only, marked) |
 | `com/winlator/container/Container.java` | `AppPaths` for default drives/MEDIACONV paths; `setDrives`/`setEnvVars` rewrite old paths; `getBox64Version` strips labels like " (Default)" |
 | `com/winlator/core/DXVKHelper.java`, `WineUtils.java` | `AppPaths` instead of `/data/data/app.gamenative` |
 | `xenvironment/components/BionicProgramLauncherComponent.java` | `AppPaths` for gamepad mem files; sets `EVSHIM_BASE_PATH` |
@@ -129,6 +130,11 @@ no CPU frame copies, data over pixels, idle at 0 fps when nothing changes.
   `bottom` (window px, origin top-left), plus `gap`, `bottomScale`, `bottomShift`, `bridge.port`. Mods act only when
   the window matches `screen`. `ui.json` (UI layout) and `elements.json` (for the editor) sit next to it.
 - Mods only add code to games the user owns; never anything that touches DRM or decrypts game files.
+
+## Branding
+
+App icon and `colorPrimary` are overridden in `app/src/modern/res/` (flavour resources win over `main`, no upstream
+edit); colours, icon geometry and the banner source: `duo/branding/README.md`.
 
 ## Conventions
 
