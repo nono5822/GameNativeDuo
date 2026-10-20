@@ -1,0 +1,589 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GameNative Duo Layout Editor</title>
+<style>
+:root {
+  --bg: #0E1120; --panel: #151A33; --panel2: #1C2244; --line: #2A3260; --text: #E8ECF8; --muted: #AEB8DA;
+  --accent: #5B8DF6; --accent2: #49D0EE; --purple: #D74EE9; --warn: #F5B14B; --radius: 14px;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; border: 0; border-radius: 999px; padding: 8px 14px; background: var(--panel2); color: var(--text); }
+button:hover { background: #262E58; }
+button.primary { background: var(--accent); color: #fff; font-weight: 600; }
+button.primary:hover { background: #6E9BF8; }
+button.on { background: var(--accent); color: #fff; font-weight: 600; }
+button:disabled { opacity: .4; cursor: default; }
+input[type=text], textarea { width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+input[type=range] { width: 100%; accent-color: var(--accent); }
+header { display: flex; align-items: center; gap: 14px; padding: 12px 20px; border-bottom: 1px solid var(--line); background: var(--panel); }
+header .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 18px; }
+header .game { color: var(--muted); }
+header .spacer { flex: 1; }
+.status { font-size: 13px; color: var(--muted); }
+.status.ok::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #4ADE80; margin-right: 6px; }
+main { display: grid; grid-template-columns: minmax(0, 1fr) 380px; height: calc(100% - 61px); }
+#stageWrap { overflow: auto; padding: 24px; display: flex; justify-content: center; align-items: flex-start; }
+#stage { position: relative; user-select: none; }
+.screen { position: absolute; border-radius: 12px; overflow: hidden; background: #000; box-shadow: 0 10px 40px rgba(0,0,0,.45); outline: 1px solid var(--line); }
+.screen img { width: 100%; height: 100%; display: block; pointer-events: none; }
+.screen .tag { position: absolute; left: 10px; top: 8px; font-size: 12px; font-weight: 700; letter-spacing: .06em; color: #fff; background: rgba(14,17,32,.7); padding: 2px 8px; border-radius: 999px; pointer-events: none; }
+.screen.dropTarget { outline: 3px solid var(--accent); }
+.el { position: absolute; border: 1px solid rgba(255,255,255,.45); border-radius: 3px; cursor: pointer; }
+.el.changed { border-color: var(--warn); }
+.el:hover { border-color: #fff; background: rgba(255,255,255,.08); }
+.el.sel { border: 2px solid var(--accent); background: rgba(91,141,246,.18); cursor: move; z-index: 5; }
+.el .name { position: absolute; left: 0; top: -20px; white-space: nowrap; font-size: 12px; background: var(--accent); color: #fff; padding: 1px 7px; border-radius: 6px; display: none; }
+.el.sel .name { display: block; }
+.widget { position: absolute; display: flex; align-items: center; gap: 6px; padding: 0 10px; border-radius: 999px; background: rgba(12,15,30,.75); font-weight: 700; cursor: move; white-space: nowrap; outline: 1px dashed rgba(255,255,255,.4); z-index: 6; }
+.widget .k { color: var(--accent); }
+.widget.sel { outline: 2px solid var(--accent); }
+aside { border-left: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; min-height: 0; }
+.tabs { display: flex; gap: 6px; padding: 12px; border-bottom: 1px solid var(--line); }
+.tabs button { flex: 1; padding: 8px 6px; }
+.pane { padding: 14px 16px; overflow: auto; flex: 1; display: none; }
+.pane.show { display: block; }
+h3 { margin: 4px 0 10px; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.card { background: var(--panel2); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 14px; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.row + .row { margin-top: 10px; }
+.field { display: grid; grid-template-columns: 70px 1fr 54px; gap: 8px; align-items: center; margin-top: 8px; }
+.field span:last-child { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+.list { max-height: 42vh; overflow: auto; border-radius: 10px; background: var(--bg); padding: 4px 0; }
+.item { padding: 6px 10px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--muted); }
+.item.graphic { color: var(--text); }
+.item:hover { background: var(--panel2); }
+.item.sel { background: var(--accent); color: #fff; }
+.badge { font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 6px; margin-left: 6px; background: var(--line); color: var(--text); }
+.badge.top { background: #1E4D8F; } .badge.hidden { background: #4B2A5C; } .badge.changed { background: #6B4A12; }
+.muted { color: var(--muted); font-size: 13px; }
+.modes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.modes button { border-radius: 12px; padding: 12px 8px; }
+.swatches { display: flex; gap: 8px; flex-wrap: wrap; }
+.swatch { width: 34px; height: 34px; border-radius: 50%; border: 2px solid transparent; padding: 0; }
+.swatch.on { border-color: var(--accent); }
+.kbd { font-family: ui-monospace, monospace; font-size: 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 0 5px; }
+#pair { position: fixed; inset: 0; background: var(--bg); display: flex; align-items: center; justify-content: center; z-index: 50; }
+#pair .box { background: var(--panel); border: 1px solid var(--line); border-radius: 20px; padding: 28px 32px; width: 380px; text-align: center; }
+#pair input { text-align: center; font-size: 28px; letter-spacing: .3em; text-transform: uppercase; font-family: ui-monospace, monospace; margin: 16px 0; }
+#toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--panel2); border: 1px solid var(--line); padding: 10px 16px; border-radius: 12px; display: none; z-index: 60; }
+@media (max-width: 900px) { main { grid-template-columns: 1fr; height: auto; } aside { border-left: 0; border-top: 1px solid var(--line); } }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><linearGradient id="g" x1="0" y1="0" x2="108" y2="108" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#49D0EE"/><stop offset=".58" stop-color="#5B8DF6"/><stop offset=".8" stop-color="#827EFB"/><stop offset="1" stop-color="#D74EE9"/></linearGradient></defs></svg>
+<div id="pair">
+  <div class="box">
+    <svg width="64" height="64" viewBox="0 0 108 108" aria-hidden="true"><rect width="108" height="108" rx="24" fill="#151A33"/><rect x="12" y="8" width="84" height="44" rx="8" fill="url(#g)"/><rect x="28" y="56" width="52" height="44" rx="8" fill="url(#g)"/></svg>
+    <h2 style="margin:10px 0 4px">Connect to your device</h2>
+    <div class="muted">Enter the code shown on the bottom screen</div>
+    <input id="code" type="text" maxlength="6" autocomplete="off" autofocus>
+    <button class="primary" id="connect" style="width:100%">Connect</button>
+    <div class="muted" id="pairError" style="margin-top:10px"></div>
+  </div>
+</div>
+<header>
+  <div class="brand">
+    <svg width="30" height="30" viewBox="0 0 108 108" aria-hidden="true"><rect width="108" height="108" rx="24" fill="#151A33"/><rect x="12" y="8" width="84" height="44" rx="8" fill="url(#g)"/><rect x="28" y="56" width="52" height="44" rx="8" fill="url(#g)"/></svg>
+    GameNative Duo
+  </div>
+  <div class="game" id="game"></div>
+  <div class="spacer"></div>
+  <span class="status" id="status">Connecting</span>
+  <label class="muted"><input type="checkbox" id="live"> Live view</label>
+  <button id="refresh">Refresh</button>
+</header>
+<main>
+  <div id="stageWrap"><div id="stage"></div></div>
+  <aside>
+    <div class="tabs">
+      <button data-tab="elements" class="on">Elements</button>
+      <button data-tab="background">Background</button>
+      <button data-tab="widgets">Widgets</button>
+      <button data-tab="share">Share</button>
+    </div>
+    <section class="pane show" id="pane-elements">
+      <div class="card" id="selCard">
+        <div class="muted">Click an element on the screens or in the list. Drag it to move it, drop it on the other screen to send it there, scroll to resize.</div>
+      </div>
+      <input type="text" id="search" placeholder="Search elements">
+      <div class="list" id="list" style="margin-top:8px"></div>
+      <p class="muted">Keys: <span class="kbd">Arrows</span> move, <span class="kbd">+</span> <span class="kbd">-</span> resize, <span class="kbd">T</span> top, <span class="kbd">B</span> bottom, <span class="kbd">H</span> hide, <span class="kbd">R</span> reset, <span class="kbd">Esc</span> deselect.</p>
+    </section>
+    <section class="pane" id="pane-background">
+      <h3>Bottom screen background</h3>
+      <div class="modes" id="modes"></div>
+      <div class="muted" id="modeNote" style="margin-top:8px"></div>
+      <div class="card" id="bgOptions" style="margin-top:14px"></div>
+    </section>
+    <section class="pane" id="pane-widgets">
+      <h3>Add a widget</h3>
+      <div class="row" id="addWidgets"></div>
+      <p class="muted">Widgets are live readouts drawn by GameNative Duo on the bottom screen. Drag them on the bottom screen to place them.</p>
+      <div id="widgetList"></div>
+    </section>
+    <section class="pane" id="pane-share">
+      <h3>Share with the community</h3>
+      <div class="card">
+        <label class="muted">Layout name</label><input type="text" id="shareName" maxlength="60" placeholder="Minimal HUD">
+        <label class="muted" style="display:block;margin-top:10px">Description</label><textarea id="shareDesc" rows="3" maxlength="600" placeholder="What it changes and why"></textarea>
+        <label class="muted" style="display:block;margin-top:10px">Your name</label><input type="text" id="shareAuthor" maxlength="60">
+        <div class="row"><button class="primary" id="share">Open the share form</button></div>
+        <p class="muted">Opens the GitHub form of the GameNative Duo community repository in this browser, filled in. A bot turns it into a package. Background images stay private and are shared as a plain color.</p>
+      </div>
+      <h3>Layout file</h3>
+      <div class="row"><button id="download">Download layout</button><button id="resetAll">Reset everything</button></div>
+    </section>
+  </aside>
+</main>
+<div id="toast"></div>
+<script>
+"use strict";
+const $ = (s) => document.querySelector(s);
+const params = new URLSearchParams(location.search);
+let code = (params.get("k") || localStorage.getItem("duoCode") || "").toUpperCase();
+let state = null, selected = null, selectedWidget = -1, snapTime = 0, liveTimer = 0, refreshTimer = 0;
+const view = { k: 1, top: null, bottom: null };
+
+function toast(text, ms = 2600) {
+  const t = $("#toast"); t.textContent = text; t.style.display = "block";
+  clearTimeout(toast.timer); toast.timer = setTimeout(() => (t.style.display = "none"), ms);
+}
+
+async function api(path, body, raw) {
+  const opts = { method: body === undefined ? "GET" : "POST", headers: { "X-Duo-Code": code } };
+  if (body !== undefined) opts.body = raw ? body : JSON.stringify(body);
+  const r = await fetch(path, opts);
+  if (r.status === 403) { showPair("That code was not accepted."); throw new Error("code"); }
+  if (!r.ok) throw new Error(r.status);
+  return r.headers.get("content-type").includes("json") ? r.json() : r.blob();
+}
+
+function showPair(error) {
+  $("#pair").style.display = "flex"; $("#pairError").textContent = error || ""; $("#code").value = code; $("#code").focus();
+}
+
+async function connect() {
+  const typed = $("#code").value.trim().toUpperCase();
+  if (typed) code = typed;
+  try {
+    await load();
+    localStorage.setItem("duoCode", code);
+    $("#pair").style.display = "none";
+  } catch (e) {
+    if (e.message !== "code") $("#pairError").textContent = "The device did not answer. Is the game running with the PC editor on?";
+  }
+}
+
+// ---- data ---------------------------------------------------------------------------------------------------
+
+async function load(withSnapshot = true) {
+  const s = await api("/api/state");
+  if (s.error) throw new Error(s.error);
+  state = s;
+  $("#game").textContent = s.title + (s.engine ? "  ·  " + s.engine : "");
+  $("#status").textContent = "Connected"; $("#status").className = "status ok";
+  if (withSnapshot) snapTime = Date.now();
+  render();
+}
+
+function scheduleRefresh(ms = 400) {
+  clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(() => load(true).catch(() => {}), ms);
+}
+
+const rules = () => state.layout.elements || {};
+const ruleOf = (id) => Object.assign({ screen: "default", scale: 1, x: 0, y: 0 }, rules()[id] || {});
+const background = () => Object.assign({ mode: "game", color: "#101322", dim: 0, blur: 0.5 }, state.layout.background || {});
+const widgets = () => state.layout.widgets || [];
+
+async function setRule(id, rule) {
+  const clean = {};
+  if (rule.screen && rule.screen !== "default") clean.screen = rule.screen;
+  if (Math.abs(rule.scale - 1) > 1e-4) clean.scale = +rule.scale.toFixed(4);
+  if (Math.abs(rule.x) > 1e-5) clean.x = +rule.x.toFixed(4);
+  if (Math.abs(rule.y) > 1e-5) clean.y = +rule.y.toFixed(4);
+  if (Object.keys(clean).length) rules()[id] = clean; else delete rules()[id];
+  await api("/api/rule", { id, rule: clean });
+  scheduleRefresh();
+}
+
+async function setBackground(patch) {
+  const bg = Object.assign(background(), patch);
+  state.layout.background = bg;
+  renderBackground();
+  await api("/api/background", bg);
+  scheduleRefresh(600);
+}
+
+async function setWidgets(list) {
+  state.layout.widgets = list;
+  await api("/api/widgets", list);
+}
+
+// ---- the two screens ----------------------------------------------------------------------------------------
+
+function render() {
+  const stage = $("#stage"), wrap = $("#stageWrap");
+  stage.innerHTML = "";
+  const [tx, ty, tw, th] = state.top, [bx, by, bw, bh] = state.bottom;
+  const avail = Math.max(320, wrap.clientWidth - 48);
+  const k = Math.min(avail / tw, (window.innerHeight - 140) / (th + bh + 30));
+  view.k = k;
+  const gap = 26, topW = tw * k, topH = th * k, botW = bw * k, botH = bh * k;
+  stage.style.width = topW + "px"; stage.style.height = topH + gap + botH + "px";
+  view.top = { el: screenBox("Top screen", "top", 0, 0, topW, topH), x: tx, y: ty, w: tw, h: th, left: 0, topPx: 0 };
+  view.bottom = { el: screenBox("Bottom screen", "bottom", (topW - botW) / 2, topH + gap, botW, botH), x: bx, y: by, w: bw, h: bh, left: (topW - botW) / 2, topPx: topH + gap };
+  for (const e of state.elements) {
+    if (e.depth === 0 || !e.graphic || e.screen === "hidden") continue;
+    const v = e.screen === "top" ? view.top : view.bottom;
+    const box = document.createElement("div");
+    box.className = "el" + (rules()[e.id] ? " changed" : "") + (e.id === selected ? " sel" : "");
+    box.style.left = (e.x - v.x) * k + "px"; box.style.top = (e.y - v.y) * k + "px";
+    box.style.width = Math.max(6, e.w * k) + "px"; box.style.height = Math.max(6, e.h * k) + "px";
+    box.innerHTML = '<span class="name"></span>';
+    box.querySelector(".name").textContent = e.name;
+    box.addEventListener("pointerdown", (ev) => startDrag(ev, e, box));
+    v.el.appendChild(box);
+  }
+  renderWidgets();
+  renderList();
+  renderSelection();
+  renderBackground();
+  renderWidgetPane();
+}
+
+function screenBox(label, which, left, top, w, h) {
+  const d = document.createElement("div");
+  d.className = "screen"; d.dataset.screen = which;
+  Object.assign(d.style, { left: left + "px", top: top + "px", width: w + "px", height: h + "px" });
+  const img = new Image();
+  snapshot(which).then((url) => { if (url) img.src = url; });
+  d.appendChild(img);
+  const tag = document.createElement("span"); tag.className = "tag"; tag.textContent = label; d.appendChild(tag);
+  d.addEventListener("pointerdown", (ev) => { if (ev.target === d) select(null); });
+  $("#stage").appendChild(d);
+  return d;
+}
+
+// One picture per screen and refresh: the device copies its screens only when asked, so ask rarely.
+const snaps = {};
+function snapshot(which) {
+  const key = which + snapTime;
+  if (!snaps[key]) {
+    snaps[key] = api("/api/snapshot/" + which + ".jpg").then((blob) => URL.createObjectURL(blob)).catch(() => null);
+    for (const k of Object.keys(snaps)) if (k.startsWith(which) && k !== key) { snaps[k].then((u) => u && URL.revokeObjectURL(u)); delete snaps[k]; }
+  }
+  return snaps[key];
+}
+
+function overScreen(clientX, clientY) {
+  for (const v of [view.top, view.bottom]) {
+    const r = v.el.getBoundingClientRect();
+    if (clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom) return v === view.top ? "top" : "bottom";
+  }
+  return null;
+}
+
+function startDrag(ev, e, box) {
+  ev.preventDefault(); ev.stopPropagation();
+  if (selected !== e.id) { select(e.id); return; }
+  const sx = ev.clientX, sy = ev.clientY, left0 = parseFloat(box.style.left), top0 = parseFloat(box.style.top);
+  const from = e.screen === "top" ? "top" : "bottom";
+  box.setPointerCapture(ev.pointerId);
+  const move = (m) => {
+    box.style.left = left0 + m.clientX - sx + "px"; box.style.top = top0 + m.clientY - sy + "px";
+    const over = overScreen(m.clientX, m.clientY);
+    view.top.el.classList.toggle("dropTarget", over === "top" && from !== "top");
+    view.bottom.el.classList.toggle("dropTarget", over === "bottom" && from !== "bottom");
+  };
+  const up = (u) => {
+    box.removeEventListener("pointermove", move); box.removeEventListener("pointerup", up);
+    view.top.el.classList.remove("dropTarget"); view.bottom.el.classList.remove("dropTarget");
+    const dx = u.clientX - sx, dy = u.clientY - sy;
+    if (Math.hypot(dx, dy) < 3) return;
+    const over = overScreen(u.clientX, u.clientY);
+    const r = ruleOf(e.id);
+    if (over && over !== from) {
+      setRule(e.id, Object.assign(r, { screen: over, x: 0, y: 0 }));
+      toast("Sent to the " + over + " screen");
+    } else {
+      const v = from === "top" ? view.top : view.bottom;
+      r.screen = r.screen === "default" ? from : r.screen;
+      r.x += dx / view.k / v.w; r.y += dy / view.k / v.h;
+      setRule(e.id, r);
+    }
+  };
+  box.addEventListener("pointermove", move); box.addEventListener("pointerup", up);
+}
+
+$("#stage").addEventListener("wheel", (ev) => {
+  if (!selected) return;
+  ev.preventDefault();
+  scaleSelected(ev.deltaY < 0 ? 1.06 : 1 / 1.06);
+}, { passive: false });
+
+let scaleTimer = 0;
+function scaleSelected(f) {
+  const r = ruleOf(selected);
+  r.scale = Math.min(4, Math.max(0.25, r.scale * f));
+  if (!rules()[selected] && r.screen === "default") r.screen = (elementById(selected) || {}).screen === "top" ? "top" : "bottom";
+  rules()[selected] = r;
+  renderSelection();
+  clearTimeout(scaleTimer);
+  scaleTimer = setTimeout(() => setRule(selected, r), 220);
+}
+
+// ---- widgets on the bottom screen ---------------------------------------------------------------------------
+
+const widgetText = { fps: ["FPS", "60"], cpu: ["CPU", "42%"], gpu: ["GPU", "37%"], temp: ["TEMP", "41°C"], battery: ["BAT", "80%"], clock: ["TIME", "9:41"] };
+
+function renderWidgets() {
+  const host = view.bottom.el, k = view.k;
+  widgets().forEach((w, i) => {
+    const d = document.createElement("div");
+    d.className = "widget" + (i === selectedWidget ? " sel" : "");
+    const [label, value] = widgetText[w.type] || [w.type, ""];
+    const size = 13 * (w.scale || 1) * k * 2.3;
+    d.style.fontSize = size + "px"; d.style.height = size * 1.9 + "px";
+    d.innerHTML = '<span class="k"></span><span></span>';
+    d.children[0].textContent = label; d.children[1].textContent = value;
+    d.style.left = w.x * view.bottom.w * k + "px"; d.style.top = w.y * view.bottom.h * k + "px";
+    d.addEventListener("pointerdown", (ev) => dragWidget(ev, i, d));
+    host.appendChild(d);
+  });
+}
+
+function dragWidget(ev, i, d) {
+  ev.preventDefault(); ev.stopPropagation();
+  selectedWidget = i; showTab("widgets"); renderWidgetPane();
+  document.querySelectorAll(".widget").forEach((n, j) => n.classList.toggle("sel", j === i));
+  const sx = ev.clientX, sy = ev.clientY, w = widgets()[i], x0 = w.x, y0 = w.y, W = view.bottom.w * view.k, H = view.bottom.h * view.k;
+  d.setPointerCapture(ev.pointerId);
+  const move = (m) => {
+    w.x = Math.min(1, Math.max(0, x0 + (m.clientX - sx) / W)); w.y = Math.min(1, Math.max(0, y0 + (m.clientY - sy) / H));
+    d.style.left = w.x * W + "px"; d.style.top = w.y * H + "px";
+  };
+  const up = () => { d.removeEventListener("pointermove", move); d.removeEventListener("pointerup", up); setWidgets(widgets()); };
+  d.addEventListener("pointermove", move); d.addEventListener("pointerup", up);
+}
+
+function renderWidgetPane() {
+  const add = $("#addWidgets"); add.innerHTML = "";
+  for (const t of state.widgetTypes) {
+    const b = document.createElement("button"); b.textContent = t.label;
+    b.onclick = () => {
+      const list = widgets();
+      list.push({ type: t.id, x: 0.03, y: Math.min(0.9, 0.04 + 0.09 * list.length), scale: 1 });
+      selectedWidget = list.length - 1;
+      setWidgets(list); render();
+    };
+    add.appendChild(b);
+  }
+  const host = $("#widgetList"); host.innerHTML = "";
+  widgets().forEach((w, i) => {
+    const c = document.createElement("div"); c.className = "card";
+    if (i === selectedWidget) c.style.outline = "2px solid var(--accent)";
+    const name = (state.widgetTypes.find((t) => t.id === w.type) || { label: w.type }).label;
+    c.innerHTML = '<div class="row"><b style="flex:1"></b><button>Remove</button></div><div class="field"><span>Size</span><input type="range" min="50" max="300"><span></span></div>';
+    c.querySelector("b").textContent = name;
+    const range = c.querySelector("input"), out = c.querySelector(".field span:last-child");
+    range.value = Math.round((w.scale || 1) * 100); out.textContent = range.value + "%";
+    range.oninput = () => { w.scale = range.value / 100; out.textContent = range.value + "%"; renderWidgetsOnly(); };
+    range.onchange = () => setWidgets(widgets());
+    c.querySelector("button").onclick = () => { widgets().splice(i, 1); selectedWidget = -1; setWidgets(widgets()); render(); };
+    c.onclick = (ev) => { if (ev.target.tagName !== "BUTTON" && ev.target.tagName !== "INPUT") { selectedWidget = i; render(); } };
+    host.appendChild(c);
+  });
+}
+
+function renderWidgetsOnly() { document.querySelectorAll(".widget").forEach((n) => n.remove()); renderWidgets(); }
+
+// ---- elements pane ------------------------------------------------------------------------------------------
+
+const elementById = (id) => state.elements.find((e) => e.id === id);
+
+function select(id) {
+  selected = id;
+  document.querySelectorAll(".el").forEach((n) => n.classList.remove("sel"));
+  render();
+}
+
+function effectiveScreen(e) { const r = ruleOf(e.id).screen; return r !== "default" ? r : e.screen; }
+
+function renderList() {
+  const q = $("#search").value.trim().toLowerCase(), list = $("#list");
+  list.innerHTML = "";
+  for (const e of state.elements) {
+    if (q && !e.name.toLowerCase().includes(q) && !e.id.toLowerCase().includes(q)) continue;
+    const d = document.createElement("div");
+    d.className = "item" + (e.graphic ? " graphic" : "") + (e.id === selected ? " sel" : "");
+    d.style.paddingLeft = 10 + Math.min(e.depth, 8) * 14 + "px";
+    d.textContent = e.name || e.id;
+    const s = effectiveScreen(e);
+    if (s === "top") d.insertAdjacentHTML("beforeend", '<span class="badge top">TOP</span>');
+    if (s === "hidden") d.insertAdjacentHTML("beforeend", '<span class="badge hidden">HIDDEN</span>');
+    if (rules()[e.id]) d.insertAdjacentHTML("beforeend", '<span class="badge changed">CHANGED</span>');
+    d.onclick = () => select(e.id);
+    list.appendChild(d);
+  }
+}
+
+function renderSelection() {
+  const card = $("#selCard"), e = selected && elementById(selected);
+  if (!e) {
+    card.innerHTML = '<div class="muted">Click an element on the screens or in the list. Drag it to move it, drop it on the other screen to send it there, scroll to resize.</div>';
+    return;
+  }
+  const r = ruleOf(e.id), s = effectiveScreen(e);
+  card.innerHTML = '<div style="font-weight:700;font-size:16px"></div><div class="muted" style="word-break:break-all"></div>' +
+    '<div class="row" style="margin-top:10px"><button data-s="bottom">Bottom</button><button data-s="top">Top</button><button data-s="hidden">Hidden</button></div>' +
+    '<div class="field"><span>Size</span><input type="range" min="25" max="400"><span></span></div>' +
+    '<div class="row" style="margin-top:10px"><button id="resetOne">Reset this element</button></div>';
+  card.children[0].textContent = e.name || e.id; card.children[1].textContent = e.id;
+  card.querySelectorAll("[data-s]").forEach((b) => {
+    b.classList.toggle("on", b.dataset.s === s);
+    b.onclick = () => setRule(e.id, Object.assign(ruleOf(e.id), { screen: b.dataset.s, x: b.dataset.s === s ? ruleOf(e.id).x : 0, y: b.dataset.s === s ? ruleOf(e.id).y : 0 }));
+  });
+  const range = card.querySelector("input"), out = card.querySelector(".field span:last-child");
+  range.value = Math.round(r.scale * 100); out.textContent = range.value + "%";
+  range.oninput = () => { out.textContent = range.value + "%"; };
+  range.onchange = () => { const nr = ruleOf(e.id); nr.scale = range.value / 100; if (nr.screen === "default") nr.screen = s; setRule(e.id, nr); };
+  card.querySelector("#resetOne").onclick = () => setRule(e.id, { screen: "default", scale: 1, x: 0, y: 0 });
+}
+
+$("#search").addEventListener("input", renderList);
+
+document.addEventListener("keydown", (ev) => {
+  if (!state || !selected || ev.target.tagName === "INPUT" || ev.target.tagName === "TEXTAREA") return;
+  const e = elementById(selected); if (!e) return;
+  const r = ruleOf(selected), s = effectiveScreen(e), v = s === "top" ? view.top : view.bottom, step = ev.shiftKey ? 10 : 1;
+  const nudge = (dx, dy) => { if (r.screen === "default") r.screen = s; r.x += dx * step / v.w; r.y += dy * step / v.h; setRule(selected, r); };
+  switch (ev.key) {
+    case "ArrowLeft": nudge(-1, 0); break;
+    case "ArrowRight": nudge(1, 0); break;
+    case "ArrowUp": nudge(0, -1); break;
+    case "ArrowDown": nudge(0, 1); break;
+    case "+": case "=": scaleSelected(1.06); break;
+    case "-": scaleSelected(1 / 1.06); break;
+    case "t": case "T": setRule(selected, Object.assign(r, { screen: "top", x: 0, y: 0 })); break;
+    case "b": case "B": setRule(selected, Object.assign(r, { screen: "bottom", x: 0, y: 0 })); break;
+    case "h": case "H": setRule(selected, Object.assign(r, { screen: "hidden" })); break;
+    case "r": case "R": setRule(selected, { screen: "default", scale: 1, x: 0, y: 0 }); break;
+    case "Escape": select(null); break;
+    default: return;
+  }
+  ev.preventDefault();
+});
+
+// ---- background pane ----------------------------------------------------------------------------------------
+
+const modeInfo = [
+  ["game", "Game", "The game world continues behind the interface"],
+  ["blur", "Blurred game", "The world, softly blurred, so the interface stands out"],
+  ["color", "Color", "A solid color. Also saves work for the game"],
+  ["image", "Image", "A picture of your choice"],
+];
+const swatches = ["#101322", "#000000", "#1C202C", "#12284E", "#1C4078", "#2E225A", "#541E5C", "#183428"];
+
+function renderBackground() {
+  if (!state) return;
+  const bg = background(), modes = $("#modes");
+  modes.innerHTML = "";
+  for (const [id, label, hint] of modeInfo) {
+    const b = document.createElement("button");
+    b.innerHTML = "<b></b><div class=\"muted\"></div>";
+    b.children[0].textContent = label; b.children[1].textContent = hint;
+    b.classList.toggle("on", bg.mode === id);
+    b.disabled = !state.caps[id];
+    b.onclick = () => (id === "image" && !state.hasImage ? $("#imageFile").click() : setBackground({ mode: id }));
+    modes.appendChild(b);
+  }
+  const unsupported = modeInfo.filter(([id]) => !state.caps[id]).map(([, l]) => l);
+  $("#modeNote").textContent = unsupported.length ? "This game's mod cannot draw: " + unsupported.join(", ") + "." : "";
+  const o = $("#bgOptions");
+  let html = "";
+  if (bg.mode === "color") {
+    html += '<div class="row swatches">' + swatches.map((c) => '<button class="swatch' + (c.toLowerCase() === bg.color.toLowerCase() ? " on" : "") + '" data-c="' + c + '" style="background:' + c + '" aria-label="' + c + '"></button>').join("") +
+      '<input type="color" id="pick" value="' + bg.color + '" aria-label="Any color"></div>';
+  }
+  if (bg.mode === "blur") html += field("Blur", "blur", bg.blur);
+  if (bg.mode === "image") html += '<div class="row"><button id="choose">Upload an image</button><button id="snapBg">Use the top screen</button></div>';
+  if (bg.mode !== "color") html += field("Dim", "dim", bg.dim / 0.9);
+  html += '<input type="file" id="imageFile" accept="image/*" hidden>';
+  o.innerHTML = html;
+  o.querySelectorAll("[data-c]").forEach((b) => (b.onclick = () => setBackground({ color: b.dataset.c })));
+  const pick = o.querySelector("#pick"); if (pick) pick.onchange = () => setBackground({ color: pick.value.toUpperCase() });
+  o.querySelectorAll("input[type=range]").forEach((r) => {
+    const out = r.parentElement.querySelector("span:last-child");
+    r.oninput = () => (out.textContent = r.value + "%");
+    r.onchange = () => setBackground({ [r.dataset.k]: r.dataset.k === "dim" ? (r.value / 100) * 0.9 : r.value / 100 });
+  });
+  const choose = o.querySelector("#choose"); if (choose) choose.onclick = () => $("#imageFile").click();
+  const snap = o.querySelector("#snapBg"); if (snap) snap.onclick = async () => { toast("Capturing the top screen"); const r = await api("/api/snapshot-background", {}); toast(r.ok ? "Background set" : "Could not capture the screen"); scheduleRefresh(500); };
+  $("#imageFile").onchange = uploadImage;
+}
+
+function field(label, key, value) {
+  const pct = Math.round(value * 100);
+  return '<div class="field"><span>' + label + '</span><input type="range" min="0" max="100" value="' + pct + '" data-k="' + key + '"><span>' + pct + "%</span></div>";
+}
+
+async function uploadImage(ev) {
+  const file = ev.target.files[0]; if (!file) return;
+  if (file.size > 15 * 1024 * 1024) { toast("Please choose an image under 15 MB"); return; }
+  toast("Uploading");
+  const r = await api("/api/image", await file.arrayBuffer(), true);
+  if (r.ok) { state.hasImage = true; toast("Background image set"); scheduleRefresh(500); } else toast("That image could not be used");
+}
+
+// ---- share pane ---------------------------------------------------------------------------------------------
+
+$("#shareAuthor").value = localStorage.getItem("duoAuthor") || "";
+$("#share").onclick = async () => {
+  const name = $("#shareName").value.trim(), description = $("#shareDesc").value.trim(), author = $("#shareAuthor").value.trim();
+  if (!name || !description || !author) { toast("Give the layout a name, a description and your name"); return; }
+  localStorage.setItem("duoAuthor", author);
+  const w = window.open("about:blank", "_blank");
+  const r = await api("/api/share", { name, description, author });
+  if (!r.layoutInUrl) { await navigator.clipboard.writeText(r.layout).catch(() => {}); toast("The layout is long: it was copied, paste it into the form", 6000); }
+  if (w) w.location = r.url; else location.href = r.url;
+};
+$("#download").onclick = () => {
+  const blob = new Blob([JSON.stringify(state.layout, null, 2)], { type: "application/json" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = state.layout.game + "-layout.json"; a.click();
+};
+$("#resetAll").onclick = async () => {
+  if (!confirm("Reset every change for this game?")) return;
+  await api("/api/reset", {}); selected = null; selectedWidget = -1; scheduleRefresh(200);
+};
+
+// ---- chrome -------------------------------------------------------------------------------------------------
+
+function showTab(name) {
+  document.querySelectorAll(".tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === name));
+  document.querySelectorAll(".pane").forEach((p) => p.classList.toggle("show", p.id === "pane-" + name));
+}
+document.querySelectorAll(".tabs button").forEach((b) => (b.onclick = () => showTab(b.dataset.tab)));
+$("#refresh").onclick = () => load(true).catch(() => {});
+$("#live").onchange = (ev) => {
+  clearInterval(liveTimer);
+  if (ev.target.checked) {
+    liveTimer = setInterval(() => {
+      snapTime = Date.now();
+      document.querySelectorAll(".screen").forEach((d) => snapshot(d.dataset.screen).then((url) => { if (url) d.querySelector("img").src = url; }));
+    }, 2000);
+  }
+};
+window.addEventListener("resize", () => state && render());
+$("#connect").onclick = connect;
+$("#code").addEventListener("keydown", (ev) => { if (ev.key === "Enter") connect(); });
+$("#code").value = code;
+if (code) connect(); else showPair();
+</script>
+</body>
+</html>

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.RegularExpressions;
+using UnityEngine;
 
 namespace GameNativeDuo.UnitySplit
 {
@@ -57,6 +58,22 @@ namespace GameNativeDuo.UnitySplit
     ///  "elements":{"HUD/Canvas/Crosshair":{"screen":"top","scale":1.2,"x":0,"y":0}}}.
     /// Element ids are paths of object names from the scene root, with "#n" for the n-th of same-named siblings.
     /// </summary>
+    /// <summary>The bottom screen's background (see engine-adapter-contract.md): color and image here; the world is not drawn there.</summary>
+    internal sealed class Background
+    {
+        public static readonly Background Default = new Background();
+
+        public string Mode = "game";
+        public Color Color = new Color32(16, 19, 34, 255);
+        public float Dim;
+        public bool HasImage;
+
+        public bool UsesColor => Mode == "color" || Mode == "image";
+        public bool UsesImage => Mode == "image" && HasImage;
+
+        public static string ImagePath => Path.Combine(Layout.Dir, "background.jpg");
+    }
+
     internal sealed class UiRules
     {
         public static readonly UiRules Empty = new UiRules();
@@ -69,6 +86,8 @@ namespace GameNativeDuo.UnitySplit
         public static string FilePath => Path.Combine(Layout.Dir, "ui.json");
 
         public int Count => _rules.Count;
+
+        public Background Background = Background.Default;
 
         public IEnumerable<KeyValuePair<string, UiRule>> All => _rules;
 
@@ -105,7 +124,23 @@ namespace GameNativeDuo.UnitySplit
             {
                 if (!File.Exists(FilePath))
                     return rules;
-                var elements = MiniJson.Obj(MiniJson.Parse(File.ReadAllText(FilePath)), "elements");
+                object root = MiniJson.Parse(File.ReadAllText(FilePath));
+                var bg = MiniJson.Obj(root, "background");
+                if (bg != null)
+                {
+                    var b = new Background
+                    {
+                        Mode = MiniJson.Str(bg, "mode", "game"),
+                        Dim = Clamp((float)MiniJson.Num(bg, "dim", 0), 0f, 0.9f, 0f),
+                        HasImage = MiniJson.Str(bg, "image", "").Length > 0,
+                    };
+                    string hex = MiniJson.Str(bg, "color", "");
+                    uint rgb;
+                    if (hex.Length == 7 && hex[0] == '#' && uint.TryParse(hex.Substring(1), System.Globalization.NumberStyles.HexNumber, null, out rgb))
+                        b.Color = new Color32((byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb, 255);
+                    rules.Background = b;
+                }
+                var elements = MiniJson.Obj(root, "elements");
                 if (elements == null)
                     return rules;
                 foreach (var pair in elements)

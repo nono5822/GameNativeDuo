@@ -43,6 +43,7 @@ Upstream lands ~4-5 commits/day; `XServerScreen.kt` (~6,800 lines) changes almos
 | `cpp/CMakeLists.txt` | `DuoSecondaryOutput.cpp` source line |
 | `modern/jniLibs/arm64-v8a/libvulkan_renderer.so` | **rebuilt by us** (see `duo/native/README.md`); rebuild after upstream renderer changes |
 | `AndroidManifest.xml` | 3 launcher labels -> `@string/duo_app_name` |
+| `ui/component/QuickMenu.kt` | five lines marked `// GameNativeDuo`: a `DUO` tab id, rail button, title, list entry and content (`duo/ui/DuoQuickMenu.kt`) |
 | `ui/theme/Color.kt` | `PluviaPrimary`/`customPrimary`/`PluviaPurple` -> logo blue `#5B8DF6`, `PluviaPink` -> logo purple (values only, marked) |
 | `com/winlator/container/Container.java` | `AppPaths` for default drives/MEDIACONV paths; `setDrives`/`setEnvVars` rewrite old paths; `getBox64Version` strips labels like " (Default)" |
 | `com/winlator/core/DXVKHelper.java`, `WineUtils.java` | `AppPaths` instead of `/data/data/app.gamenative` |
@@ -116,6 +117,18 @@ no CPU frame copies, data over pixels, idle at 0 fps when nothing changes.
   shifted. `duo/ui/` (store, controller, editor), user layouts in `files/duo/ui/<game>.json`, presets bundled as
   `assets/duo/mods/<mod>/ui-layout.json`, handed to the mod as `ui.json`. The editor opens with a two-finger long press
   on the bottom screen -> "Edit UI layout".
+- **Bottom screen look** (part of the UI layout, so it is shared with layouts): background `game` / `blur` / `color` /
+  `image` with dim (drawn by the mod on the GPU, announced in HELLO capabilities 8/16/32: Stardew all, Unity color and
+  image), and widgets (FPS, CPU, GPU, temperature, battery, clock) drawn by the app (`duo/ui/WidgetLayer.kt`, reads
+  GameNative's own session metrics, redraws once a second, nothing when none are placed).
+- **Where to edit**: two-finger long press on the bottom screen (Edit UI layout, Edit on PC, Line up screens), or the
+  GameNative Duo tab of GameNative's in-game menu (Back button; `duo/ui/DuoQuickMenu.kt`). Note: GameNative pauses
+  the game while its menu is open, so the mod's hellos stop; use `UiLayoutController.modSeen`, not `canEdit`, there.
+- **PC editor** (`duo/pc/`): started from either menu, a small HTTP server on the device's Wi-Fi address (port 8642,
+  6-character pairing code shown on the bottom screen with a QR code, stops after 20 wrong codes, never in the
+  background). The web app is `assets/duo/pc-editor/index.html` (one file, no dependencies): both screens from
+  PixelCopy snapshots, drag elements between screens, background, widgets, and Share (opens the community repo's
+  share form on the PC, the same link as the app's Share button; background images stay private).
 - **Native touch**: bottom-screen fingers go over the bridge into the engine's UI (Unity: `EventSystem`; Stardew: the
   game's mouse via a `Mouse.GetState` postfix, X pointer untouched), never through the X mouse. Games without a bridge
   mod get mouse clicks. Setting "Native touch on the bottom screen".
@@ -200,6 +213,11 @@ dotnet build -c Release -p:ManagedPath=<Game_Data/Managed> -p:BepInExPath=<BepIn
   window (1920x2160) once, or the game renders centred and unsplit. Could be automated (Unity's `-screen-width`/
   `-screen-height` arguments or its registry keys).
 - Unity split, untested: aiming may be off if a game aims at the window centre (the hinge) instead of the camera's.
+- A plain `View` measured "wrap content" takes all the height it is offered: give spacers a fixed size
+  (`DuoUi.add` does).
+- Kotlin runs property initializers and `init` blocks in file order: an `init` that uses properties declared below it
+  sees them null.
+- `formatKotlinMain` rewrites the whole module (upstream too): restore every non-duo file it touched with `git checkout`.
 - Harmony does not write `__args` changes back to value arguments: change arguments with `ref` parameters.
 - Stardew died at "Waiting for game to launch" on the first launch after each APK install (2/2, later launches fine;
   before SMAPI reads mods, so not our mod). Retry. See `duo/notes/2026-10-20-device-testing.md`.

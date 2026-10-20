@@ -25,6 +25,8 @@ import androidx.compose.ui.unit.dp
 import app.gamenative.R
 import app.gamenative.duo.DualScreenHost
 import app.gamenative.duo.display.DeviceProfile
+import app.gamenative.duo.ui.UiBackgroundMode
+import app.gamenative.duo.ui.UiLayout
 import app.gamenative.duo.ui.UiLayoutStore
 import app.gamenative.ui.util.SnackbarManager
 import java.io.File
@@ -55,24 +57,13 @@ object ShareLayout {
         } catch (t: Throwable) {
             Timber.tag(DualScreenHost.TAG).w(t, "Could not remember the author name")
         }
-        val layout = UiLayoutStore.load(context, containerId).toJson().toString()
-        fun url(withLayout: Boolean) = Uri.parse(NEW_ISSUE).buildUpon()
-            .appendQueryParameter("template", "share-layout.yml")
-            .appendQueryParameter("title", "Layout: $name ($gameTitle)")
-            .appendQueryParameter("game", containerId)
-            .appendQueryParameter("game-title", gameTitle)
-            .appendQueryParameter("name", name)
-            .appendQueryParameter("description", description)
-            .appendQueryParameter("author", author)
-            .appendQueryParameter("device", DeviceProfile.detect().id)
-            .apply { if (withLayout) appendQueryParameter("layout", layout) }
-            .build()
-        var uri = url(withLayout = true)
+        val layout = shareable(UiLayoutStore.load(context, containerId)).toJson().toString()
+        var uri = Uri.parse(formUrl(containerId, gameTitle, name, description, author, layout))
         if (uri.toString().length > MAX_URL) {
             context.getSystemService(ClipboardManager::class.java)
                 ?.setPrimaryClip(ClipData.newPlainText("GameNative Duo layout", layout))
             SnackbarManager.show(context.getString(R.string.duo_share_layout_clipboard))
-            uri = url(withLayout = false)
+            uri = Uri.parse(formUrl(containerId, gameTitle, name, description, author, null))
         }
         return try {
             context.startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -81,6 +72,45 @@ object ShareLayout {
             Timber.tag(DualScreenHost.TAG).w(t, "Could not open the share form")
             false
         }
+    }
+
+    /**
+     * The share form's address, filled in; [layout] null leaves the layout field empty (too long for a link: the
+     * caller hands it over another way, e.g. the clipboard). Also used by the PC editor, which opens it on the PC.
+     */
+    fun formUrl(containerId: String, gameTitle: String, name: String, description: String, author: String, layout: String?): String =
+        Uri.parse(NEW_ISSUE).buildUpon()
+            .appendQueryParameter("template", "share-layout.yml")
+            .appendQueryParameter("title", "Layout: $name ($gameTitle)")
+            .appendQueryParameter("game", containerId)
+            .appendQueryParameter("game-title", gameTitle)
+            .appendQueryParameter("name", name)
+            .appendQueryParameter("description", description)
+            .appendQueryParameter("author", author)
+            .appendQueryParameter("device", DeviceProfile.detect().id)
+            .apply { if (layout != null) appendQueryParameter("layout", layout) }
+            .build()
+            .toString()
+
+    /** Fits a link: true when [url] can be opened as is. */
+    fun fitsUrl(url: String) = url.length <= MAX_URL
+
+    /** What gets shared: a background image is the user's own and stays private, so it becomes a plain color. */
+    fun shareable(layout: UiLayout): UiLayout = if (layout.background.mode == UiBackgroundMode.IMAGE || layout.background.image) {
+        layout.copy(
+            background = layout.background.copy(
+                mode = if (layout.background.mode ==
+                    UiBackgroundMode.IMAGE
+                ) {
+                    UiBackgroundMode.COLOR
+                } else {
+                    layout.background.mode
+                },
+                image = false,
+            ),
+        )
+    } else {
+        layout
     }
 
     private fun authorFile(context: Context) = File(context.filesDir, "duo/community/author.txt")

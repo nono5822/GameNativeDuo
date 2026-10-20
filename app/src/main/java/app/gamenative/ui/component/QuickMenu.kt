@@ -148,6 +148,7 @@ private object QuickMenuTab {
     const val IMMERSIVE = 5
     const val INVITE = 6
     const val POWER = 7
+    const val DUO = 8 // GameNativeDuo
 }
 
 private class GyroQuickMenuState(private val container: Container) {
@@ -582,6 +583,7 @@ fun QuickMenu(
         QuickMenuTab.INVITE -> R.string.steam_invite_tab_title
         QuickMenuTab.POWER -> R.string.power_control
         QuickMenuTab.IMMERSIVE -> R.string.quick_menu_tab_immersive
+        QuickMenuTab.DUO -> R.string.duo_quick_menu_title // GameNativeDuo
         else -> R.string.quick_menu_tab_controller
     }
 
@@ -650,6 +652,7 @@ fun QuickMenu(
             add(QuickMenuTab.CONTROLLER)
             add(QuickMenuTab.TOOLS)
             if (immersiveControls != null) add(QuickMenuTab.IMMERSIVE)
+            if (app.gamenative.duo.ui.DuoQuickMenu.isAvailable()) add(QuickMenuTab.DUO) // GameNativeDuo
         }
     }
 
@@ -916,6 +919,7 @@ fun QuickMenu(
                                     modifier = Modifier.width(56.dp),
                                     focusRequester = toolsTabFocusRequester,
                                 )
+                                if (app.gamenative.duo.ui.DuoQuickMenu.isAvailable()) QuickMenuTabButton(icon = app.gamenative.duo.ui.DuoQuickMenu.icon, contentDescriptionResId = R.string.duo_quick_menu_title, selected = selectedTab == QuickMenuTab.DUO, accentColor = app.gamenative.duo.ui.DuoQuickMenu.accent, onSelected = { selectedTab = QuickMenuTab.DUO }, modifier = Modifier.width(56.dp)) // GameNativeDuo
                                 if (immersiveControls != null) {
                                     QuickMenuTabButton(
                                         icon = Icons.Default.ViewInAr,
@@ -1088,6 +1092,7 @@ fun QuickMenu(
                                         )
                                     }
 
+                                    QuickMenuTab.DUO -> app.gamenative.duo.ui.DuoQuickMenuSection(onDismiss = onDismiss, modifier = Modifier.fillMaxSize()) // GameNativeDuo
                                     QuickMenuTab.IMMERSIVE -> {
                                         if (immersiveControls != null) {
                                             ImmersiveQuickMenuTab(

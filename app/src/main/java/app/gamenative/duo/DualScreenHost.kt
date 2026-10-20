@@ -33,6 +33,11 @@ import timber.log.Timber
 object DualScreenHost {
     internal const val TAG = "GNDuo"
 
+    /** The running game's session (GameNative's in-game menu shows its GameNative Duo section from it). */
+    @Volatile
+    var current: DualScreenSession? = null
+        private set
+
     /**
      * Starts a dual-screen session for the game that is launching. The session ends by itself when
      * [lifecycleView] (the game screen's root view) is detached from its window.
@@ -42,12 +47,14 @@ object DualScreenHost {
         DuoModInstaller.refreshIfUpdated(context, container.id)
         DualScreenSession(context, container, xServer).also { session ->
             session.start()
+            current = session
             lifecycleView.addOnAttachStateChangeListener(
                 object : View.OnAttachStateChangeListener {
                     override fun onViewAttachedToWindow(v: View) {}
 
                     override fun onViewDetachedFromWindow(v: View) {
                         v.removeOnAttachStateChangeListener(this)
+                        if (current === session) current = null
                         session.detach()
                     }
                 },
@@ -102,6 +109,12 @@ class DualScreenSession internal constructor(
         null
     }
     private var running = false
+
+    /** The game's UI layout while the screen split runs with a mod-aware layout (else null). */
+    val layout: UiLayoutController? get() = uiLayout
+
+    /** The screen split, for the in-game menu's actions (null when the split is off). */
+    val screens: SplitScreenController? get() = screenSplit
 
     private val displayListener = object : DisplayManager.DisplayListener {
         override fun onDisplayAdded(displayId: Int) = report("display $displayId added")

@@ -25,7 +25,7 @@ namespace GameNativeDuo.UnitySplit
         public const byte Version = 1;
         public const byte Touch = 0x01, RulesChanged = 0x02, DumpElements = 0x03;
         public const byte Hello = 0x81, ElementsWritten = 0x83;
-        public const uint CapTouch = 1, CapUiRules = 2, CapElements = 4;
+        public const uint CapTouch = 1, CapUiRules = 2, CapElements = 4, CapBgBasic = 8;
         public const byte TouchDown = 0, TouchMove = 1, TouchUp = 2, TouchCancel = 3;
 
         public struct Message

@@ -44,6 +44,13 @@ Act only while the window is exactly `screen` (±2 px). Re-read it when it chang
   with the same screen shapes.
 - A rule with no `screen` keeps the adapter's default screen (resizing a crosshair must not drop it to the bottom).
 - The game keeps animating its UI: apply rules on top of what the game writes every frame, never instead of it.
+- **`background`** (optional): what the bottom screen shows behind the UI.
+  `{"mode":"game|blur|color|image","color":"#101322","dim":0.3,"blur":0.5,"image":"background.jpg"}`. `game` (the
+  default) is the world continuing below the top screen; `blur` the same, blurred (`blur` 0 to 1); `color` a solid
+  color; `image` the picture `background.jpg` next to `ui.json` (cover the screen, centred). `dim` (0 to 0.9) darkens
+  everything but `color`. Draw it on the GPU only, and only what you announce in HELLO (below): the app greys out the
+  rest.
+- **`widgets`** (optional): readouts the app draws itself (FPS, battery...). Adapters ignore them.
 - Same file format for the user's layout (`files/duo/ui/<game>.json`), the preset bundled with a mod
   (`assets/duo/mods/<mod>/ui-layout.json`) and, later, community presets.
 
@@ -58,7 +65,7 @@ packets only from 127.0.0.1:`bridge.port`. Little-endian; every packet starts wi
 | `0x01` TOUCH | app → adapter | `action u8` (0 down, 1 move, 2 up, 3 cancel), `pointer u8`, 2 bytes padding, `x f32`, `y f32` (window px, origin top-left) |
 | `0x02` RULES_CHANGED | app → adapter | none: re-read `ui.json` now |
 | `0x03` DUMP_ELEMENTS | app → adapter | `request u32`: write `elements.json`, then answer ELEMENTS_WRITTEN |
-| `0x81` HELLO | adapter → app | `capabilities u32` (1 touch, 2 UI rules, 4 element list), engine name (ASCII) |
+| `0x81` HELLO | adapter → app | `capabilities u32` (1 touch, 2 UI rules, 4 element list, 8 background color and image, 16 blur, 32 game), engine name (ASCII) |
 | `0x83` ELEMENTS_WRITTEN | adapter → app | `request u32` |
 
 The app treats the adapter as gone after 15 s without a HELLO (loading screens stall games) and then falls back to

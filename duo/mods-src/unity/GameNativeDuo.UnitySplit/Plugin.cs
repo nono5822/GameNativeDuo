@@ -18,7 +18,7 @@ namespace GameNativeDuo.UnitySplit
     /// (<see cref="TouchInjector"/>). Nothing changes unless the window matches GameNative Duo's layout.json, and every
     /// step catches its own errors so the game keeps running.
     /// </summary>
-    [BepInPlugin("app.gamenative.duo.unitysplit", "GameNative Duo Unity Split", "0.3.1")]
+    [BepInPlugin("app.gamenative.duo.unitysplit", "GameNative Duo Unity Split", "0.4.0")]
     public sealed class Plugin : BaseUnityPlugin
     {
         internal static ManualLogSource Log;
@@ -133,7 +133,7 @@ namespace GameNativeDuo.UnitySplit
                 if (now >= _nextHello)
                 {
                     _nextHello = now + HelloSeconds;
-                    _bridge.SendHello(Bridge.CapTouch | Bridge.CapUiRules | Bridge.CapElements, Engine);
+                    _bridge.SendHello(Bridge.CapTouch | Bridge.CapUiRules | Bridge.CapElements | Bridge.CapBgBasic, Engine);
                 }
                 _bridge.Drain(_messages);
                 if (_messages.Count == 0)

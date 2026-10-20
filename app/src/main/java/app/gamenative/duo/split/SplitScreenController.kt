@@ -14,14 +14,24 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.view.WindowManager
 import android.widget.FrameLayout
+import androidx.activity.ComponentActivity
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia
 import app.gamenative.duo.DualScreenHost
 import app.gamenative.duo.bridge.DuoBridge
 import app.gamenative.duo.display.DeviceProfile
 import app.gamenative.duo.display.ScreenCalibration
 import app.gamenative.duo.display.ScreenCalibrationStore
 import app.gamenative.duo.display.realSize
+import app.gamenative.duo.pc.PcEditorHost
+import app.gamenative.duo.pc.PcEditorPanel
+import app.gamenative.duo.pc.PcEditorServer
+import app.gamenative.duo.ui.Snapshots
+import app.gamenative.duo.ui.UiLayout
 import app.gamenative.duo.ui.UiLayoutController
 import app.gamenative.duo.ui.UiLayoutEditor
+import app.gamenative.duo.ui.WidgetLayer
 import com.winlator.container.Container
 import com.winlator.renderer.VulkanRenderer
 import com.winlator.xserver.Pointer
@@ -136,6 +146,24 @@ class SplitScreenController(
         split?.let { LayoutFile.write(container, it, new, bridge?.port ?: 0) }
     }
 
+    // ---- for GameNative's in-game menu (duo/ui/DuoQuickMenu.kt) ---------------------------------------------------
+
+    /** Opens the layout editor on the bottom screen. False when there is no bottom screen or no layout. */
+    fun openEditor(): Boolean = presentation?.openEditor() == true
+
+    /** Opens the screen alignment panel on the bottom screen. */
+    fun openCalibration(): Boolean = presentation?.openCalibration() == true
+
+    /** Starts the PC editor (if needed); its address and code, or null when it cannot run. */
+    fun startPcEditor(showCard: Boolean): Pair<String?, String>? = presentation?.startPc(showCard)
+
+    fun stopPcEditor() {
+        presentation?.stopPc()
+    }
+
+    /** The PC editor's address and code while it runs. */
+    val pcEditor: Pair<String?, String>? get() = presentation?.pcInfo
+
     fun stop() {
         dismissPresentation()
         if (split != null) Timber.tag(DualScreenHost.TAG).i("Screen split off")
@@ -177,11 +205,11 @@ class SplitScreenController(
 }
 
 private class SplitBottomPresentation(
-    outerContext: Context,
+    private val outerContext: Context,
     display: Display,
     private val xServer: XServer,
     private val topRenderer: VulkanRenderer,
-    private val topRect: FloatArray,
+    override val topRect: FloatArray,
     /** The part of the X screen the bottom screen shows (changes live in region view). */
     private var rect: FloatArray,
     private var calibration: ScreenCalibration,
@@ -194,7 +222,8 @@ private class SplitBottomPresentation(
     private val onCalibrationChange: (ScreenCalibration) -> Unit,
     private val onCalibrationDone: (ScreenCalibration) -> Unit,
 ) : Presentation(outerContext, display),
-    SurfaceHolder.Callback {
+    SurfaceHolder.Callback,
+    PcEditorHost {
     /** How the current gesture reaches the game, decided when its first finger lands. */
     private enum class Gesture { NONE, MOUSE, NATIVE, IGNORED }
 
@@ -206,6 +235,21 @@ private class SplitBottomPresentation(
     private var holder: SurfaceHolder? = null
     private var root: FrameLayout? = null
     private var overlay: View? = null
+    private var surfaceView: SurfaceView? = null
+    private var widgets: WidgetLayer? = null
+    private var editor: UiLayoutEditor? = null
+    private var pc: PcEditorServer? = null
+    private val layoutListener: (UiLayout) -> Unit = { widgets?.show(it.widgets) }
+
+    /** Snapshots are copied and compressed here, never on the main thread (started on first use). */
+    private var snapThread: android.os.HandlerThread? = null
+    private var snapHandlerOrNull: Handler? = null
+    private val snapHandler: Handler
+        get() = snapHandlerOrNull ?: android.os.HandlerThread("GNDuo-snap", android.os.Process.THREAD_PRIORITY_BACKGROUND).let {
+            it.start()
+            snapThread = it
+            Handler(it.looper).also { h -> snapHandlerOrNull = h }
+        }
     private val openMenu = Runnable { showMenu() }
     private val menuStart = FloatArray(4)
     private val point = FloatArray(2)
@@ -243,11 +287,20 @@ private class SplitBottomPresentation(
             holder.addCallback(this@SplitBottomPresentation)
             setOnTouchListener { v, event -> onTouch(v.width, v.height, event) }
         }
+        this.surfaceView = surfaceView
+        // Widgets sit above the game and below our panels; touches go through them to the game.
+        val layer = WidgetLayer(context)
+        widgets = layer
         root = FrameLayout(context).apply {
             setBackgroundColor(Color.BLACK)
             addView(surfaceView)
+            addView(layer, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
         }
         setContentView(root!!)
+        uiLayout?.let {
+            it.listeners += layoutListener
+            layer.show(it.layout.widgets)
+        }
     }
 
     override fun surfaceCreated(holder: SurfaceHolder) {}
@@ -281,6 +334,117 @@ private class SplitBottomPresentation(
     private fun hideOverlay() {
         overlay?.let { root?.removeView(it) }
         overlay = null
+        editor = null
+    }
+
+    // ---- background image, snapshots, PC editor ----------------------------------------------------------------
+
+    /** The system photo picker (on the top screen); the chosen image becomes the bottom screen's background. */
+    private fun pickImage() {
+        val ui = uiLayout ?: return
+        val activity = Snapshots.activityOf(outerContext) as? ComponentActivity ?: return
+        try {
+            var launcher: ActivityResultLauncher<PickVisualMediaRequest>? = null
+            launcher = activity.activityResultRegistry.register(
+                "gnduo-background-" + android.os.SystemClock.uptimeMillis(),
+                PickVisualMedia(),
+            ) { uri ->
+                launcher?.unregister()
+                if (uri == null) return@register
+                snapHandler.post {
+                    val bytes = try {
+                        activity.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                    } catch (t: Throwable) {
+                        Timber.tag(DualScreenHost.TAG).w(t, "Could not read the chosen image")
+                        null
+                    }
+                    if (bytes != null) handler.post { setImage(ui, bytes) }
+                }
+            }
+            launcher.launch(
+                PickVisualMediaRequest(PickVisualMedia.ImageOnly),
+            )
+        } catch (t: Throwable) {
+            Timber.tag(DualScreenHost.TAG).e(t, "Could not open the image picker")
+        }
+    }
+
+    /** The top screen's current picture (the game without its UI) as the bottom screen's background. */
+    private fun snapshotBackground() {
+        val ui = uiLayout ?: return
+        snapshot(top = true) { jpeg -> if (jpeg != null) handler.post { setImage(ui, jpeg) } }
+    }
+
+    private fun setImage(ui: UiLayoutController, bytes: ByteArray) {
+        val (w, h) = bottomSize
+        ui.setBackgroundImage(bytes, w, h) { ok ->
+            if (!ok) Timber.tag(DualScreenHost.TAG).w("The background image could not be used")
+            editor?.onBackgroundChanged()
+        }
+    }
+
+    override val controller: UiLayoutController get() = uiLayout!!
+    override val windowW: Int get() = xServer.screenInfo.width.toInt()
+    override val windowH: Int get() = xServer.screenInfo.height.toInt()
+    override val bottomRect: FloatArray get() = rect
+    override val bottomSize: Pair<Int, Int> get() = surfaceSize ?: (1240 to 1080)
+
+    override fun snapshot(top: Boolean, done: (ByteArray?) -> Unit) {
+        val view = if (top) Snapshots.activityOf(outerContext)?.window?.decorView?.let { Snapshots.findSurface(it) } else surfaceView
+        if (view == null) {
+            done(null)
+            return
+        }
+        Snapshots.capture(view, snapHandler) { bitmap ->
+            val jpeg = bitmap?.let { Snapshots.jpeg(it).also { _ -> it.recycle() } }
+            done(jpeg)
+        }
+    }
+
+    /** From GameNative's menu: the game is paused until the menu closes, so the editor opens a moment later. */
+    fun openEditor(): Boolean {
+        if (uiLayout?.modSeen != true) return false
+        handler.postDelayed({ showEditor() }, 400)
+        return true
+    }
+
+    fun openCalibration(): Boolean {
+        if (regionView) return false
+        handler.postDelayed({ showCalibration() }, 400)
+        return true
+    }
+
+    val pcInfo: Pair<String?, String>? get() = pc?.let { it.url to it.code }
+
+    fun startPc(showCard: Boolean): Pair<String?, String>? {
+        if (uiLayout == null) return null
+        val server = pc ?: PcEditorServer(context, this).takeIf { it.start() }?.also {
+            pc = it
+            it.onStopped = { if (overlay is PcEditorPanel) hideOverlay() }
+        } ?: return null
+        if (showCard) showPcCard(server)
+        return server.url to server.code
+    }
+
+    fun stopPc() {
+        pc?.stop()
+        pc = null
+        if (overlay is PcEditorPanel) hideOverlay()
+    }
+
+    /** Starts the PC editor (or shows it again) and its card with the address and code. */
+    private fun showPc() {
+        startPc(showCard = true)
+    }
+
+    private fun showPcCard(server: PcEditorServer) {
+        showOverlay(
+            PcEditorPanel(
+                context, server.url, server.code,
+                onHide = ::hideOverlay,
+                onStop = ::stopPc,
+            ),
+        )
     }
 
     private fun showMenu() {
@@ -297,6 +461,8 @@ private class SplitBottomPresentation(
                     onCalibrate = ::showCalibration,
                     onClose = ::hideOverlay,
                     onChooseRegion = if (regionView) ::showRegion else null,
+                    onEditOnPc = if (uiLayout != null) ::showPc else null,
+                    pcRunning = pc != null,
                 ),
             )
         } catch (t: Throwable) {
@@ -307,7 +473,14 @@ private class SplitBottomPresentation(
     private fun showEditor() {
         val ui = uiLayout ?: return
         try {
-            showOverlay(UiLayoutEditor(context, ui, topRect, rect, onDone = ::hideOverlay))
+            val e = UiLayoutEditor(
+                context, ui, topRect, rect, widgets,
+                onPickImage = ::pickImage,
+                onSnapshotBackground = ::snapshotBackground,
+                onDone = ::hideOverlay,
+            )
+            editor = e
+            showOverlay(e)
         } catch (t: Throwable) {
             Timber.tag(DualScreenHost.TAG).e(t, "Failed to open the UI layout editor")
             hideOverlay()
@@ -375,6 +548,12 @@ private class SplitBottomPresentation(
     override fun onStop() {
         handler.removeCallbacks(openMenu)
         endGesture(cancel = true)
+        uiLayout?.listeners?.remove(layoutListener)
+        pc?.stop()
+        pc = null
+        snapThread?.quitSafely()
+        snapThread = null
+        snapHandlerOrNull = null
         super.onStop()
     }
 

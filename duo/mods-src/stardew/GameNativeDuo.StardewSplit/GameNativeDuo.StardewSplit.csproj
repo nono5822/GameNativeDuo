@@ -7,7 +7,7 @@
   <PropertyGroup>
     <AssemblyName>GameNativeDuo.StardewSplit</AssemblyName>
     <RootNamespace>GameNativeDuo.StardewSplit</RootNamespace>
-    <Version>0.2.0</Version>
+    <Version>0.3.0</Version>
     <TargetFramework>net6.0</TargetFramework>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>

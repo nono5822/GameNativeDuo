@@ -112,6 +112,7 @@ namespace GameNativeDuo.UnitySplit
         private UiRules _rules = UiRules.Empty;
         private Camera _bottomCam, _topCam, _hiddenCam;
         private readonly CameraPlacer _cameras = new CameraPlacer();
+        private readonly BottomBackground _background = new BottomBackground();
         private readonly Dictionary<Canvas, RootState> _roots = new Dictionary<Canvas, RootState>();
         private readonly Dictionary<Camera, RootState> _cameraRoots = new Dictionary<Camera, RootState>();
         private readonly Dictionary<CanvasScaler, RootState> _byScaler = new Dictionary<CanvasScaler, RootState>();
@@ -134,12 +135,15 @@ namespace GameNativeDuo.UnitySplit
                 _hiddenCam.rect = layout.Viewport(layout.Bottom);
             if (_topCam != null)
                 _topCam.rect = layout.Viewport(layout.Top);
+            _background.Apply(_layout, _bottomCam);
         }
 
         /// <summary>New rules from ui.json: applied right away to everything already found.</summary>
         public void SetRules(UiRules rules)
         {
             _rules = rules ?? UiRules.Empty;
+            _background.Set(_rules.Background);
+            _background.Apply(_layout, _bottomCam);
             foreach (string id in _aimIds)
                 _rules.AddImplicit(id, DuoScreen.Top);
             if (_layout == null || _bottomCam == null)
@@ -735,6 +739,7 @@ namespace GameNativeDuo.UnitySplit
                 _hiddenCam.enabled = false;
             }
             _cameras.SetOurs(_bottomCam, _topCam, _hiddenCam);
+            _background.Apply(_layout, _bottomCam);
         }
 
         private Camera NewUiCamera(string name, RectInt region, CameraClearFlags clear)

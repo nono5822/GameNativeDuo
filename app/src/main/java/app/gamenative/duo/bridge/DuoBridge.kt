@@ -68,6 +68,12 @@ class DuoBridge private constructor(private val socket: DatagramSocket) {
     fun hasMod(capability: Int): Boolean =
         modPort != 0 && capabilities and capability != 0 && SystemClock.elapsedRealtime() - lastHelloAt < MOD_TIMEOUT_MS
 
+    /**
+     * True when a mod with [capability] said hello this session, even if not lately: GameNative stops the game's
+     * processes while its in-game menu is open, so a quiet mod is often only paused.
+     */
+    fun seenMod(capability: Int): Boolean = modPort != 0 && capabilities and capability != 0
+
     fun sendTouch(action: Int, pointer: Int, x: Float, y: Float) {
         val p = packet(TOUCH, 16)
         ByteBuffer.wrap(p).order(ByteOrder.LITTLE_ENDIAN).apply {
@@ -181,6 +187,15 @@ class DuoBridge private constructor(private val socket: DatagramSocket) {
         const val CAP_TOUCH = 1
         const val CAP_UI_RULES = 2
         const val CAP_ELEMENTS = 4
+
+        /** Bottom-screen background: solid color and image. */
+        const val CAP_BG_BASIC = 8
+
+        /** Bottom-screen background: the game blurred. */
+        const val CAP_BG_BLUR = 16
+
+        /** Bottom-screen background: the game itself (the world continues on the bottom screen). */
+        const val CAP_BG_GAME = 32
 
         const val TOUCH_DOWN = 0
         const val TOUCH_MOVE = 1

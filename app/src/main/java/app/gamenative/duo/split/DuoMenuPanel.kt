@@ -3,17 +3,16 @@ package app.gamenative.duo.split
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Color
-import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
-import android.widget.Button
+import android.view.View
 import android.widget.FrameLayout
 import android.widget.LinearLayout
-import android.widget.TextView
+import app.gamenative.duo.ui.DuoUi
 import kotlin.math.roundToInt
 
 /**
- * The bottom screen's in-game menu (two-finger long press): edit the game's UI layout, line up the screens.
- * Tapping outside the card closes it. Swallows all touches while open.
+ * The bottom screen's in-game menu (two-finger long press): edit the game's UI layout here or on a PC, line up the
+ * screens. Tapping outside the card closes it. Swallows all touches while open.
  */
 @SuppressLint("ViewConstructor")
 internal class DuoMenuPanel(
@@ -24,44 +23,41 @@ internal class DuoMenuPanel(
     onClose: () -> Unit,
     /** Region view only: pan and zoom what the bottom screen shows. */
     onChooseRegion: (() -> Unit)? = null,
+    /** Opens the PC editor (null where it is unavailable); [pcRunning] when it is already on. */
+    onEditOnPc: (() -> Unit)? = null,
+    pcRunning: Boolean = false,
 ) : FrameLayout(context) {
     init {
-        setBackgroundColor(Color.argb(110, 0, 0, 0))
+        setBackgroundColor(Color.argb(120, 0, 0, 0))
         isClickable = true
         setOnClickListener { onClose() }
         val card = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(12), dp(16), dp(12))
-            background = GradientDrawable().apply {
-                setColor(Color.argb(235, 20, 20, 24))
-                cornerRadius = dp(16).toFloat()
-            }
+            setPadding(dp(18), dp(14), dp(18), dp(14))
+            background = DuoUi.panelBackground(context)
             isClickable = true // taps on the card do not close it
-            addView(text("GameNative Duo", 17f, Color.WHITE))
-            if (onChooseRegion != null) {
-                addView(button("Choose bottom view") { onChooseRegion() })
-            } else {
-                addView(button("Edit UI layout") { onEditUi() }.apply { isEnabled = canEditUi })
-                if (!canEditUi) addView(text("Needs this game's GameNative Duo mod, running.", 12f, Color.LTGRAY))
-                // Lining the screens up only matters when the game continues across both (not in region view).
-                addView(button("Line up screens") { onCalibrate() })
-            }
-            addView(button("Close") { onClose() })
         }
-        addView(card, LayoutParams(dp(300), LayoutParams.WRAP_CONTENT, Gravity.CENTER))
-    }
-
-    private fun text(value: String, size: Float, color: Int) = TextView(context).apply {
-        text = value
-        textSize = size
-        setTextColor(color)
-        setPadding(0, dp(4), 0, dp(4))
-    }
-
-    private fun button(label: String, onClick: () -> Unit) = Button(context).apply {
-        text = label
-        isAllCaps = false
-        setOnClickListener { onClick() }
+        card.addView(DuoUi.label(context, "GameNative Duo", 18f, Color.WHITE, bold = true).apply { setPadding(0, 0, 0, dp(8)) })
+        fun item(text: String, enabled: Boolean = true, onClick: () -> Unit) {
+            card.addView(
+                DuoUi.chip(context, text, onClick).apply { isEnabled = enabled },
+                LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    setMargins(0, dp(4), 0, dp(4))
+                },
+            )
+        }
+        if (onChooseRegion != null) {
+            item("Choose bottom view") { onChooseRegion() }
+        } else {
+            item("Edit UI layout", canEditUi) { onEditUi() }
+            onEditOnPc?.let { item(if (pcRunning) "PC editor (on)" else "Edit on PC", canEditUi) { it() } }
+            if (!canEditUi) card.addView(DuoUi.label(context, "Needs this game's GameNative Duo mod, running.", 12f, DuoUi.MUTED))
+            // Lining the screens up only matters when the game continues across both (not in region view).
+            item("Line up screens") { onCalibrate() }
+        }
+        card.addView(View(context), LinearLayout.LayoutParams(1, dp(4)))
+        item("Close") { onClose() }
+        addView(card, LayoutParams(dp(320), LayoutParams.WRAP_CONTENT, Gravity.CENTER))
     }
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).roundToInt()

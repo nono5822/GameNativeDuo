@@ -54,7 +54,7 @@ public sealed class ModEntry : Mod
             if (e.IsMultipleOf(60))
                 Guard("UI layout reload", WatchRules);
             if (e.IsMultipleOf(120))
-                _bridge?.SendHello(Bridge.CapTouch | Bridge.CapUiRules | Bridge.CapElements, "stardew-smapi");
+                _bridge?.SendHello(Capabilities, "stardew-smapi");
         };
         helper.Events.Display.Rendered += (_, _) =>
         {
@@ -89,7 +89,7 @@ public sealed class ModEntry : Mod
         try
         {
             _bridge = new Bridge(Layout.BridgePort);
-            _bridge.SendHello(Bridge.CapTouch | Bridge.CapUiRules | Bridge.CapElements, "stardew-smapi");
+            _bridge.SendHello(Capabilities, "stardew-smapi");
             Monitor.Log($"GameNative Duo bridge: talking to the app on port {Layout.BridgePort}", LogLevel.Info);
         }
         catch (Exception ex)
@@ -126,6 +126,9 @@ public sealed class ModEntry : Mod
         TouchInput.Tick();
     }
 
+    /// <summary>Touch, UI rules, the element list, and every bottom-screen background (game, blur, color, image).</summary>
+    private const uint Capabilities = Bridge.CapTouch | Bridge.CapUiRules | Bridge.CapElements | Bridge.CapBgBasic | Bridge.CapBgBlur | Bridge.CapBgGame;
+
     private void ReloadRules()
     {
         _rulesWritten = RulesWriteTime();
@@ -133,6 +136,7 @@ public sealed class ModEntry : Mod
         if (error.Length > 0)
             Monitor.Log(error, LogLevel.Warn);
         HudLayout.SetRules(rules);
+        BottomBackground.Set(rules.Background);
         Monitor.Log($"UI layout: {rules.Count} element rule(s)", LogLevel.Trace);
     }
 

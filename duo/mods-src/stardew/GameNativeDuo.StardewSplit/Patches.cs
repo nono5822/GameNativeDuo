@@ -232,6 +232,11 @@ internal static class Patches
             var batch = Game1.spriteBatch;
             // HUD elements the user sent to the top screen, laid out for it (nothing to do when there are none).
             RenderTarget2D? topUi = HudLayout.DrawTopPass(device);
+            float zoom = Game1.options.zoomLevel;
+            var world = L.BottomWorld;
+            var bottomSource = new Rectangle((int)Math.Round(world.X / zoom), (int)Math.Round(world.Y / zoom),
+                (int)Math.Round(world.Width / zoom), (int)Math.Round(world.Height / zoom));
+            BottomBackground.Prepare(device, target_screen, bottomSource);
             device.SetRenderTarget(null);
             device.Clear(Color.Black);
             // Copy the world's colour but keep the window opaque: Stardew's lighting pass can leave the world
@@ -239,15 +244,13 @@ internal static class Patches
             batch.Begin(SpriteSortMode.Deferred, OpaqueColorOnly, SamplerState.LinearClamp, DepthStencilState.Default, RasterizerState.CullNone);
             // Top screen: the world's first rows. Bottom screen: the world after the rows hidden by the hinge,
             // magnified to the bottom screen's pixel density so both show it at the same physical size.
-            float zoom = Game1.options.zoomLevel;
             var topRows = new Rectangle(0, 0, target_screen.Width, (int)Math.Ceiling(L.Top.Bottom / zoom));
             batch.Draw(target_screen, Vector2.Zero, topRows, Color.White, 0f, Vector2.Zero, zoom, SpriteEffects.None, 1f);
-            var world = L.BottomWorld;
-            var bottomSource = new Rectangle((int)Math.Round(world.X / zoom), (int)Math.Round(world.Y / zoom),
-                (int)Math.Round(world.Width / zoom), (int)Math.Round(world.Height / zoom));
-            batch.Draw(target_screen, L.Bottom, bottomSource, Color.White);
+            // The bottom screen's background: the world (default), blurred, a color or an image (user's choice).
+            BottomBackground.Draw(batch, target_screen, bottomSource);
             batch.End();
             batch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.LinearClamp, DepthStencilState.Default, RasterizerState.CullNone);
+            BottomBackground.DrawDim(batch);
             // The game draws its fade to black in the UI layer, which only covers the bottom screen.
             if ((Game1.fadeToBlack || Game1.globalFade) && Game1.fadeToBlackAlpha > 0f)
             {

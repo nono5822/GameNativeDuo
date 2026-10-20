@@ -15,7 +15,6 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.widget.BaseAdapter
-import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ListView
@@ -41,6 +40,12 @@ internal class UiLayoutEditor(
     private val controller: UiLayoutController,
     private val topRect: FloatArray,
     private val bottomRect: FloatArray,
+    /** The bottom screen's widgets (null where widgets are unavailable): drawn there, edited here. */
+    private val widgetLayer: WidgetLayer?,
+    /** Opens the system's image picker for the background (null when it cannot be shown). */
+    private val onPickImage: (() -> Unit)?,
+    /** Uses the top screen's current picture as the background (null when unavailable). */
+    private val onSnapshotBackground: (() -> Unit)?,
     private val onDone: () -> Unit,
 ) : FrameLayout(context) {
     private var elements: UiElementList? = null
@@ -53,18 +58,10 @@ internal class UiLayoutEditor(
     private lateinit var listAdapter: BaseAdapter
     private val title = label(15f, Color.WHITE)
     private val sizeLabel = label(14f, Color.WHITE)
-    private val screenButtons = mutableMapOf<UiScreen, Button>()
+    private val screenButtons = mutableMapOf<UiScreen, DuoUi.Chip>()
     private var toolbarAtTop = false
     private var toolbarPlace = -1
     private lateinit var controls: LinearLayout
-
-    init {
-        isClickable = true // the game gets no touches while editing
-        addView(board, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
-        buildToolbar()
-        buildList()
-        refresh()
-    }
 
     // ---- data ------------------------------------------------------------------------------------------------
 
@@ -116,35 +113,62 @@ internal class UiLayoutEditor(
         return if (rule != UiScreen.DEFAULT) rule else e.screen
     }
 
-    // ---- toolbar ---------------------------------------------------------------------------------------------
+    // ---- toolbar: tabs, then the current tab's controls --------------------------------------------------------
+
+    private enum class Tab(val label: String) { ELEMENTS("Elements"), BACKGROUND("Background"), WIDGETS("Widgets") }
+
+    private var tab = Tab.ELEMENTS
+    private val tabChips = mutableMapOf<Tab, DuoUi.Chip>()
+    private val content = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
 
     private fun buildToolbar() {
         toolbar.apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(10), dp(4), dp(10), dp(4))
-            background = GradientDrawable().apply {
-                setColor(Color.argb(225, 20, 20, 24))
-                cornerRadius = dp(14).toFloat()
-            }
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            background = DuoUi.panelBackground(context)
+            isClickable = true
         }
+        val header = DuoUi.row(context)
+        Tab.entries.forEach { t -> DuoUi.add(header, DuoUi.chip(context, t.label) { showTab(t) }.also { tabChips[t] = it }) }
+        DuoUi.add(header, View(context), weight = 1f)
+        DuoUi.add(header, DuoUi.chip(context, "Done") { onDone() })
+        toolbar.addView(header)
+        toolbar.addView(content)
+        addView(toolbar)
+        showTab(Tab.ELEMENTS)
+    }
+
+    private fun showTab(t: Tab) {
+        tab = t
+        tabChips.forEach { (k, chip) -> chip.on = k == t }
+        content.removeAllViews()
+        when (t) {
+            Tab.ELEMENTS -> buildElementControls()
+            Tab.BACKGROUND -> buildBackgroundControls()
+            Tab.WIDGETS -> buildWidgetControls()
+        }
+        placeToolbar(force = true)
+        updateToolbar()
+        board.invalidate()
+    }
+
+    private fun buildElementControls() {
         title.apply {
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.START
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
-        toolbar.addView(
-            row(
-                title,
-                button("Parent") { selected?.let { e -> elements?.parentOf(e)?.let { select(it) } } },
-                button("List") { showList(true) },
-                button("Done") { onDone() },
-            ),
-        )
-        controls = row()
+        val top = DuoUi.row(context)
+        DuoUi.add(top, title, weight = 1f)
+        DuoUi.add(top, DuoUi.chip(context, "Parent") { selected?.let { e -> elements?.parentOf(e)?.let { select(it) } } })
+        DuoUi.add(top, DuoUi.chip(context, "List") { showList(true) })
+        content.addView(top)
+        controls = DuoUi.row(context)
+        screenButtons.clear()
         listOf(UiScreen.BOTTOM to "Bottom", UiScreen.TOP to "Top", UiScreen.HIDDEN to "Hide").forEach { (screen, text) ->
-            controls.addView(
-                button(text) {
-                    val e = selected ?: return@button
+            DuoUi.add(
+                controls,
+                DuoUi.chip(context, text) {
+                    val e = selected ?: return@chip
                     val old = controller.layout.rule(e.id)
                     // Offsets are relative to a screen, so they start over on the new one.
                     val rule = if (old.screen == screen) old else old.copy(screen = screen, x = 0f, y = 0f)
@@ -152,33 +176,200 @@ internal class UiLayoutEditor(
                 }.also { screenButtons[screen] = it },
             )
         }
-        controls.addView(View(context), LinearLayout.LayoutParams(0, 1, 1f))
-        controls.addView(button("−") { stepScale(1f / 1.1f) })
-        controls.addView(sizeLabel)
-        controls.addView(button("+") { stepScale(1.1f) })
-        controls.addView(button("Reset") { selected?.let { change(it.id, UiRule(), final = true) } })
-        toolbar.addView(controls)
-        addView(toolbar)
-        placeToolbar(force = true)
-        updateToolbar()
+        DuoUi.add(controls, View(context), weight = 1f)
+        DuoUi.add(controls, DuoUi.chip(context, "−") { stepScale(1f / 1.1f) })
+        DuoUi.add(controls, sizeLabel)
+        DuoUi.add(controls, DuoUi.chip(context, "+") { stepScale(1.1f) })
+        DuoUi.add(controls, DuoUi.chip(context, "Reset") { selected?.let { change(it.id, UiRule(), final = true) } })
+        content.addView(controls)
+    }
+
+    // ---- background tab --------------------------------------------------------------------------------------
+
+    private val modeChips = mutableMapOf<UiBackgroundMode, DuoUi.Chip>()
+
+    private fun buildBackgroundControls() {
+        val bg = controller.layout.background
+        val modes = DuoUi.row(context)
+        modeChips.clear()
+        UiBackgroundMode.entries.forEach { mode ->
+            DuoUi.add(
+                modes,
+                DuoUi.chip(context, mode.label) {
+                    if (mode == UiBackgroundMode.IMAGE && !controller.layout.background.image) {
+                        onPickImage?.invoke()
+                    } else {
+                        setBackground(controller.layout.background.copy(mode = mode), save = true)
+                        showTab(Tab.BACKGROUND)
+                    }
+                }.also {
+                    it.isEnabled = controller.supports(mode)
+                    it.on = bg.mode == mode
+                    modeChips[mode] = it
+                },
+            )
+        }
+        content.addView(modes)
+        if (!controller.supports(bg.mode)) {
+            val note = "This game's mod cannot draw this background yet: the bottom screen keeps its default."
+            content.addView(DuoUi.label(context, note, 13f, DuoUi.MUTED))
+        }
+        when (bg.mode) {
+            UiBackgroundMode.BLUR -> content.addView(
+                sliderRow("Blur", bg.blur) { v, done ->
+                    setBackground(controller.layout.background.copy(blur = v), done)
+                },
+            )
+            UiBackgroundMode.COLOR -> {
+                val swatches = DuoUi.row(context)
+                SWATCHES.forEach { color ->
+                    DuoUi.add(
+                        swatches,
+                        View(context).apply {
+                            background = GradientDrawable().apply {
+                                setColor(color)
+                                cornerRadius = dp(18).toFloat()
+                                setStroke(
+                                    dp(
+                                        if (color ==
+                                            bg.color
+                                        ) {
+                                            3
+                                        } else {
+                                            1
+                                        },
+                                    ),
+                                    if (color == bg.color) DuoUi.ACCENT else Color.argb(90, 255, 255, 255),
+                                )
+                            }
+                            minimumWidth = dp(40)
+                            minimumHeight = dp(40)
+                            setOnClickListener {
+                                setBackground(controller.layout.background.copy(color = color), save = true)
+                                showTab(Tab.BACKGROUND)
+                            }
+                        },
+                    )
+                }
+                content.addView(swatches)
+            }
+            UiBackgroundMode.IMAGE -> {
+                val row = DuoUi.row(context)
+                onPickImage?.let { pick -> DuoUi.add(row, DuoUi.chip(context, "Choose image") { pick() }) }
+                onSnapshotBackground?.let { snap -> DuoUi.add(row, DuoUi.chip(context, "Use a snapshot of the game") { snap() }) }
+                content.addView(row)
+            }
+            UiBackgroundMode.GAME -> {}
+        }
+        if (bg.mode != UiBackgroundMode.COLOR) {
+            content.addView(
+                sliderRow("Dim", bg.dim / MAX_DIM) { v, done ->
+                    setBackground(
+                        controller.layout.background.copy(
+                            dim =
+                            v * MAX_DIM,
+                        ),
+                        done,
+                    )
+                },
+            )
+        }
+    }
+
+    private fun setBackground(bg: UiBackground, save: Boolean) = controller.setBackground(bg, save)
+
+    private fun sliderRow(name: String, value: Float, onChange: (Float, Boolean) -> Unit): View {
+        val row = DuoUi.row(context)
+        DuoUi.add(row, DuoUi.label(context, name, 14f, Color.WHITE).apply { minWidth = dp(56) })
+        DuoUi.add(row, DuoUi.slider(context, value, onChange), weight = 1f)
+        return row
+    }
+
+    /** Called back after an image was chosen or captured: show the result. */
+    fun onBackgroundChanged() {
+        if (tab == Tab.BACKGROUND) showTab(Tab.BACKGROUND)
+    }
+
+    // ---- widgets tab -----------------------------------------------------------------------------------------
+
+    private var selectedWidget = -1
+
+    private fun buildWidgetControls() {
+        val add = DuoUi.row(context)
+        DuoUi.add(add, DuoUi.label(context, "Add", 14f, DuoUi.MUTED))
+        UiWidgetType.entries.forEach { type ->
+            DuoUi.add(
+                add,
+                DuoUi.chip(context, type.label) {
+                    val list = controller.layout.widgets
+                    if (list.size >= UiLayout.MAX_WIDGETS) return@chip
+                    // New widgets stack down the left edge; drag them where they belong.
+                    val widget = UiWidget(type, 0.03f, (0.04f + 0.09f * list.size).coerceAtMost(0.9f))
+                    controller.setWidgets(list + widget, save = true)
+                    selectedWidget = list.size
+                    showTab(Tab.WIDGETS)
+                }.also { it.isEnabled = widgetLayer != null },
+            )
+        }
+        content.addView(add)
+        val w = controller.layout.widgets.getOrNull(selectedWidget)
+        if (w != null) {
+            val row = DuoUi.row(context)
+            DuoUi.add(row, DuoUi.label(context, w.type.label, 15f, Color.WHITE, bold = true), weight = 1f)
+            DuoUi.add(row, DuoUi.chip(context, "−") { scaleWidget(1f / 1.15f) })
+            DuoUi.add(row, DuoUi.label(context, "${(w.scale * 100).roundToInt()}%", 14f, Color.WHITE))
+            DuoUi.add(row, DuoUi.chip(context, "+") { scaleWidget(1.15f) })
+            DuoUi.add(
+                row,
+                DuoUi.chip(context, "Remove") {
+                    controller.setWidgets(controller.layout.widgets.filterIndexed { i, _ -> i != selectedWidget }, save = true)
+                    selectedWidget = -1
+                    showTab(Tab.WIDGETS)
+                },
+            )
+            content.addView(row)
+        } else {
+            content.addView(
+                DuoUi.label(
+                    context,
+                    if (controller.layout.widgets.isEmpty()) {
+                        "Live readouts drawn by GameNative Duo over the game."
+                    } else {
+                        "Tap a widget to resize or remove it, drag it to move it."
+                    },
+                    13f,
+                    DuoUi.MUTED,
+                ),
+            )
+        }
+    }
+
+    private fun scaleWidget(factor: Float) {
+        val list = controller.layout.widgets.toMutableList()
+        val w = list.getOrNull(selectedWidget) ?: return
+        list[selectedWidget] = w.copy(scale = (w.scale * factor).coerceIn(UiWidget.SCALE_MIN, UiWidget.SCALE_MAX))
+        controller.setWidgets(list, save = true)
+        showTab(Tab.WIDGETS)
     }
 
     /**
-     * Never in the way: with a selection the toolbar sits on the edge away from it; without one it shrinks to a row
-     * at the top, middle or bottom, wherever it covers the least of the game's UI.
+     * Never in the way: with a selection the toolbar sits on the edge away from it; without one it goes to the
+     * top, middle or bottom, wherever it covers the least of the game's UI.
      */
     private fun placeToolbar(force: Boolean = false) {
         val gravity = when {
-            selected == null -> board.emptiestBand(dp(64).toFloat())
+            tab == Tab.WIDGETS -> if (board.widgetInLowerHalf()) Gravity.TOP else Gravity.BOTTOM
+            tab == Tab.BACKGROUND -> Gravity.BOTTOM
+            selected == null -> board.emptiestBand(dp(96).toFloat())
             board.selectionInLowerHalf() -> Gravity.TOP
             else -> Gravity.BOTTOM
         }
         if (gravity == toolbarPlace && !force) return
         toolbarPlace = gravity
         toolbarAtTop = gravity == Gravity.TOP
-        controls.visibility = if (selected == null) GONE else VISIBLE
+        if (::controls.isInitialized) controls.visibility = if (selected == null) GONE else VISIBLE
         toolbar.layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT, gravity)
-            .apply { setMargins(dp(6), dp(6), dp(6), dp(6)) }
+            .apply { setMargins(dp(8), dp(8), dp(8), dp(8)) }
         board.invalidate()
     }
 
@@ -189,16 +380,17 @@ internal class UiLayoutEditor(
     }
 
     private fun updateToolbar() {
+        if (tab != Tab.ELEMENTS) return
         val e = selected
         val rule = e?.let { controller.layout.rule(it.id) }
-        title.text = e?.let { it.id.substringAfter('/') } ?: status
-        sizeLabel.text = rule?.let { "${(it.scale * 100).roundToInt()}%" } ?: "—"
+        title.text = e?.let { it.name.ifEmpty { it.id.substringAfterLast('/') } } ?: status
+        sizeLabel.text = rule?.let { "${(it.scale * 100).roundToInt()}%" } ?: "-"
         val current = e?.let { effectiveScreen(it) }
         screenButtons.forEach { (screen, b) ->
             b.isEnabled = e != null
-            b.alpha = if (current == screen) 1f else 0.55f
-            b.setTypeface(null, if (current == screen) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
+            b.on = current == screen
         }
+        if (::controls.isInitialized) controls.visibility = if (e == null) GONE else VISIBLE
     }
 
     // ---- element list (reaches hidden and tiny elements) ------------------------------------------------------
@@ -246,15 +438,13 @@ internal class UiLayoutEditor(
         listPanel.apply {
             orientation = LinearLayout.VERTICAL
             visibility = GONE
-            setPadding(dp(6), dp(6), dp(6), dp(6))
-            background = GradientDrawable().apply {
-                setColor(Color.argb(240, 20, 20, 24))
-                cornerRadius = dp(16).toFloat()
-            }
+            setPadding(dp(10), dp(8), dp(10), dp(8))
+            background = DuoUi.panelBackground(context)
             addView(
-                row(
-                    button("Close list") { showList(false) },
-                    button("Reset all") {
+                DuoUi.row(
+                    context,
+                    DuoUi.chip(context, "Close list") { showList(false) },
+                    DuoUi.chip(context, "Reset all") {
                         controller.resetAll()
                         showList(false)
                         updateToolbar()
@@ -314,6 +504,107 @@ internal class UiLayoutEditor(
         private var baseDy = 0f
         private var baseScale = 1f
         private var lastPush = 0L
+
+        // ---- widgets (Widgets tab) ---------------------------------------------------------------------------
+
+        private var widgetStart: UiWidget? = null
+
+        fun widgetInLowerHalf(): Boolean {
+            val w = controller.layout.widgets.getOrNull(selectedWidget) ?: return false
+            return widgetLayer?.bounds(w, tmp) == true && tmp.centerY() > height / 2f
+        }
+
+        private fun widgetAt(x: Float, y: Float): Int {
+            val layer = widgetLayer ?: return -1
+            val list = controller.layout.widgets
+            for (i in list.indices.reversed()) {
+                if (layer.bounds(list[i], tmp)) {
+                    tmp.inset(-slop, -slop)
+                    if (tmp.contains(x, y)) return i
+                }
+            }
+            return -1
+        }
+
+        private fun drawWidgets(canvas: Canvas) {
+            val layer = widgetLayer ?: return
+            controller.layout.widgets.forEachIndexed { i, w ->
+                if (layer.bounds(w, tmp)) {
+                    tmp.inset(-dp(3).toFloat(), -dp(3).toFloat())
+                    if (i == selectedWidget) {
+                        fillPaint.color = Color.argb(60, 0x5B, 0x8D, 0xF6)
+                        canvas.drawRoundRect(tmp, tmp.height() / 2f, tmp.height() / 2f, fillPaint)
+                    }
+                    boxPaint.color = if (i == selectedWidget) DuoUi.ACCENT else Color.argb(150, 255, 255, 255)
+                    boxPaint.strokeWidth = dp(if (i == selectedWidget) 2 else 1).toFloat()
+                    canvas.drawRoundRect(tmp, tmp.height() / 2f, tmp.height() / 2f, boxPaint)
+                }
+            }
+        }
+
+        private fun widgetTouch(event: MotionEvent): Boolean {
+            val list = controller.layout.widgets
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downX = event.x
+                    downY = event.y
+                    val hit = widgetAt(event.x, event.y)
+                    if (hit != selectedWidget) {
+                        selectedWidget = hit
+                        showTab(Tab.WIDGETS)
+                    }
+                    widgetStart = list.getOrNull(hit)
+                    mode = if (widgetStart != null) Mode.DRAG_PENDING else Mode.NONE
+                }
+                MotionEvent.ACTION_POINTER_DOWN -> if (widgetStart != null && event.pointerCount == 2) {
+                    widgetStart = list.getOrNull(selectedWidget)
+                    mode = Mode.PINCH
+                    startDistance = distance(event).coerceAtLeast(1f)
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val start = widgetStart ?: return true
+                    when (mode) {
+                        Mode.DRAG_PENDING -> if (moved(event)) mode = Mode.DRAG
+                        Mode.DRAG -> moveWidget(
+                            start.copy(
+                                x = (start.x + (event.x - downX) / width).coerceIn(0f, 1f),
+                                y = (
+                                    start.y +
+                                        (event.y - downY) / height
+                                    ).coerceIn(0f, 1f),
+                            ),
+                            false,
+                        )
+                        Mode.PINCH -> if (event.pointerCount >= 2) {
+                            val scale = (start.scale * distance(event) / startDistance).coerceIn(UiWidget.SCALE_MIN, UiWidget.SCALE_MAX)
+                            moveWidget(start.copy(scale = scale), false)
+                        }
+                        else -> {}
+                    }
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP, MotionEvent.ACTION_CANCEL -> {
+                    if (mode == Mode.DRAG || mode == Mode.PINCH) {
+                        list.getOrNull(selectedWidget)?.let { moveWidget(it, true) }
+                        showTab(Tab.WIDGETS)
+                    }
+                    if (event.actionMasked != MotionEvent.ACTION_POINTER_UP) widgetStart = null
+                    mode = Mode.NONE
+                }
+            }
+            return true
+        }
+
+        /** Live while the finger moves (the app redraws its own layer, nothing reaches the game), saved at the end. */
+        private fun moveWidget(w: UiWidget, final: Boolean) {
+            val list = controller.layout.widgets.toMutableList()
+            if (selectedWidget !in list.indices) return
+            list[selectedWidget] = w
+            val now = SystemClock.uptimeMillis()
+            if (!final && now - lastPush < 33) return
+            lastPush = now
+            controller.setWidgets(list, save = final)
+            invalidate()
+        }
 
         /** True when the selection's box is in the lower half of the bottom screen (or the top-screen map is low). */
         fun selectionInLowerHalf(): Boolean {
@@ -411,6 +702,11 @@ internal class UiLayoutEditor(
         }.toFloat()
 
         override fun onDraw(canvas: Canvas) {
+            when (tab) {
+                Tab.WIDGETS -> return drawWidgets(canvas)
+                Tab.BACKGROUND -> return
+                Tab.ELEMENTS -> {}
+            }
             layoutMap()
             val list = elements?.elements.orEmpty()
             // Top-screen map.
@@ -472,6 +768,11 @@ internal class UiLayoutEditor(
 
         @SuppressLint("ClickableViewAccessibility")
         override fun onTouchEvent(event: MotionEvent): Boolean {
+            when (tab) {
+                Tab.WIDGETS -> return widgetTouch(event)
+                Tab.BACKGROUND -> return true
+                Tab.ELEMENTS -> {}
+            }
             val e = selected
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
@@ -563,32 +864,39 @@ internal class UiLayoutEditor(
         private fun distance(event: MotionEvent) = hypot(event.getX(0) - event.getX(1), event.getY(0) - event.getY(1))
     }
 
+    // Last in the class body: Kotlin runs initializers top to bottom, and this uses every property above.
+    init {
+        isClickable = true // the game gets no touches while editing
+        addView(board, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        buildToolbar()
+        buildList()
+        refresh()
+    }
+
     private enum class Mode { NONE, TAP, DRAG_PENDING, DRAG, PINCH }
 
-    // ---- small view helpers ---------------------------------------------------------------------------------
+    private companion object {
+        const val MAX_DIM = 0.9f
 
-    private fun row(vararg views: View) = LinearLayout(context).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
-        views.forEach { addView(it) }
+        /** Background colors to pick from: deep navy (the default), black, slate, the logo's blues and purple. */
+        val SWATCHES = intArrayOf(
+            UiBackground.DEFAULT_COLOR,
+            Color.rgb(0, 0, 0),
+            Color.rgb(28, 32, 44),
+            Color.rgb(18, 40, 78),
+            Color.rgb(28, 64, 120),
+            Color.rgb(46, 34, 90),
+            Color.rgb(84, 30, 92),
+            Color.rgb(24, 52, 40),
+        )
     }
+
+    // ---- small view helpers ---------------------------------------------------------------------------------
 
     private fun label(size: Float, color: Int) = TextView(context).apply {
         textSize = size
         setTextColor(color)
         setPadding(dp(6), 0, dp(6), 0)
-    }
-
-    private fun button(text: String, onClick: () -> Unit) = Button(context).apply {
-        this.text = text
-        textSize = 13f
-        isAllCaps = false
-        minWidth = dp(44)
-        minimumWidth = dp(44)
-        minHeight = dp(40)
-        minimumHeight = dp(40)
-        setPadding(dp(10), 0, dp(10), 0)
-        setOnClickListener { onClick() }
     }
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).roundToInt()

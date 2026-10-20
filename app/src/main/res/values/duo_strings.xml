@@ -90,4 +90,5 @@
     <string name="duo_community_kind_device">Device</string>
     <string name="duo_community_kind_mod">Mod</string>
     <string name="duo_community_kind_other">Other</string>
+    <string name="duo_quick_menu_title">GameNative Duo</string>
 </resources>
