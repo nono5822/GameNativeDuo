@@ -26,4 +26,32 @@
     <string name="duo_mod_toggle_enabled">%1$s: dual-screen mod on. Launch the game to play across both screens.</string>
     <string name="duo_mod_toggle_disabled">%1$s: dual-screen mod off, settings restored.</string>
     <string name="duo_mod_toggle_failed">%1$s: could not change the dual-screen mod (see logs).</string>
+
+    <!-- Community packages (layouts, settings, mods shared on GitHub) -->
+    <string name="duo_community_button">Community</string>
+    <string name="duo_community_title">Community dual-screen packages</string>
+    <string name="duo_community_offline">Offline: showing the list saved last time.</string>
+    <string name="duo_community_load_failed">Could not load the community list (%1$s).</string>
+    <string name="duo_community_empty">Nobody has shared a layout for this game yet. Make one in game (two fingers on the bottom screen, then Edit UI layout) and share it!</string>
+    <string name="duo_community_share">Share your layout</string>
+    <string name="duo_community_apply">Apply</string>
+    <string name="duo_community_reapply">Apply again</string>
+    <string name="duo_community_update">Update to %1$s</string>
+    <string name="duo_community_remove">Remove</string>
+    <string name="duo_community_in_use">In use</string>
+    <string name="duo_community_not_installable">Needs a newer GameNative Duo to install.</string>
+    <string name="duo_community_applied">%1$s applied. It takes effect next time the game starts.</string>
+    <string name="duo_community_apply_failed">Could not apply %1$s (%2$s).</string>
+    <string name="duo_community_layout_removed">Community layout removed.</string>
+    <string name="duo_community_replace_title">Replace your layout?</string>
+    <string name="duo_community_replace_text">You made your own UI layout for this game. %1$s will replace it.</string>
+    <string name="duo_community_replace_confirm">Replace</string>
+    <string name="duo_community_tested_here">✓ Tested on your device</string>
+    <string name="duo_community_tested_on">Tested on %1$s</string>
+    <string name="duo_community_game_version">Game version %1$s</string>
+    <string name="duo_community_kind_layout">Layout</string>
+    <string name="duo_community_kind_settings">Settings</string>
+    <string name="duo_community_kind_device">Device</string>
+    <string name="duo_community_kind_mod">Mod</string>
+    <string name="duo_community_kind_other">Other</string>
 </resources>

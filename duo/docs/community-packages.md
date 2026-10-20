@@ -55,7 +55,15 @@ Wine runs as the app's own Android user, so code in a mod can read the app's dat
 may only contain `.json` and images; code is reviewed by maintainers, hash-pinned, and installed only after the user
 sees what it writes.
 
-## App side (to build)
+## App side
+
+Built (`duo/community/`): `CommunityPackages` (fetch with ETag, ed25519 + sha256 verification, disk cache in
+`files/duo/community/`, apply/remove, applied versions in `applied/<containerId>.json`), `Ed25519` (verify-only, RFC 8032,
+unit-tested against the RFC vectors and a published catalog), and `CommunityPackagesSheet`, opened by the "Community"
+button next to the Dual screen switch. Layouts and settings apply in one tap; a layout the user made is only replaced
+after asking; updates show when the index has a newer `packageVersion`.
+
+Still to build:
 
 1. `CommunityPackageService`: fetch `games/<key>.json` (ETag, disk cache, signature check), download blobs (sha256).
 2. Game page: "Dual-screen mods" sheet: filtered by device profile, adapter version and game build; sorted by rating
