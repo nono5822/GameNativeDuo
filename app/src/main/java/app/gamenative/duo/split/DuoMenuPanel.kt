@@ -22,6 +22,8 @@ internal class DuoMenuPanel(
     onEditUi: () -> Unit,
     onCalibrate: () -> Unit,
     onClose: () -> Unit,
+    /** Region view only: pan and zoom what the bottom screen shows. */
+    onChooseRegion: (() -> Unit)? = null,
 ) : FrameLayout(context) {
     init {
         setBackgroundColor(Color.argb(110, 0, 0, 0))
@@ -36,8 +38,12 @@ internal class DuoMenuPanel(
             }
             isClickable = true // taps on the card do not close it
             addView(text("GameNative Duo", 17f, Color.WHITE))
-            addView(button("Edit UI layout") { onEditUi() }.apply { isEnabled = canEditUi })
-            if (!canEditUi) addView(text("Needs this game's GameNative Duo mod, running.", 12f, Color.LTGRAY))
+            if (onChooseRegion != null) {
+                addView(button("Choose bottom view") { onChooseRegion() })
+            } else {
+                addView(button("Edit UI layout") { onEditUi() }.apply { isEnabled = canEditUi })
+                if (!canEditUi) addView(text("Needs this game's GameNative Duo mod, running.", 12f, Color.LTGRAY))
+            }
             addView(button("Line up screens") { onCalibrate() })
             addView(button("Close") { onClose() })
         }

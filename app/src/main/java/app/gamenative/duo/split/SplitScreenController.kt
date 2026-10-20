@@ -50,6 +50,9 @@ class SplitScreenController(
     private val nativeTouch: Boolean,
     /** Render scale of the native layout (see DuoContainerSettings.splitScale). */
     private val scale: Float = 1f,
+    /** Region view: the bottom screen's part of the game (fractions, see [RegionView]); saved with [onRegionSaved]. */
+    private var region: String = "",
+    private val onRegionSaved: (String) -> Unit = {},
 ) {
     private val topRenderer: VulkanRenderer? get() = xServer.renderer as? VulkanRenderer
     private var presentation: SplitBottomPresentation? = null
@@ -70,6 +73,13 @@ class SplitScreenController(
                 when (layout) {
                     SplitLayout.FILL -> ScreenSplit.of(screenW, screenH, topAspect())
                     SplitLayout.NATIVE -> ScreenSplit.nativeFor(context, scale)?.takeIf { it.screenSize() == screenW to screenH }
+                    SplitLayout.REGION -> {
+                        val size = it.realSize()
+                        ScreenSplit(
+                            top = floatArrayOf(0f, 0f, screenW.toFloat(), screenH.toFloat()),
+                            bottom = RegionView.pixels(RegionView.parse(region), screenW, screenH, size.x.toFloat() / size.y),
+                        )
+                    }
                 }
             }
             if (bottomDisplay == null || newSplit == null) {
@@ -80,12 +90,20 @@ class SplitScreenController(
             if (presentation?.display?.displayId == bottomDisplay.displayId && split == newSplit) return
             dismissPresentation()
             split = newSplit
-            top.setDuoViewRect(newSplit.top)
-            LayoutFile.write(container, newSplit, calibration, bridge?.port ?: 0)
+            if (layout == SplitLayout.REGION) {
+                // The game is untouched: upstream's own view on top, no layout.json (mods must not split anything).
+                top.setDuoViewRect(null)
+                LayoutFile.delete(container)
+            } else {
+                top.setDuoViewRect(newSplit.top)
+                LayoutFile.write(container, newSplit, calibration, bridge?.port ?: 0)
+            }
             presentation = SplitBottomPresentation(
                 context, bottomDisplay, xServer, top, newSplit.top, newSplit.bottom, calibration, profile.calibration,
-                bridge = bridge.takeIf { nativeTouch },
-                uiLayout = uiLayout,
+                bridge = bridge.takeIf { nativeTouch && layout != SplitLayout.REGION },
+                uiLayout = uiLayout.takeIf { layout != SplitLayout.REGION },
+                regionView = layout == SplitLayout.REGION,
+                onRegionDone = ::onRegionDone,
                 onCalibrationChange = ::onCalibrationChange,
                 onCalibrationDone = { ScreenCalibrationStore.save(context, profile, it) },
             ).also { it.show() }
@@ -97,6 +115,19 @@ class SplitScreenController(
         } catch (t: Throwable) {
             Timber.tag(DualScreenHost.TAG).e(t, "Failed to update screen split")
             stop()
+        }
+    }
+
+    /** Region chosen on the bottom screen (null: back to the default); kept for this container. */
+    private fun onRegionDone(pixels: FloatArray?) {
+        val w = xServer.screenInfo.width.toInt()
+        val h = xServer.screenInfo.height.toInt()
+        region = pixels?.let { RegionView.format(RegionView.fractions(it, w, h)) }.orEmpty()
+        onRegionSaved(region)
+        if (pixels == null) {
+            // Back to the default: rebuild the bottom view with it.
+            split = null
+            update()
         }
     }
 
@@ -136,6 +167,7 @@ class SplitScreenController(
         val (w, h) = when (layout) {
             SplitLayout.FILL -> ScreenSplit.recommendedSize(xServer.screenInfo.width.toInt(), topAspect(), size.x.toFloat() / size.y)
             SplitLayout.NATIVE -> ScreenSplit.nativeFor(context, scale)?.screenSize() ?: return
+            SplitLayout.REGION -> return
         }
         Timber.tag(DualScreenHost.TAG).w(
             "Screen split is on but the X screen %dx%d has no room for a bottom part; set the container's screen size to %dx%d",
@@ -150,12 +182,15 @@ private class SplitBottomPresentation(
     private val xServer: XServer,
     private val topRenderer: VulkanRenderer,
     private val topRect: FloatArray,
-    private val rect: FloatArray,
+    /** The part of the X screen the bottom screen shows (changes live in region view). */
+    private var rect: FloatArray,
     private var calibration: ScreenCalibration,
     private val calibrationDefaults: ScreenCalibration,
     /** Native touch through the game's mod; null for mouse clicks only. */
     private val bridge: DuoBridge?,
     private val uiLayout: UiLayoutController?,
+    private val regionView: Boolean,
+    private val onRegionDone: (FloatArray?) -> Unit,
     private val onCalibrationChange: (ScreenCalibration) -> Unit,
     private val onCalibrationDone: (ScreenCalibration) -> Unit,
 ) : Presentation(outerContext, display),
@@ -261,6 +296,7 @@ private class SplitBottomPresentation(
                     onEditUi = ::showEditor,
                     onCalibrate = ::showCalibration,
                     onClose = ::hideOverlay,
+                    onChooseRegion = if (regionView) ::showRegion else null,
                 ),
             )
         } catch (t: Throwable) {
@@ -275,6 +311,41 @@ private class SplitBottomPresentation(
         } catch (t: Throwable) {
             Timber.tag(DualScreenHost.TAG).e(t, "Failed to open the UI layout editor")
             hideOverlay()
+        }
+    }
+
+    /** Pan and zoom what the bottom screen shows (region view), live. */
+    private fun showRegion() {
+        try {
+            val w = xServer.screenInfo.width.toInt()
+            val h = xServer.screenInfo.height.toInt()
+            val (sw, sh) = surfaceSize ?: return
+            showOverlay(
+                RegionPanel(
+                    context, rect, w, h, sw.toFloat() / sh,
+                    onChange = ::setRegion,
+                    onDone = { pixels ->
+                        hideOverlay()
+                        if (pixels != null) setRegion(pixels)
+                        onRegionDone(pixels)
+                    },
+                ),
+            )
+        } catch (t: Throwable) {
+            Timber.tag(DualScreenHost.TAG).e(t, "Failed to open the region view editor")
+        }
+    }
+
+    /** Shows another part of the frame: same surface, only the crop changes (cheap in the renderer). */
+    private fun setRegion(pixels: FloatArray) {
+        rect = pixels
+        val h = holder ?: return
+        val (width, height) = surfaceSize ?: return
+        try {
+            DuoViewport.transform(rect, width, height, xServer.screenInfo.width.toInt(), xServer.screenInfo.height.toInt())
+                ?.let { topRenderer.duoSetSecondary(h.surface, it) }
+        } catch (t: Throwable) {
+            Timber.tag(DualScreenHost.TAG).w(t, "Failed to move the region view")
         }
     }
 

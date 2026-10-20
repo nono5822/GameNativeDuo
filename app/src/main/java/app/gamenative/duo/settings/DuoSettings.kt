@@ -22,7 +22,10 @@ data class DuoContainerSettings(
      * Needs a matching container screen size and a game or mod that puts its UI in the lower part.
      */
     val screenSplit: Boolean = false,
-    /** How the X screen is cut: "fill" (stretch both parts to the full width) or "native" (1:1 per display). */
+    /**
+     * How the screens are used: "fill" (tall window, both parts stretched to its width), "native" (tall window, each part
+     * 1:1 with its display; dual-screen mods) or "region" (game unchanged on top, a magnified part of it below).
+     */
     val splitLayout: String = "fill",
     /**
      * Bottom-screen touches go straight to the game's UI through its GameNative Duo mod (no cursor, no mouse input
@@ -34,6 +37,8 @@ data class DuoContainerSettings(
      * pixels (the tall window is twice a 1080p frame at 1) and the renderer scales both screens up.
      */
     val splitScale: Float = 1f,
+    /** Region view ([splitLayout] "region"): the part of the game the bottom screen shows, "x,y,w,h" fractions; "" = default. */
+    val region: String = "",
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("bottomPanelEnabled", bottomPanelEnabled)
@@ -41,6 +46,7 @@ data class DuoContainerSettings(
         put("splitLayout", splitLayout)
         put("nativeTouch", nativeTouch)
         put("splitScale", splitScale.toDouble())
+        put("region", region)
     }
 
     companion object {
@@ -55,6 +61,7 @@ data class DuoContainerSettings(
                 nativeTouch = json.optBoolean("nativeTouch", fallback.nativeTouch),
                 splitScale = json.optDouble("splitScale", fallback.splitScale.toDouble()).toFloat()
                     .takeIf { it in SPLIT_SCALES } ?: fallback.splitScale,
+                region = json.optString("region", fallback.region),
             )
         }
     }

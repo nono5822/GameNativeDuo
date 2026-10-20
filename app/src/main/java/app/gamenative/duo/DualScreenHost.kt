@@ -91,6 +91,10 @@ class DualScreenSession internal constructor(
             uiLayout = uiLayout,
             nativeTouch = settings.nativeTouch,
             scale = settings.splitScale,
+            region = settings.region,
+            onRegionSaved = { region ->
+                DuoSettingsStore.save(context, container.id, DuoSettingsStore.load(context, container.id).copy(region = region))
+            },
         )
     } else {
         null

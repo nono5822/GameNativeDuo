@@ -67,6 +67,9 @@ enum class SplitLayout(val id: String) {
 
     /** Each part at its display's own resolution, 1:1 (see [ScreenSplit.native]). */
     NATIVE("native"),
+
+    /** The game unchanged on top; the bottom screen shows a magnified part of the same frame (see [RegionView]). */
+    REGION("region"),
     ;
 
     companion object {
@@ -142,6 +145,7 @@ class ScreenSplit(val top: FloatArray, val bottom: FloatArray) {
         fun recommendedFor(context: Context, layout: SplitLayout, scale: Float = 1f): Pair<Int, Int>? = when (layout) {
             SplitLayout.FILL -> recommendedFor(context, width = (1280 * minOf(scale, 1f)).roundToInt() / 2 * 2)
             SplitLayout.NATIVE -> nativeFor(context, scale)?.screenSize()
+            SplitLayout.REGION -> null // the game keeps its own size
         }
 
         /** (top w, h) in landscape and (bottom w, h) as currently shown, or null without a bottom screen. */

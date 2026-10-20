@@ -124,6 +124,7 @@ object CommunityPackages {
                         splitLayout = json.optString("splitLayout", current.splitLayout),
                         nativeTouch = json.optBoolean("nativeTouch", current.nativeTouch),
                         bottomPanelEnabled = json.optBoolean("bottomPanelEnabled", current.bottomPanelEnabled),
+                        region = json.optString("region", current.region),
                     ),
                 )
             }

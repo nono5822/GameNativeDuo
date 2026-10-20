@@ -18,6 +18,10 @@
     <string name="duo_settings_screen_split_description">Show one tall game screen across both screens: the upper part on top, the lower part below (tap it to click). Set the screen size to %1$d×%2$d and use a game or mod that puts its UI in the lower part. Replaces the bottom-screen panel.</string>
     <string name="duo_settings_native_touch">Native touch on the bottom screen</string>
     <string name="duo_settings_native_touch_description">Taps and drags go straight to the game\'s menus and HUD, like a touchscreen: no cursor, and the game never switches to mouse controls. Needs the game\'s GameNative Duo mod; otherwise taps act as mouse clicks. Hold two fingers on the bottom screen in game for the layout editor.</string>
+    <string name="duo_settings_split_mode_native">Split mode: tall game window</string>
+    <string name="duo_settings_split_mode_fill">Split mode: tall window, stretched</string>
+    <string name="duo_settings_split_mode_region">Split mode: zoomed part of the game</string>
+    <string name="duo_settings_split_mode_description">Tap to change. Tall window: for games with a dual-screen mod (set by the Dual screen switch). Zoomed part: any game, unchanged on top, with a magnified part of it (a minimap…) on the bottom screen; hold two fingers on the bottom screen in game to choose which part.</string>
     <string name="duo_settings_split_scale">Split resolution: %1$d%%</string>
     <string name="duo_settings_split_scale_description">Tap to change. Lower is much faster (the split window is twice a 1080p frame at 100%%) and the picture is scaled up on both screens. Unity games: set the in-game resolution to the new window size once.</string>
     <string name="duo_settings_screen_split_no_display">Show one tall game screen across both screens. No second screen found on this device.</string>

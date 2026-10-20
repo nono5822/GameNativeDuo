@@ -15,6 +15,7 @@ import androidx.compose.ui.res.stringResource
 import app.gamenative.R
 import app.gamenative.duo.mods.DuoModInstaller
 import app.gamenative.duo.split.ScreenSplit
+import app.gamenative.duo.split.SplitLayout
 import app.gamenative.ui.theme.settingsTileColorsAlt
 import com.alorma.compose.settings.ui.SettingsGroup
 import com.alorma.compose.settings.ui.SettingsMenuLink
@@ -131,6 +132,28 @@ fun DuoSettingsTabContent(draft: DuoSettingsDraft) {
             subtitle = { Text(text = stringResource(R.string.duo_settings_native_touch_description)) },
             state = settings.nativeTouch,
             onCheckedChange = { draft.settings = settings.copy(nativeTouch = it) },
+        )
+        SettingsMenuLink(
+            colors = settingsTileColorsAlt(),
+            enabled = settings.screenSplit,
+            title = {
+                Text(
+                    text = stringResource(
+                        when (SplitLayout.fromId(settings.splitLayout)) {
+                            SplitLayout.NATIVE -> R.string.duo_settings_split_mode_native
+                            SplitLayout.FILL -> R.string.duo_settings_split_mode_fill
+                            SplitLayout.REGION -> R.string.duo_settings_split_mode_region
+                        },
+                    ),
+                )
+            },
+            subtitle = { Text(text = stringResource(R.string.duo_settings_split_mode_description)) },
+            onClick = {
+                // Tap to cycle: tall window for mods, stretched tall window, zoomed part of the game.
+                val modes = listOf(SplitLayout.NATIVE, SplitLayout.FILL, SplitLayout.REGION)
+                val next = modes[(modes.indexOf(SplitLayout.fromId(settings.splitLayout)) + 1) % modes.size]
+                draft.settings = settings.copy(splitLayout = next.id)
+            },
         )
         SettingsMenuLink(
             colors = settingsTileColorsAlt(),
