@@ -171,7 +171,8 @@ namespace GameNativeDuo.UnitySplit
             {
                 Tracked t = _list[i];
                 Camera cam = t.Cam;
-                if (cam == null || !cam.isActiveAndEnabled)
+                // A camera that renders into a texture now (portraits, minimaps) is not drawing to the window.
+                if (cam == null || !cam.isActiveAndEnabled || cam.targetTexture != null)
                     continue;
                 Rect current = t.Tk != null ? t.Tk.Rect : cam.rect;
                 if (!t.HasApplied || current != t.Applied)
