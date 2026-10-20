@@ -36,6 +36,7 @@ data class DuoGameMod(
 
 object DuoModCatalog {
     private const val BALATRO_APPDATA = "users/xuser/AppData/Roaming/Balatro"
+    private const val SHARED = "duo/mods/shared"
 
     val mods: List<DuoGameMod> = listOf(
         DuoGameMod(
@@ -70,21 +71,27 @@ object DuoModCatalog {
             launchExecutable = "StardewModdingAPI.exe",
             splitLayout = SplitLayout.NATIVE,
         ),
-        DuoGameMod(
-            id = "slime-rancher",
-            appId = "STEAM_433340",
-            title = "Slime Rancher",
-            // BepInEx 5.4.23.5 (https://github.com/BepInEx/BepInEx, MIT, unmodified; licence and notice alongside) loads
-            // through winhttp.dll. Our plugin (source: duo/mods-src/unity) is generic for Unity uGUI games.
-            gameFiles = mapOf(
-                "duo/mods/slime-rancher/bepinex" to "",
-                "duo/mods/slime-rancher/BepInEx-LICENSE.txt" to "BepInEx/LICENSE-BepInEx.txt",
-                "duo/mods/slime-rancher/BepInEx-NOTICE.txt" to "BepInEx/NOTICE-GameNativeDuo.txt",
-                "duo/mods/slime-rancher/plugin" to "BepInEx/plugins/GameNativeDuo-split",
-            ),
-            dllOverrides = listOf("winhttp=n,b"),
-            splitLayout = SplitLayout.NATIVE,
+        unityGame(id = "slime-rancher", appId = "STEAM_433340", title = "Slime Rancher"),
+    )
+
+    /**
+     * A Unity game with the Mono backend and uGUI: BepInEx 5.4.23.5 (https://github.com/BepInEx/BepInEx, MIT,
+     * unmodified; licence and notice alongside) loads through winhttp.dll, plus our generic plugin (source:
+     * duo/mods-src/unity). Both are shared by every Unity game (`assets/duo/mods/shared/`); a game's own folder only
+     * holds its optional UI layout preset (`ui-layout.json`).
+     */
+    private fun unityGame(id: String, appId: String, title: String) = DuoGameMod(
+        id = id,
+        appId = appId,
+        title = title,
+        gameFiles = mapOf(
+            "$SHARED/bepinex" to "",
+            "$SHARED/BepInEx-LICENSE.txt" to "BepInEx/LICENSE-BepInEx.txt",
+            "$SHARED/BepInEx-NOTICE.txt" to "BepInEx/NOTICE-GameNativeDuo.txt",
+            "$SHARED/unity-split" to "BepInEx/plugins/GameNativeDuo-split",
         ),
+        dllOverrides = listOf("winhttp=n,b"),
+        splitLayout = SplitLayout.NATIVE,
     )
 
     private val byAppId = mods.associateBy { it.appId }
