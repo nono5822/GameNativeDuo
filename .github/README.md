@@ -30,7 +30,9 @@ GameNative Duo adds what a dual-screen handheld needs:
 - **A real touchscreen.** The bottom screen behaves like a touchscreen built into the game: no cursor, taps land under
   your finger, and drag and drop works. The game never switches its button prompts to keyboard and mouse.
 - **A layout you control.** Every piece of the interface can be moved, resized, hidden or sent to the top screen, live,
-  while you play.
+  while you play, on the device or from a PC.
+- **A bottom screen you style.** Show the world continuing below, a soft blur of it, a solid color or your own image,
+  and add live readouts such as FPS, battery and temperature.
 
 GameNative Duo installs next to official GameNative under its own app id (`app.gamenative.duo`), so you can keep both.
 
@@ -88,9 +90,54 @@ Stardew Valley without moving the real pointer. Taps, holds, drags and drops beh
 never mistaken for a gameplay click.
 
 ### Layout editor
-The editor lists every interface element the game reports, outlines them on the bottom screen and shows a map of the top
-screen for elements placed there. Select, move, pinch to resize, hide, reset one element or all of them. Layouts are
-plain JSON and use the same format as community presets.
+<img src="assets/duo-editor-tabs.jpg" alt="The layout editor's three tabs on the bottom screen: Elements, Background and Widgets" width="100%">
+
+The editor opens on the bottom screen over the running game and has three tabs.
+
+- **Elements** lists every interface element the game reports, outlines them on the bottom screen and shows a map of
+  the top screen for elements placed there. Select, move, pinch to resize, hide, reset one element or all of them.
+- **Background** chooses what sits behind the interface on the bottom screen (see below).
+- **Widgets** adds live readouts and places them with a finger.
+
+Everything applies within a frame and is saved per game. Layouts are plain JSON and use the same format as community
+presets, so a shared layout carries its background and widgets too.
+
+### Bottom screen background and widgets
+<img src="assets/stardew-blur-widgets.jpg" alt="Stardew Valley with a blurred world behind the HUD on the bottom screen and FPS, battery and clock widgets" width="420" align="right">
+
+- **Game**: the world continues from the top screen onto the bottom one, aligned across the hinge.
+- **Blurred game**: the same world, softly blurred, so the interface stands out.
+- **Color**: a solid color from a palette. It also saves the game the work of drawing the lower part of the world.
+- **Image**: any picture from your gallery, or a still capture of the top screen in one tap.
+
+A dim slider darkens the game, blur and image backgrounds. The game's mod draws the background on the GPU, and the
+editor only offers what that game's mod supports (Stardew Valley has all four, Unity games have color and image).
+
+Widgets show FPS, CPU, GPU, temperature, battery or the time. They read what GameNative already measures for the
+session, refresh once a second and cost nothing when none are placed.
+<br clear="right">
+
+### Edit from a PC
+<img src="assets/duo-pc-card.jpg" alt="The bottom screen showing the PC editor's address, pairing code and QR code" width="360" align="right">
+
+Choose Edit on PC and the device serves a web editor on your Wi-Fi. Open the address on a PC (or scan the QR code with
+a tablet) and enter the six-letter code shown on the bottom screen. The page shows both screens with every interface
+element outlined.
+
+- Drag an element to move it, or drop it on the other screen to send it there. Scroll to resize.
+- Search the element list, or use the keyboard: arrows move, plus and minus resize, T, B and H send an element to the
+  top, the bottom or nowhere.
+- Pick the background, upload an image from the PC, and place widgets.
+- Share the layout with the community straight from the PC browser. Background images stay private.
+
+The editor runs only while you have it open and stops with the game. After 20 wrong codes it shuts itself down.
+<br clear="right">
+
+### In GameNative's own menu
+<img src="assets/duo-quick-menu.jpg" alt="GameNative's in-game menu with the GameNative Duo tab open" width="100%">
+
+The menu GameNative opens with the Back button has a GameNative Duo tab: open the layout editor, start the PC editor,
+change the background, switch widgets on and off, and line up the screens, without leaving the game.
 
 ### Region view, for any game
 Games without a dual-screen mod can still use the bottom screen. Region view leaves the game unchanged on the top screen
@@ -139,8 +186,9 @@ ranked from GameNative's own play data for the AYN Thor ([`duo/futuregames.md`](
 2. Open a game with dual-screen support (the Dual screen tab lists them) and turn on its Dual screen switch, or open
    Community to apply a shared package.
 3. Press Play. Unity games need their in-game resolution set to the tall window once (1920x2160 on the Thor).
-4. In game, hold two fingers on the bottom screen to open the menu: Edit UI layout, Line up screens, or Choose bottom
-   view for region view.
+4. In game, hold two fingers on the bottom screen to open the menu: Edit UI layout, Edit on PC, Line up screens, or
+   Choose bottom view for region view. The same options are in the GameNative Duo tab of GameNative's in-game menu
+   (Back button).
 
 Every GameNative Duo option lives in the GameNative Duo tab of the container settings: screen split, split mode, split
 resolution, native touch and the bottom-screen panel.
@@ -157,6 +205,9 @@ around that.
   adapter costs about 0.1 ms per frame, under half a percent of the frame time.
 - Region view in Dead Cells kept the GPU around 12% busy.
 - A split resolution setting (100, 75 or 50%) lowers the cost of the tall window on demanding games.
+- Bottom screen backgrounds are drawn by the game on the GPU. The blur works on a target of a few thousand pixels, and
+  a solid color skips drawing the lower part of the world.
+- Widgets redraw once a second, and the PC editor copies a screen only when the page asks for it.
 
 ## For developers: a dual-screen devkit
 
