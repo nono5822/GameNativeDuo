@@ -9,6 +9,7 @@ import app.gamenative.duo.bridge.DuoBridge
 import app.gamenative.duo.display.DeviceProfile
 import app.gamenative.duo.display.DisplayInventory
 import app.gamenative.duo.display.DisplaySnapshot
+import app.gamenative.duo.mods.DuoModInstaller
 import app.gamenative.duo.panel.BottomPanelController
 import app.gamenative.duo.settings.DuoSettingsStore
 import app.gamenative.duo.split.LayoutFile
@@ -38,6 +39,7 @@ object DualScreenHost {
      */
     @JvmStatic
     fun attach(context: Context, lifecycleView: View, container: Container, xServer: XServer?): DualScreenSession? = try {
+        DuoModInstaller.refreshIfUpdated(context, container.id)
         DualScreenSession(context, container, xServer).also { session ->
             session.start()
             lifecycleView.addOnAttachStateChangeListener(

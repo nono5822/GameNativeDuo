@@ -93,6 +93,8 @@ no CPU frame copies, data over pixels, idle at 0 fps when nothing changes.
 - The "Dual screen" toggle next to Play runs `DuoModInstaller`: copies files into the game folder and the Wine
   prefix, sets the container's screen size (`ScreenSplit.recommendedFor`) and `WINEDLLOVERRIDES`, turns on screen
   split, and records the previous values in `files/duo/mods/<containerId>.json` so turning it off restores them.
+  After an app update the first session start refreshes the mod's APK files in the game (`refreshIfUpdated`; files
+  the user changed are left alone). Hand-pushed test DLLs therefore count as "changed": push again after updates.
 - Balatro: Lovely v0.10.0 (`winmm.dll`, MIT, licence alongside) + the `GameNativeDuo-split` Lua mod.
 - Stardew Valley: SMAPI + `duo/mods-src/stardew` (world continues across both screens, UI on the bottom). Never force
   `Game1.ShouldDrawOnBuffer` on the title/loading screens: it hangs the GPU (see `duo/notes/`).
@@ -192,6 +194,9 @@ dotnet build -c Release -p:ManagedPath=<Game_Data/Managed> -p:BepInExPath=<BepIn
   window (1920x2160) once, or the game renders centred and unsplit. Could be automated (Unity's `-screen-width`/
   `-screen-height` arguments or its registry keys).
 - Unity split, untested: aiming may be off if a game aims at the window centre (the hinge) instead of the camera's.
+- Harmony does not write `__args` changes back to value arguments: change arguments with `ref` parameters.
+- Stardew died at "Waiting for game to launch" on the first launch after each APK install (2/2, later launches fine;
+  before SMAPI reads mods, so not our mod). Retry. See `duo/notes/2026-10-20-device-testing.md`.
 - Bridge sockets must bind IPv4 127.0.0.1 explicitly: `InetAddress.getLoopbackAddress()` is `::1` on the Thor.
 
 - AGP 8.8's bundled D8 turns upstream's giant `XServerScreen` composable (on full, non-incremental compiles: CLI, CI)

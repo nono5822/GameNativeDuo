@@ -20,7 +20,7 @@ internal static class Patches
     public static void Apply(Harmony harmony)
     {
         Patch(harmony, nameof(Game1.updateViewportForScreenSizeChange), prefix: nameof(UpdateViewport_Prefix));
-        Patch(harmony, nameof(Game1.SetWindowSize), postfix: nameof(SetWindowSize_Postfix));
+        Patch(harmony, nameof(Game1.SetWindowSize), prefix: nameof(SetWindowSize_Prefix), postfix: nameof(SetWindowSize_Postfix));
         Patch(harmony, nameof(Game1.PushUIMode), postfix: nameof(PushUIMode_Postfix));
         // Not Game1.ShouldDrawOnBuffer: forcing it on the title and loading screens hung the GPU (kgsl "GPU hang
         // detected" within a minute of launch, every time); SMAPI already turns it on once a save is loaded.
@@ -38,6 +38,7 @@ internal static class Patches
         foreach (string name in new[] { nameof(Game1.getMouseY), nameof(Game1.getOldMouseY) })
             Patch(harmony, name, postfix: nameof(MouseY_Postfix), args: new[] { typeof(bool) });
     }
+
 
     private static void Patch(Harmony harmony, string method, string? prefix = null, string? postfix = null, Type[]? args = null)
     {
@@ -62,6 +63,29 @@ internal static class Patches
         }
     }
 
+    /// <summary>
+    /// Skip a resize to the size the window already has (Wine reports one now and then, e.g. around taps): it would
+    /// reallocate every full-window render target, a visible hitch. Zoom and UI scale changes still go through, since
+    /// they change the targets' sizes.
+    /// </summary>
+    private static bool SetWindowSize_Prefix(Game1 __instance, int w, int h)
+    {
+        try
+        {
+            if (!ModEntry.Active || !L.Matches(w, h) || __instance.screen == null || __instance.uiScreen == null)
+                return true;
+            float zoom = Game1.options.zoomLevel, ui = Game1.options.uiScale;
+            bool same = __instance.screen.Width == (int)Math.Ceiling(L.World.X / zoom) && __instance.screen.Height == (int)Math.Ceiling(L.World.Y / zoom)
+                && __instance.uiScreen.Width == (int)Math.Ceiling(L.Bottom.Width / ui) && __instance.uiScreen.Height == (int)Math.Ceiling(L.Bottom.Height / ui)
+                && Game1.graphics.PreferredBackBufferWidth == w && Game1.graphics.PreferredBackBufferHeight == h;
+            return !same;
+        }
+        catch (Exception)
+        {
+            return true;
+        }
+    }
+
     /// <summary>Size the world render target to the whole window (both screens) and the UI render target to the bottom screen.</summary>
     private static void SetWindowSize_Postfix(Game1 __instance, int w, int h)
     {
@@ -77,11 +101,11 @@ internal static class Patches
             CreateRenderTargets(__instance);
             Game1.updateViewportForScreenSizeChange(fullscreenChange: false, w, h);
 
-            // Lay open menus out again for the bottom screen.
-            var bounds = new Rectangle(Game1.viewport.X, Game1.viewport.Y, Game1.viewport.Width, Game1.viewport.Height);
+            // Lay open menus out again for the bottom screen, in UI units (menus centre themselves in these bounds).
             Game1.PushUIMode();
             try
             {
+                var bounds = new Rectangle(0, 0, Game1.uiViewport.Width, Game1.uiViewport.Height);
                 foreach (IClickableMenu menu in Game1.onScreenMenus)
                     menu.gameWindowSizeChanged(bounds, bounds);
                 Game1.activeClickableMenu?.gameWindowSizeChanged(bounds, bounds);

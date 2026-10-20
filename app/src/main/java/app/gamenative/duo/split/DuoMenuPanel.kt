@@ -43,8 +43,9 @@ internal class DuoMenuPanel(
             } else {
                 addView(button("Edit UI layout") { onEditUi() }.apply { isEnabled = canEditUi })
                 if (!canEditUi) addView(text("Needs this game's GameNative Duo mod, running.", 12f, Color.LTGRAY))
+                // Lining the screens up only matters when the game continues across both (not in region view).
+                addView(button("Line up screens") { onCalibrate() })
             }
-            addView(button("Line up screens") { onCalibrate() })
             addView(button("Close") { onClose() })
         }
         addView(card, LayoutParams(dp(300), LayoutParams.WRAP_CONTENT, Gravity.CENTER))

@@ -74,6 +74,7 @@ internal class UiLayoutEditor(
                 status = "The game's mod did not answer. Is the game still running?"
             } else {
                 elements = result
+                board.chooseMapSide()
                 status = if (result.elements.isEmpty()) "No UI on screen right now" else "Tap a UI element to change it"
                 board.clearPreview()
                 if (result.byId(selectedId) == null) selectedId = null
@@ -298,6 +299,7 @@ internal class UiLayoutEditor(
         }
         private val tmp = RectF()
         private val map = RectF()
+        private var mapOnLeft = false
 
         // Gesture state. Preview: offset (view px) and scale applied to the selection's box until fresh positions arrive.
         private var mode = Mode.NONE
@@ -382,10 +384,31 @@ internal class UiLayoutEditor(
             val mw = width * 0.42f
             val mh = mw * topRect[3] / topRect[2]
             val margin = dp(10).toFloat()
-            // Top-right, under the toolbar when that is at the top too: always away from a low selection.
+            // At the top, under the toolbar when that is at the top too: always away from a low selection.
             val y = (if (toolbarAtTop) toolbar.bottom.toFloat() else 0f) + margin + dp(16)
-            map.set(width - mw - margin, y, width - margin, y + mh)
+            val left = if (mapOnLeft) margin else width - mw - margin
+            map.set(left, y, left + mw, y + mh)
         }
+
+        /**
+         * The top corner whose map covers less of the bottom screen's UI, so those elements stay tappable. Chosen when
+         * the element list arrives, not per frame, so the map does not jump while an element is dragged.
+         */
+        fun chooseMapSide() {
+            if (width == 0) return
+            mapOnLeft = false
+            layoutMap()
+            val right = coveredArea(map)
+            mapOnLeft = true
+            layoutMap()
+            mapOnLeft = coveredArea(map) < right
+            invalidate()
+        }
+
+        private fun coveredArea(r: RectF): Float = elements?.elements.orEmpty().sumOf { e ->
+            val covered = e.screen == UiScreen.BOTTOM && e.graphic && viewRect(e, tmp) && tmp.intersect(r)
+            if (covered) (tmp.width() * tmp.height()).toDouble() else 0.0
+        }.toFloat()
 
         override fun onDraw(canvas: Canvas) {
             layoutMap()
@@ -422,10 +445,15 @@ internal class UiLayoutEditor(
          */
         private fun hit(x: Float, y: Float): UiElement? {
             val inMap = map.contains(x, y)
+            // Under the map: a top-screen element first, else the bottom-screen one beneath the map.
+            return hit(x, y, top = inMap) ?: if (inMap) hit(x, y, top = false) else null
+        }
+
+        private fun hit(x: Float, y: Float, top: Boolean): UiElement? {
             var best: UiElement? = null
             var bestInside = false
             for (e in elements?.elements.orEmpty()) {
-                if ((e.screen == UiScreen.TOP) != inMap || e.depth == 0 || !viewRect(e, tmp)) continue
+                if ((e.screen == UiScreen.TOP) != top || e.depth == 0 || !viewRect(e, tmp)) continue
                 val inside = tmp.contains(x, y)
                 // Small elements (a crosshair in the top-screen map is a few pixels) still get a finger-sized target.
                 tmp.inset(-((minTarget - tmp.width()) / 2f).coerceAtLeast(0f), -((minTarget - tmp.height()) / 2f).coerceAtLeast(0f))

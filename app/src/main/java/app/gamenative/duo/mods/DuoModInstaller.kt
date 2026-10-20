@@ -58,7 +58,7 @@ object DuoModInstaller {
         prefixFiles: Map<String, ByteArray>,
         sharedAssets: Map<String, String>,
         origin: JSONObject,
-    ): Boolean = enableWith(context, mod, gameDir, origin) { driveC, files ->
+    ): Boolean = enableWith(context, mod, gameDir, origin.put("sharedAssets", JSONObject(sharedAssets))) { driveC, files ->
         sharedAssets.forEach { (asset, rel) -> copyAssetTree(context, "$SHARED_ASSETS/$asset", inside(gameDir, rel), files) }
         gameFiles.forEach { (rel, bytes) -> install(bytes.inputStream(), inside(gameDir, rel), files) }
         prefixFiles.forEach { (rel, bytes) -> install(bytes.inputStream(), inside(driveC, rel), files) }
@@ -159,7 +159,7 @@ object DuoModInstaller {
             }
         }
 
-        state.put("mod", mod.id)
+        state.put("mod", mod.id).put("apkStamp", apkStamp(context))
         stateFile(context, mod.appId).apply { parentFile?.mkdirs() }.writeText(state.toString(2))
         Timber.tag(DualScreenHost.TAG).i(
             "Enabled dual-screen mod %s for %s (%d files, screen %s)",
@@ -170,6 +170,71 @@ object DuoModInstaller {
         Timber.tag(DualScreenHost.TAG).e(t, "Failed to enable dual-screen mod %s", mod.id)
         false
     }
+
+    /**
+     * After an app update, brings the files a mod installed from the APK (a bundled mod's files, a community mod's
+     * shared assets such as BepInEx and our plugin) up to date, so a game never keeps an old plugin. A file the record
+     * says is ours is replaced only while the user has not changed it, without a backup (a backup, if any, is the
+     * game's original); new files go through the usual rules. Costs one small file read when the app has not changed.
+     * Runs at session start, well before the game loads its mods.
+     */
+    fun refreshIfUpdated(context: Context, appId: String) {
+        try {
+            val file = stateFile(context, appId)
+            if (!file.isFile) return
+            val stamp = apkStamp(context)
+            val state = JSONObject(file.readText())
+            if (state.optLong("apkStamp") == stamp) return
+            val gameDir = File(state.getString("gameDir"))
+            val driveC = File(state.getString("driveC"))
+            val files = state.optJSONArray("files") ?: JSONArray()
+            val ours = (0 until files.length()).map { files.getJSONObject(it) }.associateBy { it.getString("path") }
+            val sources = mutableListOf<Pair<String, File>>()
+            DuoModCatalog.mods.firstOrNull { it.id == state.optString("mod") }?.let { mod ->
+                mod.gameFiles.forEach { (asset, rel) -> sources += asset to File(gameDir, rel) }
+                mod.prefixFiles.forEach { (asset, rel) -> sources += asset to File(driveC, rel) }
+            }
+            state.optJSONObject("origin")?.optJSONObject("sharedAssets")?.let { shared ->
+                shared.keys().forEach { asset -> sources += "$SHARED_ASSETS/$asset" to inside(gameDir, shared.getString(asset)) }
+            }
+            var updated = 0
+            sources.forEach { (asset, target) -> updated += refreshAssetTree(context, asset, target, ours, files) }
+            state.put("files", files).put("apkStamp", stamp)
+            file.writeText(state.toString(2))
+            Timber.tag(DualScreenHost.TAG).i("Mod files for %s checked after an app update: %d updated", appId, updated)
+        } catch (t: Throwable) {
+            Timber.tag(DualScreenHost.TAG).e(t, "Failed to refresh the mod files for %s", appId)
+        }
+    }
+
+    private fun refreshAssetTree(context: Context, asset: String, target: File, ours: Map<String, JSONObject>, records: JSONArray): Int {
+        val children = context.assets.list(asset).orEmpty()
+        if (children.isNotEmpty()) return children.sumOf { refreshAssetTree(context, "$asset/$it", File(target, it), ours, records) }
+        val entry = ours[target.absolutePath]
+        if (entry == null) {
+            val before = records.length()
+            context.assets.open(asset).use { install(it, target, records) }
+            return records.length() - before
+        }
+        // Ours: replace it only if it is still what we installed (or gone), never a file the user changed.
+        if (target.isFile && sha256(target) != entry.getString("sha256")) return 0
+        target.parentFile?.mkdirs()
+        val temp = File(target.path + ".duo-tmp")
+        context.assets.open(asset).use { input -> temp.outputStream().use { input.copyTo(it) } }
+        val hash = sha256(temp)
+        if (hash == entry.getString("sha256") && target.isFile) {
+            temp.delete()
+            return 0
+        }
+        if (!temp.renameTo(target)) {
+            temp.delete()
+            error("Could not write $target")
+        }
+        entry.put("sha256", hash)
+        return 1
+    }
+
+    private fun apkStamp(context: Context): Long = context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime
 
     /** Undoes [enable]. Returns false (and logs) on failure. */
     fun disable(context: Context, mod: DuoGameMod): Boolean = disable(context, mod.appId)

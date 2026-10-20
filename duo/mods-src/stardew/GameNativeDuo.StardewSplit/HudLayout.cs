@@ -66,7 +66,7 @@ internal static class HudLayout
         Patch(harmony, typeof(Game1), "drawHUD", Type.EmptyTypes, nameof(DrawHud_Prefix), nameof(DrawHud_Postfix));
     }
 
-    /// <summary>A type that does not override a method resolves to the base one: patch each method once.</summary>
+    /// <summary>Each method is patched once (two elements could share a type).</summary>
     private static readonly HashSet<MethodBase> Patched = new();
 
     private static void Patch(Harmony harmony, Type type, string method, Type[] args, string? prefix, string? postfix)
@@ -74,6 +74,8 @@ internal static class HudLayout
         try
         {
             MethodInfo? m = AccessTools.Method(type, method, args);
+            if (m != null && m.DeclaringType != type)
+                return; // inherited from IClickableMenu, which every menu shares: nothing of this element's to adjust
             if (m == null)
             {
                 ModEntry.Log.Log($"UI layout: {type.Name}.{method} not found; that element keeps its default layout", LogLevel.Warn);
@@ -119,7 +121,11 @@ internal static class HudLayout
         e.Inverse = Matrix.Invert(e.Transform);
     }
 
-    private static Rectangle Bounds(IClickableMenu m) => new(m.xPositionOnScreen, m.yPositionOnScreen, m.width, m.height);
+    private static Rectangle Bounds(IClickableMenu m) => m is Toolbar t
+        // Toolbar.draw centres an 800-wide box itself and keeps the box's *bottom* edge (+8) in its own
+        // yPositionOnScreen, a field that hides IClickableMenu's.
+        ? new Rectangle(Game1.uiViewport.Width / 2 - 400, t.yPositionOnScreen - 104, 800, 96)
+        : new Rectangle(m.xPositionOnScreen, m.yPositionOnScreen, m.width, m.height);
 
     /// <summary>
     /// Health and energy bars: drawn by Game1.drawHUD at the UI viewport's bottom-right (taller with more max energy).
@@ -133,7 +139,7 @@ internal static class HudLayout
 
     private static Element? For(IClickableMenu menu) => ByType.TryGetValue(menu.GetType(), out Element? e) ? e : null;
 
-    // Patches take their arguments as __args: they work whatever the game names its parameters.
+    // Draw takes its SpriteBatch from __args (read only): it works whatever the game names that parameter.
     private static bool Draw_Prefix(IClickableMenu __instance, object[] __args, out bool __state)
     {
         __state = false;
@@ -188,7 +194,9 @@ internal static class HudLayout
     }
 
     /// <summary>Taps reach a moved or resized element where it is drawn; an element on the top screen or hidden is out of reach.</summary>
-    private static bool Within_Prefix(IClickableMenu __instance, object[] __args, ref bool __result)
+    // The pointer arrives as the methods' (x, y) in UI units; every patched method names them so (checked against
+    // Stardew Valley 1.6). By ref, not through __args: Harmony does not write __args changes back to value arguments.
+    private static bool Within_Prefix(IClickableMenu __instance, ref int x, ref int y, ref bool __result)
     {
         if (!ModEntry.Active)
             return true;
@@ -200,11 +208,11 @@ internal static class HudLayout
             __result = false;
             return false;
         }
-        Untransform(e, __args);
+        Untransform(e, ref x, ref y);
         return true;
     }
 
-    private static bool Click_Prefix(IClickableMenu __instance, object[] __args)
+    private static bool Click_Prefix(IClickableMenu __instance, ref int x, ref int y)
     {
         if (!ModEntry.Active)
             return true;
@@ -213,18 +221,18 @@ internal static class HudLayout
             return true;
         if (e.Rule.Screen is DuoScreen.Top or DuoScreen.Hidden)
             return false;
-        Untransform(e, __args);
+        Untransform(e, ref x, ref y);
         return true;
     }
 
-    /// <summary>The first two arguments are the pointer's UI coordinates: map them back through the element's transform.</summary>
-    private static void Untransform(Element e, object[] args)
+    /// <summary>Maps the pointer's UI coordinates back through the element's transform.</summary>
+    private static void Untransform(Element e, ref int x, ref int y)
     {
-        if (e.Rule == null || !e.Rule.ChangesTransform || args.Length < 2 || args[0] is not int x || args[1] is not int y)
+        if (e.Rule == null || !e.Rule.ChangesTransform)
             return;
         Vector2 p = Vector2.Transform(new Vector2(x, y), e.Inverse);
-        args[0] = (int)Math.Round(p.X);
-        args[1] = (int)Math.Round(p.Y);
+        x = (int)Math.Round(p.X);
+        y = (int)Math.Round(p.Y);
     }
 
     // ---- the top screen ------------------------------------------------------------------------------------------

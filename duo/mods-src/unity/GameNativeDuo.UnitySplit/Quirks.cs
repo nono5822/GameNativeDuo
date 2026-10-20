@@ -35,7 +35,7 @@ namespace GameNativeDuo.UnitySplit
             Patch(harmony, "ForceCameraAspect", "AutoScaleViewportShared", nameof(TeamCherryAspectPrefix), null, null);
             _gameCamerasInstance = Field("GameCameras", "_instance");
             _hudCamera = Field("GameCameras", "hudCamera");
-            _forceCameraAspect = AccessTools.TypeByName("ForceCameraAspect");
+            _forceCameraAspect = FindType("ForceCameraAspect");
             _anchorTopLeft = _forceCameraAspect != null ? AccessTools.Field(_forceCameraAspect, "anchorTopLeft") : null;
             _initialHudCamSize = _forceCameraAspect != null ? AccessTools.Field(_forceCameraAspect, "initialHudCamSize") : null;
         }
@@ -45,7 +45,7 @@ namespace GameNativeDuo.UnitySplit
 
         private static FieldInfo Field(string type, string field)
         {
-            Type t = AccessTools.TypeByName(type);
+            Type t = FindType(type);
             return t != null ? AccessTools.Field(t, field) : null;
         }
 
@@ -108,7 +108,7 @@ namespace GameNativeDuo.UnitySplit
         {
             try
             {
-                Type type = AccessTools.TypeByName(typeName);
+                Type type = FindType(typeName);
                 MethodInfo target = type != null ? AccessTools.Method(type, method) : null;
                 if (target == null)
                     return;
@@ -148,6 +148,18 @@ namespace GameNativeDuo.UnitySplit
         {
             if (TouchInjector.FingersDown > 0 && TouchInjector.FingerRaycast.gameObject != null)
                 raycastResult = TouchInjector.FingerRaycast;
+        }
+
+        /// <summary>A type by full name from any loaded assembly; null, without HarmonyX's warning, when absent.</summary>
+        private static Type FindType(string name)
+        {
+            foreach (System.Reflection.Assembly a in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                Type t = a.GetType(name, false);
+                if (t != null)
+                    return t;
+            }
+            return null;
         }
     }
 }

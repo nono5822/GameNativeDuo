@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Collections.Generic;
 using System.IO;
 using BepInEx;
@@ -17,7 +18,7 @@ namespace GameNativeDuo.UnitySplit
     /// (<see cref="TouchInjector"/>). Nothing changes unless the window matches GameNative Duo's layout.json, and every
     /// step catches its own errors so the game keeps running.
     /// </summary>
-    [BepInPlugin("app.gamenative.duo.unitysplit", "GameNative Duo Unity Split", "0.3.0")]
+    [BepInPlugin("app.gamenative.duo.unitysplit", "GameNative Duo Unity Split", "0.3.1")]
     public sealed class Plugin : BaseUnityPlugin
     {
         internal static ManualLogSource Log;
@@ -107,7 +108,17 @@ namespace GameNativeDuo.UnitySplit
                 _bridge.Dispose();
         }
 
+        /// <summary>Time spent in this plugin (all its per-frame hooks), reported with the frame stats.</summary>
+        internal static long OwnTicks;
+
         private void Update()
+        {
+            long t0 = Stopwatch.GetTimestamp();
+            UpdateBody();
+            OwnTicks += Stopwatch.GetTimestamp() - t0;
+        }
+
+        private void UpdateBody()
         {
             try
             {
@@ -158,6 +169,13 @@ namespace GameNativeDuo.UnitySplit
 
         private void LateUpdate()
         {
+            long t0 = Stopwatch.GetTimestamp();
+            LateUpdateBody();
+            OwnTicks += Stopwatch.GetTimestamp() - t0;
+        }
+
+        private void LateUpdateBody()
+        {
             if (Layout == null)
                 return;
             try
@@ -174,15 +192,16 @@ namespace GameNativeDuo.UnitySplit
                     }
                     _nextScan = 0f;
                 }
-                if (!Active)
-                    return;
+                // Frame stats with the split off too, to compare against the unchanged game.
                 float now = Time.unscaledTime;
                 _stats.Add(Time.unscaledDeltaTime);
                 if (now >= _nextStats)
                 {
                     _nextStats = now + StatsSeconds;
-                    _stats.Log();
+                    _stats.Log(Active);
                 }
+                if (!Active)
+                    return;
                 // A new camera (cutscene, menu) would draw over both screens until placed: a count check is enough.
                 int cameras = Camera.allCamerasCount;
                 if (cameras != _cameraCount)
@@ -207,6 +226,13 @@ namespace GameNativeDuo.UnitySplit
 
         /// <summary>Once per frame, after uGUI's layout and before rendering.</summary>
         private void OnWillRenderCanvases()
+        {
+            long t0 = Stopwatch.GetTimestamp();
+            OnWillRenderCanvasesBody();
+            OwnTicks += Stopwatch.GetTimestamp() - t0;
+        }
+
+        private void OnWillRenderCanvasesBody()
         {
             if (!Active)
                 return;
@@ -336,6 +362,7 @@ namespace GameNativeDuo.UnitySplit
             Split p = Split.Instance;
             if (p == null || !p.Active)
                 return;
+            long t0 = Stopwatch.GetTimestamp();
             try
             {
                 p.Router.AdjustScale(__instance, ref scaleFactor);
@@ -344,6 +371,7 @@ namespace GameNativeDuo.UnitySplit
             {
                 p.OnScaleError(ex);
             }
+            Split.OwnTicks += Stopwatch.GetTimestamp() - t0;
         }
     }
 
@@ -370,7 +398,7 @@ namespace GameNativeDuo.UnitySplit
                 _times[_count++] = seconds;
         }
 
-        public void Log()
+        public void Log(bool split)
         {
             if (_count < 10)
             {
@@ -387,9 +415,11 @@ namespace GameNativeDuo.UnitySplit
             System.Array.Sort(_sorted, 0, _count);
             float avg = sum / _count;
             float p95 = _sorted[(int)(_count * 0.95f)];
+            double own = Split.OwnTicks * 1000.0 / Stopwatch.Frequency / _count;
+            Split.OwnTicks = 0;
             Plugin.Log.LogInfo(string.Format(System.Globalization.CultureInfo.InvariantCulture,
-                "Frames: {0:0.0} fps average, {1:0.0} ms average, {2:0.0} ms 95th percentile, {3:0.0} ms worst ({4} frames)",
-                1f / avg, avg * 1000f, p95 * 1000f, worst * 1000f, _count));
+                "Frames ({6}): {0:0.0} fps average, {1:0.0} ms average, {2:0.0} ms 95th percentile, {3:0.0} ms worst ({4} frames); this plugin {5:0.000} ms per frame",
+                1f / avg, avg * 1000f, p95 * 1000f, worst * 1000f, _count, own, split ? "split" : "no split"));
             _count = 0;
         }
     }
