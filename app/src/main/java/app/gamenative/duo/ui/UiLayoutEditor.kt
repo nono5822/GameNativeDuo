@@ -65,11 +65,22 @@ internal class UiLayoutEditor(
 
     // ---- data ------------------------------------------------------------------------------------------------
 
+    // Unanswered requests in a row: GameNative pauses the game while its own menu is open, so the editor (opened from
+    // that menu) keeps asking for a while before it gives up.
+    private var unanswered = 0
+
     private fun refresh() {
         controller.requestElements { result ->
             if (result == null) {
-                status = "The game's mod did not answer. Is the game still running?"
+                unanswered++
+                if (unanswered <= MAX_WAIT_TRIES && isAttachedToWindow) {
+                    status = "Waiting for the game to answer..."
+                    postDelayed({ if (isAttachedToWindow) refresh() }, 1500)
+                } else {
+                    status = "The game's mod did not answer. Is the game still running?"
+                }
             } else {
+                unanswered = 0
                 elements = result
                 board.chooseMapSide()
                 status = if (result.elements.isEmpty()) "No UI on screen right now" else "Tap a UI element to change it"
@@ -884,6 +895,9 @@ internal class UiLayoutEditor(
 
     private companion object {
         const val MAX_DIM = 0.9f
+
+        /** Element list retries (1.5 s apart, after each 3 s timeout) before the editor says the mod did not answer. */
+        const val MAX_WAIT_TRIES = 4
 
         /** Background colors to pick from: deep navy (the default), black, slate, the logo's blues and purple. */
         val SWATCHES = intArrayOf(

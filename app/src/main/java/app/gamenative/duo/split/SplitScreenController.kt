@@ -82,7 +82,10 @@ class SplitScreenController(
             val newSplit = bottomDisplay?.let {
                 when (layout) {
                     SplitLayout.FILL -> ScreenSplit.of(screenW, screenH, topAspect())
+                    // A container whose screen is not the native size (changed by hand, or a mod that just moved to the native
+                    // layout) still gets two screens, cut like "fill"; layout.json tells the mod either way.
                     SplitLayout.NATIVE -> ScreenSplit.nativeFor(context, scale)?.takeIf { it.screenSize() == screenW to screenH }
+                        ?: ScreenSplit.of(screenW, screenH, topAspect())
                     SplitLayout.REGION -> {
                         val size = it.realSize()
                         ScreenSplit(

@@ -130,7 +130,8 @@ object DuoModInstaller {
         state.put("files", files)
 
         state.put("previousScreenSize", container.screenSize)
-        val scale = DuoSettingsStore.load(context, container.id).splitScale
+        val ownScale = DuoSettingsStore.load(context, container.id).splitScale
+        val scale = mod.splitScale ?: ownScale
         ScreenSplit.recommendedFor(context, mod.splitLayout, scale)?.let {
             container.screenSize = "${it.first}x${it.second}"
             state.put("screenSize", container.screenSize)
@@ -152,7 +153,12 @@ object DuoModInstaller {
         val settings = DuoSettingsStore.load(context, container.id)
         state.put("previousScreenSplit", settings.screenSplit)
         state.put("previousSplitLayout", settings.splitLayout)
-        DuoSettingsStore.save(context, container.id, settings.copy(screenSplit = true, splitLayout = mod.splitLayout.id))
+        state.put("previousSplitScale", ownScale.toDouble())
+        DuoSettingsStore.save(
+            context,
+            container.id,
+            settings.copy(screenSplit = true, splitLayout = mod.splitLayout.id, splitScale = scale),
+        )
         if (mod.splitLayout == SplitLayout.NATIVE) {
             ScreenSplit.nativeFor(context, scale)?.let {
                 LayoutFile.write(container, it, ScreenCalibrationStore.load(context, DeviceProfile.detect()))
@@ -200,11 +206,39 @@ object DuoModInstaller {
             var updated = 0
             sources.forEach { (asset, target) -> updated += refreshAssetTree(context, asset, target, ours, files) }
             state.put("files", files).put("apkStamp", stamp)
+            DuoModCatalog.mods.firstOrNull { it.id == state.optString("mod") }?.let { migrateSplitLayout(context, appId, state, it) }
             file.writeText(state.toString(2))
             Timber.tag(DualScreenHost.TAG).i("Mod files for %s checked after an app update: %d updated", appId, updated)
         } catch (t: Throwable) {
             Timber.tag(DualScreenHost.TAG).e(t, "Failed to refresh the mod files for %s", appId)
         }
+    }
+
+    /**
+     * A bundled mod that moved to another split layout (Balatro: fill -> native) brings the container along, unless
+     * the user changed the screen size since. The running session keeps its X screen until the next launch (cut like
+     * "fill" meanwhile, see SplitScreenController).
+     */
+    private fun migrateSplitLayout(context: Context, appId: String, state: JSONObject, mod: DuoGameMod) {
+        val recorded = SplitLayout.fromId(state.optString("splitLayout").ifEmpty { mod.splitLayout.id })
+        if (recorded == mod.splitLayout) return
+        val container = ContainerUtils.getContainer(context, appId)
+        val ourSize = state.optString("screenSize")
+        if (ourSize.isNotEmpty() && container.screenSize != ourSize) return
+        val settings = DuoSettingsStore.load(context, container.id)
+        val scale = mod.splitScale ?: settings.splitScale
+        val size = ScreenSplit.recommendedFor(context, mod.splitLayout, scale) ?: return
+        container.screenSize = "${size.first}x${size.second}"
+        container.saveData()
+        if (!state.has("previousSplitScale")) state.put("previousSplitScale", settings.splitScale.toDouble())
+        DuoSettingsStore.save(context, container.id, settings.copy(splitLayout = mod.splitLayout.id, splitScale = scale))
+        state.put("splitLayout", mod.splitLayout.id).put("screenSize", container.screenSize)
+        Timber.tag(DualScreenHost.TAG).i(
+            "%s now uses the %s split (screen %s, from the next launch)",
+            appId,
+            mod.splitLayout.id,
+            container.screenSize,
+        )
     }
 
     private fun refreshAssetTree(context: Context, asset: String, target: File, ours: Map<String, JSONObject>, records: JSONArray): Int {
@@ -295,6 +329,7 @@ object DuoModInstaller {
             settings.copy(
                 screenSplit = state.optBoolean("previousScreenSplit", false),
                 splitLayout = state.optString("previousSplitLayout", settings.splitLayout),
+                splitScale = state.optDouble("previousSplitScale", settings.splitScale.toDouble()).toFloat(),
             ),
         )
         LayoutFile.delete(container)

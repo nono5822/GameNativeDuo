@@ -2,7 +2,8 @@
 
 What an in-game mod (an "engine adapter") implements so GameNative Duo can put its UI on the screens the user
 chooses and send it bottom-screen touches. The Unity adapter (`duo/mods-src/unity`) is the reference
-implementation; the Stardew adapter (`duo/mods-src/stardew`, engine `stardew-smapi`) is the second. Games with no
+implementation; the Stardew adapter (`duo/mods-src/stardew`, engine `stardew-smapi`) is the second, the Balatro one
+(`assets/duo/mods/balatro/GameNativeDuo-split`, Lua, engine `balatro-love`) the third. Games with no
 adapter can still use **region view** (the bottom screen shows a magnified part of the frame), which needs nothing
 from the game. Everything here is engine-neutral: the app side (editor, storage, presets) never changes per engine.
 

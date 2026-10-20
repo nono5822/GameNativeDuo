@@ -97,7 +97,12 @@ no CPU frame copies, data over pixels, idle at 0 fps when nothing changes.
   split, and records the previous values in `files/duo/mods/<containerId>.json` so turning it off restores them.
   After an app update the first session start refreshes the mod's APK files in the game (`refreshIfUpdated`; files
   the user changed are left alone). Hand-pushed test DLLs therefore count as "changed": push again after updates.
-- Balatro: Lovely v0.10.0 (`winmm.dll`, MIT, licence alongside) + the `GameNativeDuo-split` Lua mod.
+- Balatro: Lovely v0.10.0 (`winmm.dll`, MIT, licence alongside) + the `GameNativeDuo-split` Lua mod (engine
+  `balatro-love`: bridge, native touch, rules for Hand / Consumables / Hand info / Menus). NATIVE split at 75% by default
+  (`DuoGameMod.splitScale`: the present cost of the frame grows with its size). Objects really live below the room, so
+  vanilla's "on screen" checks are patched to `GNDuo.room_h()` / `GNDuo.vanilla_y()`; shaders are recompiled per
+  screen. Full list of vanilla assumptions and the long-run checklist: `duo/notes/2026-10-20-balatro.md`. Testing must
+  set `G.F_NO_ACHIEVEMENTS` and seeded runs: GameNative uploads achievements to Steam live.
 - Stardew Valley: SMAPI + `duo/mods-src/stardew` (world continues across both screens, UI on the bottom). Never force
   `Game1.ShouldDrawOnBuffer` on the title/loading screens: it hangs the GPU (see `duo/notes/`).
 - Physical screen alignment (`ScreenCalibration`: hinge gap, pixel-density scale, shift) is per device, defaults in
