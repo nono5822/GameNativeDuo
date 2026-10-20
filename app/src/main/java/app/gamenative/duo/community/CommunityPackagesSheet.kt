@@ -72,6 +72,7 @@ fun CommunityPackagesSheet(containerId: String, gameTitle: String, onDismiss: ()
     var applied by remember { mutableStateOf<Map<CommunityKind, CommunityPackages.Applied>>(emptyMap()) }
     var busy by remember { mutableStateOf<String?>(null) }
     var confirm by remember { mutableStateOf<CommunityPackage?>(null) }
+    var sharing by remember { mutableStateOf(false) }
 
     LaunchedEffect(containerId) {
         withContext(Dispatchers.IO) {
@@ -167,11 +168,23 @@ fun CommunityPackagesSheet(containerId: String, gameTitle: String, onDismiss: ()
                 }
             }
         }
-        TextButton(
-            onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(CONTRIBUTING_URL))) },
-            modifier = Modifier.padding(start = 8.dp, bottom = 16.dp),
-        ) { Text(stringResource(R.string.duo_community_share)) }
+        Row(modifier = Modifier.padding(start = 8.dp, bottom = 16.dp)) {
+            TextButton(
+                onClick = {
+                    if (ShareLayout.canShare(context, containerId)) {
+                        sharing = true
+                    } else {
+                        SnackbarManager.show(context.getString(R.string.duo_share_layout_none))
+                    }
+                },
+            ) { Text(stringResource(R.string.duo_community_share)) }
+            TextButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(CONTRIBUTING_URL))) }) {
+                Text(stringResource(R.string.duo_community_contribute))
+            }
+        }
     }
+
+    if (sharing) ShareLayoutDialog(containerId, gameTitle, onDismiss = { sharing = false })
 
     confirm?.let { pkg ->
         AlertDialog(
