@@ -1,8 +1,10 @@
 # Engine adapter contract: UI layout, element list, native touch
 
 What an in-game mod (an "engine adapter") implements so GameNative Duo can put its UI on the screens the user
-chooses and send it bottom-screen touches. The Unity uGUI adapter (`duo/mods-src/unity`) is the reference
-implementation. Everything here is engine-neutral: the app side (editor, storage, presets) never changes per engine.
+chooses and send it bottom-screen touches. The Unity adapter (`duo/mods-src/unity`) is the reference
+implementation; the Stardew adapter (`duo/mods-src/stardew`, engine `stardew-smapi`) is the second. Games with no
+adapter can still use **region view** (the bottom screen shows a magnified part of the frame), which needs nothing
+from the game. Everything here is engine-neutral: the app side (editor, storage, presets) never changes per engine.
 
 ```
  Android app (GameNative Duo)                         game process (Wine)

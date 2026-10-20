@@ -70,6 +70,8 @@ the id: prebuilt `libkgslshim.so` matches on that substring.
 2. **Region views**: crop rectangles of the game frame onto the bottom screen; second render thread at the
    bottom screen's 60 Hz; **zero-copy** (share `AHardwareBuffer`s, never `glReadPixels`); redraw only on
    change. Plus top-screen masks, a touch layout editor, and touch passthrough (tap -> click at source coords).
+   **Started**: split mode `region` (`split/RegionView.kt`, `RegionPanel.kt`): one region, pan/zoom editor in game,
+   taps click at source coords; works for any game without a mod (Isaac, Dead Cells presets).
 3. **Window routing**: send specific X windows (by title/class) to the bottom screen. Frames already arrive
    zero-copy via DRI3 `AHardwareBuffer`s + the Present extension.
 4. **Bridge**: local socket between Windows-side mods (inside Wine) and Android panels; compact binary
@@ -98,17 +100,29 @@ no CPU frame copies, data over pixels, idle at 0 fps when nothing changes.
   `DeviceProfile` (Thor: gap 249, scale 1.142, shift 0), tuned in-game with a two-finger long press on the bottom
   screen, saved in `files/duo/calibration/<profile>.json`, and written into `layout.json` on every session start and
   Dual screen toggle (mods re-read it live).
-- Unity (uGUI) games: BepInEx 5 (MIT, loads via `winhttp.dll`, override `winhttp=n,b`) + the generic plugin in
-  `duo/mods-src/unity` (cameras squeezed into the top part, root screen-space canvases moved to a bottom-screen UI
-  camera, `CanvasScaler` computed for the bottom screen's size). Needs the Mono backend (`*_Data/Managed`, no
-  `GameAssembly.dll`). First game: Slime Rancher (Unity 2019.4). Crosshairs/reticles stay on top by name.
+- Unity games: BepInEx 5 (MIT, loads via `winhttp.dll`, override `winhttp=n,b`) + the generic plugin in
+  `duo/mods-src/unity`, both shared by every Unity game (`assets/duo/mods/shared/`). `CameraPlacer` holds game cameras
+  in the top part and the game's own UI cameras (UI-layer only, named like a UI camera, or named by a quirk) in the
+  bottom part, every frame, writing only on change (tk2d cameras through their settings); `UiRouter` moves
+  screen-space canvases to our bottom UI camera and applies the UI layout to uGUI elements and to sprite HUDs under a
+  game UI camera; `Quirks.cs` holds per-game patches found by type name (Subnautica, Team Cherry). Needs the Mono
+  backend (`*_Data/Managed`, no `GameAssembly.dll`). Crosshairs/reticles stay on top by name. Compile-check against a
+  game: `-p:ManagedPath=<game>_Data/Managed` (Unity 2021+ needs its `netstandard.dll`, picked up automatically).
+  Bundled: Slime Rancher, Subnautica; community (experimental): Hollow Knight, Silksong, Risk of Rain 2.
 - **UI layout** (per game, user-editable): each UI element on the bottom screen, the top screen or hidden, resized and
   shifted. `duo/ui/` (store, controller, editor), user layouts in `files/duo/ui/<game>.json`, presets bundled as
   `assets/duo/mods/<mod>/ui-layout.json`, handed to the mod as `ui.json`. The editor opens with a two-finger long press
   on the bottom screen -> "Edit UI layout".
-- **Native touch**: bottom-screen fingers go over the bridge into the engine's UI (Unity: `EventSystem`), never through
-  the X mouse (a mouse shows a cursor, flips games to keyboard/mouse prompts and counts as gameplay clicks). Games
-  without a bridge mod get mouse clicks. Setting "Native touch on the bottom screen".
+- **Native touch**: bottom-screen fingers go over the bridge into the engine's UI (Unity: `EventSystem`; Stardew: the
+  game's mouse via a `Mouse.GetState` postfix, X pointer untouched), never through the X mouse. Games without a bridge
+  mod get mouse clicks. Setting "Native touch on the bottom screen".
+- **Split resolution** (settings: 100/75/50%): the tall window is twice a 1080p frame at 100%; 75% is about one.
+  Changing it resizes the container (and the mod's undo record) on save; Unity games need their in-game resolution
+  set to the new window once.
+- **Community packages**: repo `nono5822/GameNativeDuo-community` (schemas, validator, signed index on Pages, share bot,
+  ratings from discussions). App: `duo/community/` (Community button next to the Dual screen switch; also shown for
+  games that only have community packages). Code mods install after a consent dialog through `DuoModInstaller`.
+  Design: `duo/docs/community-packages.md`. Index signing key: repo secret + `~/.config/gamenative-duo/` (maintainer).
 - `layout.json` (`%AppData%\GameNativeDuo\` in the prefix) is the contract with in-game mods: `screen`, `top`,
   `bottom` (window px, origin top-left), plus `gap`, `bottomScale`, `bottomShift`, `bridge.port`. Mods act only when
   the window matches `screen`. `ui.json` (UI layout) and `elements.json` (for the editor) sit next to it.
@@ -171,7 +185,9 @@ dotnet build -c Release -p:ManagedPath=<Game_Data/Managed> -p:BepInExPath=<BepIn
 
 ## Known issues / open questions
 
-- Work in progress and its full history: `duo/notes/` (start with the newest file).
+- Work in progress and its full history: `duo/notes/` (start with the newest file). Ranked list of games to support:
+  `duo/futuregames.md` (from GameNative's Thor play data).
+- `cp`/`mv` are aliased to interactive mode in this shell: use `\cp -f` / `\mv -f` in scripts.
 - Unity games remember their last resolution: after turning Dual screen on, set the in-game resolution to the tall
   window (1920x2160) once, or the game renders centred and unsplit. Could be automated (Unity's `-screen-width`/
   `-screen-height` arguments or its registry keys).
