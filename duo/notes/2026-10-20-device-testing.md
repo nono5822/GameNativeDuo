@@ -54,3 +54,12 @@ Plugin 0.3.1 times itself (`this plugin x ms per frame` in the `Frames` lines, l
 
 Stardew inventory drag and drop, Slime Rancher at 75%, Hollow Knight / Silksong / Risk of Rain 2 (not installed on
 the Thor), Isaac region, sharing a layout, ratings.
+
+## Slime Rancher default layout, open bug
+
+- The demo layout (`duo/branding/slime-rancher-demo-layout.json`) is now the bundled preset
+  (`assets/duo/mods/slime-rancher/ui-layout.json`), with a dark colour background instead of the private image.
+  Users with their own `files/duo/ui/STEAM_433340.json` keep it.
+- Open: after many rules were applied live from the PC editor, some elements that had no rule before (day/time,
+  meters) were drawn twice, the original beside the scaled copy. Clean after a game restart. Look at how `UiRouter`
+  applies a first rule to an element live.
