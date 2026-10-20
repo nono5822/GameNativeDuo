@@ -104,6 +104,15 @@ namespace GameNativeDuo.UnitySplit
                 if (c != null)
                     _ours.Add(c);
             }
+            // One of ours may have been tracked as a game camera before it was registered: forget it.
+            for (int i = _list.Count - 1; i >= 0; i--)
+            {
+                if (_list[i].Cam != null && _ours.Contains(_list[i].Cam))
+                {
+                    _tracked.Remove(_list[i].Cam);
+                    _list.RemoveAt(i);
+                }
+            }
         }
 
         public bool IsGameUiCamera(Camera cam)

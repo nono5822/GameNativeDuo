@@ -24,6 +24,9 @@ namespace GameNativeDuo.UnitySplit
 
         public void Set(Background bg) => _bg = bg ?? Background.Default;
 
+        /// <summary>Our camera, once created (the camera placer must leave it alone).</summary>
+        public Camera Camera => _camera;
+
         /// <summary>Applies the settings to our bottom UI camera; call after the cameras exist and on every change.</summary>
         public void Apply(Layout layout, Camera bottomCam)
         {

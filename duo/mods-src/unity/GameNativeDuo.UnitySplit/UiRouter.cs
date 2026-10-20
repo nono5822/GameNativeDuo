@@ -144,6 +144,7 @@ namespace GameNativeDuo.UnitySplit
             _rules = rules ?? UiRules.Empty;
             _background.Set(_rules.Background);
             _background.Apply(_layout, _bottomCam);
+            _cameras.SetOurs(_bottomCam, _topCam, _hiddenCam, _background.Camera);
             foreach (string id in _aimIds)
                 _rules.AddImplicit(id, DuoScreen.Top);
             if (_layout == null || _bottomCam == null)
@@ -738,8 +739,8 @@ namespace GameNativeDuo.UnitySplit
                 _hiddenCam = NewUiCamera("GameNativeDuo UI camera (hidden)", _layout.Bottom, CameraClearFlags.Nothing);
                 _hiddenCam.enabled = false;
             }
-            _cameras.SetOurs(_bottomCam, _topCam, _hiddenCam);
             _background.Apply(_layout, _bottomCam);
+            _cameras.SetOurs(_bottomCam, _topCam, _hiddenCam, _background.Camera);
         }
 
         private Camera NewUiCamera(string name, RectInt region, CameraClearFlags clear)

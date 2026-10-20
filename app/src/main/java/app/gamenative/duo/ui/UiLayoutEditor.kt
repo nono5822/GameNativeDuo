@@ -196,25 +196,27 @@ internal class UiLayoutEditor(
             DuoUi.add(
                 modes,
                 DuoUi.chip(context, mode.label) {
+                    // Image without a picture yet: show its options (gallery, snapshot) first, change nothing.
                     if (mode == UiBackgroundMode.IMAGE && !controller.layout.background.image) {
-                        onPickImage?.invoke()
+                        imageChoice = true
                     } else {
+                        imageChoice = false
                         setBackground(controller.layout.background.copy(mode = mode), save = true)
-                        showTab(Tab.BACKGROUND)
                     }
+                    showTab(Tab.BACKGROUND)
                 }.also {
                     it.isEnabled = controller.supports(mode)
-                    it.on = bg.mode == mode
+                    it.on = if (imageChoice) mode == UiBackgroundMode.IMAGE else bg.mode == mode
                     modeChips[mode] = it
                 },
             )
         }
         content.addView(modes)
-        if (!controller.supports(bg.mode)) {
+        if (bg.mode != UiBackgroundMode.GAME && !controller.supports(bg.mode)) {
             val note = "This game's mod cannot draw this background yet: the bottom screen keeps its default."
             content.addView(DuoUi.label(context, note, 13f, DuoUi.MUTED))
         }
-        when (bg.mode) {
+        when (if (imageChoice) UiBackgroundMode.IMAGE else bg.mode) {
             UiBackgroundMode.BLUR -> content.addView(
                 sliderRow("Blur", bg.blur) { v, done ->
                     setBackground(controller.layout.background.copy(blur = v), done)
@@ -225,7 +227,8 @@ internal class UiLayoutEditor(
                 SWATCHES.forEach { color ->
                     DuoUi.add(
                         swatches,
-                        View(context).apply {
+                        // A View subclass: DuoUi.add squashes plain Views (spacers) to one pixel.
+                        object : View(context) {}.apply {
                             background = GradientDrawable().apply {
                                 setColor(color)
                                 cornerRadius = dp(18).toFloat()
@@ -276,6 +279,9 @@ internal class UiLayoutEditor(
         }
     }
 
+    /** Image chosen but no picture yet: its options are shown, the background is unchanged until one is picked. */
+    private var imageChoice = false
+
     private fun setBackground(bg: UiBackground, save: Boolean) = controller.setBackground(bg, save)
 
     private fun sliderRow(name: String, value: Float, onChange: (Float, Boolean) -> Unit): View {
@@ -287,6 +293,7 @@ internal class UiLayoutEditor(
 
     /** Called back after an image was chosen or captured: show the result. */
     fun onBackgroundChanged() {
+        imageChoice = false
         if (tab == Tab.BACKGROUND) showTab(Tab.BACKGROUND)
     }
 
