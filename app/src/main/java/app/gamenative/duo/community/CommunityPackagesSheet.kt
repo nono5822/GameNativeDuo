@@ -58,8 +58,8 @@ private const val CONTRIBUTING_URL = "https://github.com/nono5822/GameNativeDuo-
 
 /**
  * A game's community packages: the saved list shows at once (also offline), then a refresh replaces it if the index
- * changed. Packages tested on this device come first, then the most recently updated. Layouts and settings apply in
- * one tap; code mods are listed but not installable yet.
+ * changed. Packages tested on this device come first, then the best rated (see [CommunityRating.score]), then the most
+ * recently updated. Layouts and settings apply in one tap; code mods install after a consent dialog.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -183,7 +183,11 @@ fun CommunityPackagesSheet(containerId: String, title: String, installLocation: 
             }
         }
         val packages = game?.packages.orEmpty()
-            .sortedWith(compareByDescending<CommunityPackage> { deviceId in it.testedOn }.thenByDescending { it.updated })
+            .sortedWith(
+                compareByDescending<CommunityPackage> { deviceId in it.testedOn }
+                    .thenByDescending { it.rating?.score ?: 0.0 }
+                    .thenByDescending { it.updated },
+            )
         when {
             loading && game == null -> Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
@@ -289,6 +293,19 @@ private fun PackageCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(pkg.description, style = MaterialTheme.typography.bodyMedium)
+            pkg.rating?.let { rating ->
+                val context = LocalContext.current
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        stringResource(R.string.duo_community_rating, rating.up, rating.down, rating.comments),
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(rating.url))) }) {
+                        Text(stringResource(R.string.duo_community_rate))
+                    }
+                }
+            }
             val notes = buildList {
                 if (testedHere) {
                     add(stringResource(R.string.duo_community_tested_here))

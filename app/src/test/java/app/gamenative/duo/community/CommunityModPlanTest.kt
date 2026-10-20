@@ -50,3 +50,22 @@ class CommunityModPlanTest {
         assertEquals(mapOf("bepinex" to ""), CommunityModInstaller.plan(pkg(install(game = mapOf("a.dll" to ""), shared = mapOf("bepinex" to "")), "a.dll")).sharedAssets)
     }
 }
+
+class CommunityRatingTest {
+    @Test
+    fun wilsonPrefersManyGoodVotesOverOne() {
+        val one = CommunityRating(1, 0, 0, "https://github.com/x")
+        val many = CommunityRating(40, 2, 0, "https://github.com/x")
+        val none = CommunityRating(0, 0, 0, "https://github.com/x")
+        org.junit.Assert.assertTrue(many.score > one.score)
+        org.junit.Assert.assertTrue(one.score > none.score)
+        org.junit.Assert.assertEquals(0.0, none.score, 0.0)
+    }
+
+    @Test
+    fun ratingLinksOnlyToGithub() {
+        org.junit.Assert.assertNull(CommunityRating.fromJson(org.json.JSONObject().put("url", "https://evil.example/x")))
+        val ok = CommunityRating.fromJson(org.json.JSONObject().put("url", "https://github.com/a/b/discussions/3").put("up", 2))
+        org.junit.Assert.assertEquals(2, ok?.up)
+    }
+}

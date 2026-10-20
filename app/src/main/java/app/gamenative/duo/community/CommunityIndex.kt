@@ -43,6 +43,30 @@ enum class CommunityKind(val id: String) {
 
 data class CommunityFile(val path: String, val sha256: String, val url: String, val size: Long)
 
+/** 👍/👎 reactions and comments on the package's GitHub discussion (folded into the index nightly). */
+data class CommunityRating(val up: Int, val down: Int, val comments: Int, val url: String) {
+    /**
+     * Lower bound of the Wilson score interval (95%) of the share of 👍: ranks by how sure we are that people like
+     * it, so one 👍 does not beat forty 👍 and two 👎.
+     */
+    val score: Double get() {
+        val n = (up + down).toDouble()
+        if (n == 0.0) return 0.0
+        val z = 1.96
+        val p = up / n
+        return (p + z * z / (2 * n) - z * Math.sqrt((p * (1 - p) + z * z / (4 * n)) / n)) / (1 + z * z / n)
+    }
+
+    companion object {
+        fun fromJson(o: JSONObject?): CommunityRating? = o?.let {
+            val url = it.optString("url")
+            // Opened in the browser: only GitHub links, even from the signed index.
+            if (!url.startsWith("https://github.com/")) return null
+            CommunityRating(it.optInt("up"), it.optInt("down"), it.optInt("comments"), url)
+        }
+    }
+}
+
 /**
  * Where a code mod's files go. Keys of [gameFiles]/[prefixFiles] are file paths in the package or folder prefixes
  * ("plugin/"); values are paths relative to the game folder / the prefix's drive_c ("" = the root, keeping the rest of
@@ -88,6 +112,7 @@ data class CommunityPackage(
     val updated: String,
     /** Code mods only. */
     val install: CommunityInstall? = null,
+    val rating: CommunityRating? = null,
     /** Experimental packages are listed with a warning. */
     val experimental: Boolean = tags.contains("experimental"),
 ) {
@@ -117,6 +142,7 @@ data class CommunityPackage(
                 screenshots = o.optJSONArray("screenshots").strings(),
                 updated = o.optString("updated"),
                 install = CommunityInstall.fromJson(o.optJSONObject("install")),
+                rating = CommunityRating.fromJson(o.optJSONObject("rating")),
             )
         } catch (e: Exception) {
             null

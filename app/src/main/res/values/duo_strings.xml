@@ -77,6 +77,8 @@
     <string name="duo_mod_consent_experimental">Experimental: untested on real hardware, may not work</string>
     <string name="duo_mod_consent_undo">Remove puts everything back as it was: files, screen size and settings.</string>
     <string name="duo_mod_consent_confirm">Install</string>
+    <string name="duo_community_rating">👍 %1$d · 👎 %2$d · %3$d comment(s)</string>
+    <string name="duo_community_rate">Rate &amp; discuss</string>
     <string name="duo_community_kind_layout">Layout</string>
     <string name="duo_community_kind_settings">Settings</string>
     <string name="duo_community_kind_device">Device</string>
