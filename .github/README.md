@@ -71,6 +71,54 @@ saved per game, as fractions of the screen, so a layout fits any device with the
 </tr>
 </table>
 
+## Balatro on two screens
+
+The table stays on the top screen: the score, the blind, your jokers and the hand you play. Everything you touch moves
+to the bottom screen: your hand at full width, Play, Sort and Discard under your thumbs, the hand you are building with
+its chips and mult, your consumables, the shop, the blind select, the cash out, booster packs and the menus. Cards fly
+between the screens as they would across one table. Play by touch or with the controller, which moves freely across
+both screens.
+
+<table>
+<tr>
+<td width="50%" align="center"><img src="assets/balatro-deal.gif" alt="Balatro on the AYN Thor: a blind is selected on the bottom screen and the hand is dealt from the deck on the top screen down to the bottom screen"></td>
+<td width="50%" align="center"><img src="assets/balatro-play.gif" alt="A pair of Jacks is selected on the bottom screen, the hand info shows Pair, and the cards fly up to the top screen where the jokers score them"></td>
+</tr>
+<tr>
+<td valign="top"><b>Dealt across the hinge</b><br>Pick a blind below and the cards travel from the deck on the top
+screen into your hand.</td>
+<td valign="top"><b>Choose below, score above</b><br>The hand you are building is named as you pick it. Played cards
+fly up to the table, where your jokers trigger.</td>
+</tr>
+<tr>
+<td width="50%" align="center"><img src="assets/balatro-buy.gif" alt="A joker is bought in the shop on the bottom screen and flies up to the joker row on the top screen"></td>
+<td width="50%" align="center"><img src="assets/balatro-pack.gif" alt="A booster pack is bought and bursts open on the bottom screen in a shower of sparkles"></td>
+</tr>
+<tr>
+<td valign="top"><b>The shop under your thumbs</b><br>A joker you buy takes its place on the top screen.</td>
+<td valign="top"><b>Booster packs</b><br>Packs open on the bottom screen, with your hand dealt above the cards when a
+tarot or spectral card needs targets.</td>
+</tr>
+</table>
+
+<table>
+<tr>
+<td width="33%" align="center"><img src="assets/balatro-menu.jpg" alt="The Balatro title on the top screen and the main menu buttons on the bottom screen"></td>
+<td width="33%" align="center"><img src="assets/balatro-blind.jpg" alt="The blind select on the bottom screen, with the jokers and the deck on the top screen"></td>
+<td width="33%" align="center"><img src="assets/balatro-hand.jpg" alt="A hand in play: the HUD and jokers on top, the hand, its buttons, the hand info and the consumables below"></td>
+</tr>
+<tr>
+<td width="33%" align="center"><img src="assets/balatro-shop.jpg" alt="The shop on the bottom screen"></td>
+<td width="33%" align="center"><img src="assets/balatro-pack.jpg" alt="A Buffoon pack open on the bottom screen"></td>
+<td width="33%" align="center"><img src="assets/balatro-cashout.jpg" alt="The cash out screen on the bottom screen"></td>
+</tr>
+</table>
+
+Built for long runs. Late game tables were tested with nine jokers, full consumable slots, an eleven card hand, every
+mega pack, a four slot shop, boss blinds and controller only play. The mod is one render pass in one window, with no
+second draw and no frame read back to the CPU, so it costs a few microseconds per frame. Balatro runs at a 75% split
+resolution by default, which keeps a busy late game table near 60 fps on the Thor.
+
 ## Features
 
 ### Two screens, one picture
@@ -176,7 +224,7 @@ screen size and restores everything when switched off. After an app update, inst
 | Stardew Valley | MonoGame (SMAPI) | Bundled mod | World across both screens, full touch interface, layout editor |
 | Slime Rancher | Unity (BepInEx) | Bundled mod | HUD below, crosshair on top, native touch, layout editor |
 | Subnautica | Unity (BepInEx) | Bundled mod | HUD and menus below, prompts and reticle on top |
-| Balatro | LOVE (Lovely) | Bundled mod | Works |
+| Balatro | LOVE (Lovely) | Bundled mod | Hand, shop, packs and menus below, table on top, native touch and controller |
 | Dead Cells | HashLink | Region view | Minimap on the bottom screen, no mod needed |
 | Hollow Knight, Silksong | Unity (BepInEx) | Community mod | Experimental, built from the game files, not yet tested on hardware |
 | Risk of Rain 2 | Unity (BepInEx) | Community mod | Experimental, not yet tested on hardware |
@@ -217,6 +265,8 @@ around that.
 - Per-frame work is limited to the interface elements you changed. Measured in Slime Rancher on the Thor, the Unity
   adapter costs about 0.1 ms per frame, under half a percent of the frame time.
 - Region view in Dead Cells kept the GPU around 12% busy.
+- The Balatro mod draws both screens in one pass and never reads a frame back. Its own work is about 0.06 ms per
+  frame. The cost that remains is presenting the tall frame, so Balatro defaults to the 75% split resolution.
 - A split resolution setting (100, 75 or 50%) lowers the cost of the tall window on demanding games.
 - Bottom screen backgrounds are drawn by the game on the GPU. The blur works on a target of a few thousand pixels, and
   a solid color skips drawing the lower part of the world.
@@ -267,6 +317,8 @@ are offered back.
 - Mod loaders bundled unmodified, with their licences: [BepInEx](https://github.com/BepInEx/BepInEx) (MIT),
   [SMAPI](https://github.com/Pathoschild/SMAPI) (LGPL-3.0) and
   [Lovely](https://github.com/ethangreen-dev/lovely-injector) (MIT).
+- [balatro-dualscreen](https://github.com/rosbean/balatro-dualscreen) by rosbean (GPL-3.0), the native Android dual
+  screen Balatro that inspired the layout of the Balatro mod.
 - Licensed under the GPL-3.0, like GameNative.
 
 Mods only change games you own. Nothing in this project bypasses or weakens DRM.
