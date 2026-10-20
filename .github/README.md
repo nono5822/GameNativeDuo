@@ -8,7 +8,7 @@ A fork of [GameNative](https://github.com/utkarshdalal/GameNative) that makes th
 The world plays on the top screen. The HUD, inventory, map and dialogue live on the bottom screen, and you use them
 with your fingers.
 
-<img src="assets/stardew-walk.gif" alt="The farmer walking around the farm on the AYN Thor: the world scrolls across the top screen, the hinge and the bottom screen as one picture, with the HUD only on the bottom screen" width="480">
+<img src="assets/stardew-walk.gif" alt="The farmer walking around the farm on the AYN Thor: the world scrolls across the top screen, the hinge and the bottom screen as one picture, with the HUD only on the bottom screen" width="600">
 
 <sub>Recorded on an AYN Thor. Both screens are captured on the device and assembled at their physical scale, hinge
 included, so the farm lines up across the gap exactly as it does in your hands.</sub>
@@ -48,7 +48,7 @@ them with a tap. The scene stays uncovered on top.</td>
 cut off and nothing covers the game.</td>
 </tr>
 <tr>
-<td width="50%" align="center"><img src="assets/stardew-drag.jpg" alt="Dragging the watering can between inventory slots with a finger"></td>
+<td width="50%" align="center"><img src="assets/stardew-drag.gif" alt="Dragging the watering can between inventory slots with a finger, recorded on the device"></td>
 <td width="50%" align="center"><img src="assets/stardew-map.jpg" alt="The world map open on the bottom screen"></td>
 </tr>
 <tr>
