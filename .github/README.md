@@ -1,6 +1,6 @@
 <div align="center">
 
-# GameNative Duo
+<img src="assets/banner.png" alt="GameNative Duo: dual-screen PC gaming for Android handhelds" width="100%">
 
 **Your PC games, across both screens of your dual-screen Android handheld.**
 
