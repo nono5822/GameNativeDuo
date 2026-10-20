@@ -14,13 +14,18 @@ object CommunityIndex {
     /** The index signing key (the community repo's keys/index-public-key.txt). Changing it needs an app update. */
     const val PUBLIC_KEY = "VDgt6QeCefGECccRBbtFePnNoPLAmUhPlN0jyswkpoo="
 
-    /** Kinds this app version can apply. Others (code mods) are listed but not installable yet. */
-    val APPLICABLE_KINDS = setOf(CommunityKind.UI_LAYOUT, CommunityKind.DUO_SETTINGS)
+    /** Kinds this app version can apply. */
+    val APPLICABLE_KINDS = setOf(CommunityKind.UI_LAYOUT, CommunityKind.DUO_SETTINGS, CommunityKind.MOD)
+
+    /** APK asset folders (under assets/duo/mods/shared/) a community mod may reuse instead of shipping its own copy. */
+    val SHARED_ASSETS = setOf("bepinex", "unity-split", "BepInEx-LICENSE.txt", "BepInEx-NOTICE.txt")
 
     /** "STEAM_433340" -> "steam-433340". */
     fun gameKey(containerId: String): String = containerId.lowercase().replace('_', '-')
 
     fun gameUrl(key: String) = "$BASE_URL/games/$key.json"
+
+    const val CATALOG_URL = "$BASE_URL/catalog.json"
 }
 
 enum class CommunityKind(val id: String) {
@@ -38,6 +43,33 @@ enum class CommunityKind(val id: String) {
 
 data class CommunityFile(val path: String, val sha256: String, val url: String, val size: Long)
 
+/**
+ * Where a code mod's files go. Keys of [gameFiles]/[prefixFiles] are file paths in the package or folder prefixes
+ * ("plugin/"); values are paths relative to the game folder / the prefix's drive_c ("" = the root, keeping the rest of
+ * the path). [sharedAssets] reuses APK assets (see [CommunityIndex.SHARED_ASSETS]).
+ */
+data class CommunityInstall(
+    val gameFiles: Map<String, String>,
+    val prefixFiles: Map<String, String>,
+    val sharedAssets: Map<String, String>,
+    val dllOverrides: List<String>,
+    val launchExecutable: String?,
+    val splitLayout: String?,
+) {
+    companion object {
+        fun fromJson(o: JSONObject?): CommunityInstall? = o?.let {
+            CommunityInstall(
+                gameFiles = it.optJSONObject("gameFiles").stringMap(),
+                prefixFiles = it.optJSONObject("prefixFiles").stringMap(),
+                sharedAssets = it.optJSONObject("sharedAssets").stringMap(),
+                dllOverrides = it.optJSONArray("dllOverrides").strings(),
+                launchExecutable = it.optString("launchExecutable").ifEmpty { null },
+                splitLayout = it.optString("splitLayout").ifEmpty { null },
+            )
+        }
+    }
+}
+
 data class CommunityPackage(
     val id: String,
     val kind: CommunityKind,
@@ -54,6 +86,10 @@ data class CommunityPackage(
     val screenshots: List<String>,
     /** ISO 8601 date of the package's last change in the repo. */
     val updated: String,
+    /** Code mods only. */
+    val install: CommunityInstall? = null,
+    /** Experimental packages are listed with a warning. */
+    val experimental: Boolean = tags.contains("experimental"),
 ) {
     fun file(path: String): CommunityFile? = files.firstOrNull { it.path == path }
 
@@ -80,6 +116,7 @@ data class CommunityPackage(
                 },
                 screenshots = o.optJSONArray("screenshots").strings(),
                 updated = o.optString("updated"),
+                install = CommunityInstall.fromJson(o.optJSONObject("install")),
             )
         } catch (e: Exception) {
             null
@@ -96,6 +133,11 @@ class CommunityGame(val key: String, val title: String, val packages: List<Commu
             return CommunityGame(json.optString("key"), json.optJSONObject("game")?.optString("title").orEmpty(), packages)
         }
     }
+}
+
+private fun JSONObject?.stringMap(): Map<String, String> {
+    if (this == null) return emptyMap()
+    return keys().asSequence().associateWith { optString(it) }
 }
 
 private fun JSONArray?.strings(): List<String> {

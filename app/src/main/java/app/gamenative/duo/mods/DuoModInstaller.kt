@@ -28,20 +28,75 @@ import timber.log.Timber
 object DuoModInstaller {
     private const val ENV_DLL_OVERRIDES = "WINEDLLOVERRIDES"
     private const val BACKUP_SUFFIX = ".duo-backup"
+    private const val SHARED_ASSETS = "duo/mods/shared"
 
     fun isEnabled(context: Context, appId: String): Boolean = stateFile(context, appId).isFile
 
+    /** The id of the mod enabled for [appId] (a bundled mod's id or a community package id), or null. */
+    fun enabledModId(context: Context, appId: String): String? = try {
+        stateFile(context, appId).takeIf { it.isFile }?.let { JSONObject(it.readText()).optString("mod").ifEmpty { null } }
+    } catch (t: Throwable) {
+        null
+    }
+
     /** Applies [mod] to its container; [gameDir] is the game's install folder. Returns false (and logs) on failure. */
-    fun enable(context: Context, mod: DuoGameMod, gameDir: File): Boolean = try {
+    fun enable(context: Context, mod: DuoGameMod, gameDir: File): Boolean = enableWith(context, mod, gameDir, null) { driveC, files ->
+        mod.gameFiles.forEach { (asset, rel) -> copyAssetTree(context, asset, File(gameDir, rel), files) }
+        mod.prefixFiles.forEach { (asset, rel) -> copyAssetTree(context, asset, File(driveC, rel), files) }
+    }
+
+    /**
+     * Applies a downloaded mod (a community package): [gameFiles] and [prefixFiles] map paths relative to the game
+     * folder and to the prefix's drive_c to their content; [sharedAssets] maps APK asset folders shared by bundled
+     * mods (e.g. BepInEx) to game-folder paths. Same rules and undo record as [enable]; [origin] is kept in the record.
+     */
+    fun enableDownloaded(
+        context: Context,
+        mod: DuoGameMod,
+        gameDir: File,
+        gameFiles: Map<String, ByteArray>,
+        prefixFiles: Map<String, ByteArray>,
+        sharedAssets: Map<String, String>,
+        origin: JSONObject,
+    ): Boolean = enableWith(context, mod, gameDir, origin) { driveC, files ->
+        sharedAssets.forEach { (asset, rel) -> copyAssetTree(context, "$SHARED_ASSETS/$asset", inside(gameDir, rel), files) }
+        gameFiles.forEach { (rel, bytes) -> install(bytes.inputStream(), inside(gameDir, rel), files) }
+        prefixFiles.forEach { (rel, bytes) -> install(bytes.inputStream(), inside(driveC, rel), files) }
+    }
+
+    /** [rel] under [root], refusing anything that would land outside it ("..", absolute paths). */
+    private fun inside(root: File, rel: String): File {
+        val target = File(root, rel).canonicalFile
+        val base = root.canonicalFile
+        require(target == base || target.path.startsWith(base.path + File.separator)) { "$rel leaves ${base.name}" }
+        return target
+    }
+
+    private fun enableWith(
+        context: Context,
+        mod: DuoGameMod,
+        gameDir: File,
+        origin: JSONObject?,
+        copyFiles: (driveC: File, files: JSONArray) -> Unit,
+    ): Boolean = try {
         val container = ContainerUtils.getOrCreateContainer(context, mod.appId)
         val driveC = File(container.rootDir, ".wine/drive_c")
         val state = JSONObject()
             .put("gameDir", gameDir.absolutePath)
             .put("driveC", driveC.absolutePath)
+            .put("splitLayout", mod.splitLayout.id)
+        origin?.let { state.put("origin", it) }
+        mod.launchExecutable?.let { state.put("launchExecutable", it) }
 
         val files = JSONArray()
-        mod.gameFiles.forEach { (asset, rel) -> copyAssetTree(context, asset, File(gameDir, rel), files) }
-        mod.prefixFiles.forEach { (asset, rel) -> copyAssetTree(context, asset, File(driveC, rel), files) }
+        // Recorded as files land, so a failure halfway still leaves an undo record (written in the catch below).
+        try {
+            copyFiles(driveC, files)
+        } catch (t: Throwable) {
+            state.put("files", files).put("mod", mod.id)
+            stateFile(context, mod.appId).apply { parentFile?.mkdirs() }.writeText(state.toString(2))
+            throw t
+        }
         mod.gameFileCopies.forEach { (src, dst) ->
             File(gameDir, src).inputStream().use { install(it, File(gameDir, dst), files) }
         }
@@ -86,10 +141,21 @@ object DuoModInstaller {
     }
 
     /** Undoes [enable]. Returns false (and logs) on failure. */
-    fun disable(context: Context, mod: DuoGameMod): Boolean = try {
-        val stateFile = stateFile(context, mod.appId)
+    fun disable(context: Context, mod: DuoGameMod): Boolean = disable(context, mod.appId)
+
+    /**
+     * Undoes [enable] or [enableDownloaded] for [appId], whichever mod it was: everything needed is in the record.
+     * Returns false (and logs) on failure.
+     */
+    fun disable(context: Context, appId: String): Boolean = try {
+        val stateFile = stateFile(context, appId)
         val state = JSONObject(stateFile.readText())
-        val container = ContainerUtils.getContainer(context, mod.appId)
+        val container = ContainerUtils.getContainer(context, appId)
+        val modId = state.optString("mod")
+        // Records written before these fields existed: the bundled mod they came from knows.
+        val bundled = DuoModCatalog.mods.firstOrNull { it.id == modId }
+        val splitLayout = SplitLayout.fromId(state.optString("splitLayout").ifEmpty { bundled?.splitLayout?.id })
+        val launchExecutable = state.optString("launchExecutable").ifEmpty { bundled?.launchExecutable }
         val roots = listOfNotNull(state.optString("gameDir"), state.optString("driveC")).filter { it.isNotEmpty() }.map { File(it) }
 
         val files = state.optJSONArray("files") ?: JSONArray()
@@ -102,7 +168,7 @@ object DuoModInstaller {
             pruneEmptyDirs(file.parentFile, roots)
         }
 
-        val ourSize = ScreenSplit.recommendedFor(context, mod.splitLayout)?.let { "${it.first}x${it.second}" }
+        val ourSize = ScreenSplit.recommendedFor(context, splitLayout)?.let { "${it.first}x${it.second}" }
         // Restore the screen size unless the user changed it since.
         if (ourSize == null || container.screenSize == ourSize) {
             container.screenSize = state.optString("previousScreenSize", container.screenSize)
@@ -119,7 +185,7 @@ object DuoModInstaller {
             container.envVars = envVars.toString()
         }
 
-        if (state.has("previousExecutablePath") && container.executablePath == mod.launchExecutable) {
+        if (state.has("previousExecutablePath") && container.executablePath == launchExecutable) {
             container.executablePath = state.optString("previousExecutablePath", "")
         }
         container.saveData()
@@ -136,10 +202,10 @@ object DuoModInstaller {
         LayoutFile.delete(container)
 
         stateFile.delete()
-        Timber.tag(DualScreenHost.TAG).i("Disabled dual-screen mod %s for %s", mod.id, container.id)
+        Timber.tag(DualScreenHost.TAG).i("Disabled dual-screen mod %s for %s", modId, container.id)
         true
     } catch (t: Throwable) {
-        Timber.tag(DualScreenHost.TAG).e(t, "Failed to disable dual-screen mod %s", mod.id)
+        Timber.tag(DualScreenHost.TAG).e(t, "Failed to disable the dual-screen mod for %s", appId)
         false
     }
 

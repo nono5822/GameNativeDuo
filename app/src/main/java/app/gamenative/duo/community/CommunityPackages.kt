@@ -127,18 +127,17 @@ object CommunityPackages {
                     ),
                 )
             }
+            CommunityKind.MOD -> throw IOException("code mods are installed with CommunityModInstaller, after consent")
             else -> throw IOException("${pkg.kind.id} packages cannot be installed by this version of the app")
         }
-        setApplied(context, containerId, pkg)
+        markApplied(context, containerId, pkg)
         Timber.tag(DualScreenHost.TAG).i("Community: applied %s %s to %s", pkg.id, pkg.version, containerId)
     }
 
     /** Undoes an applied layout (back to the bundled preset or nothing). Settings stay as they are. */
     fun removeLayout(context: Context, containerId: String) {
         UiLayoutStore.reset(context, containerId)
-        val record = readApplied(context, containerId)
-        record.remove(CommunityKind.UI_LAYOUT.id)
-        writeApplied(context, containerId, record)
+        forget(context, containerId, CommunityKind.UI_LAYOUT)
     }
 
     /** What was applied to [containerId], by kind. */
@@ -159,9 +158,15 @@ object CommunityPackages {
         return false
     }
 
-    private fun setApplied(context: Context, containerId: String, pkg: CommunityPackage) {
+    fun markApplied(context: Context, containerId: String, pkg: CommunityPackage) {
         val record = readApplied(context, containerId)
         record.put(pkg.kind.id, JSONObject().put("id", pkg.id).put("version", pkg.version))
+        writeApplied(context, containerId, record)
+    }
+
+    fun forget(context: Context, containerId: String, kind: CommunityKind) {
+        val record = readApplied(context, containerId)
+        record.remove(kind.id)
         writeApplied(context, containerId, record)
     }
 

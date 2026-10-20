@@ -28,6 +28,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import app.gamenative.R
+import app.gamenative.duo.community.CommunityCatalog
+import app.gamenative.duo.community.CommunityIndex
 import app.gamenative.duo.community.CommunityPackagesSheet
 import app.gamenative.ui.util.SnackbarManager
 import java.io.File
@@ -43,23 +45,34 @@ import kotlinx.coroutines.withContext
  */
 @Composable
 fun DualScreenToggle(appId: String, installLocation: String?, isInstalled: Boolean) {
-    val mod = remember(appId) { DuoModCatalog.forApp(appId) } ?: return
+    val mod = remember(appId) { DuoModCatalog.forApp(appId) }
     if (!isInstalled || installLocation.isNullOrBlank()) return
     val context = LocalContext.current
+    // Games without a bundled mod get the Community button when the community has packages for them.
+    var inCommunity by remember(appId) { mutableStateOf(false) }
+    LaunchedEffect(appId) {
+        withContext(Dispatchers.IO) {
+            CommunityCatalog.refreshOnce(context)
+            inCommunity = CommunityCatalog.known(context)?.contains(CommunityIndex.gameKey(appId)) == true
+        }
+    }
+    if (mod == null && !inCommunity) return
     val scope = rememberCoroutineScope()
     var enabled by remember(appId) { mutableStateOf<Boolean?>(null) }
     var busy by remember(appId) { mutableStateOf(false) }
     var showCommunity by remember(appId) { mutableStateOf(false) }
-    LaunchedEffect(appId) {
+    LaunchedEffect(appId, showCommunity) {
+        // Again after the community sheet closes: installing a community mod replaces the bundled one.
         enabled = withContext(Dispatchers.IO) { DuoModInstaller.isEnabled(context, appId) }
     }
 
-    val toggle: (Boolean) -> Unit = { on ->
+    val toggle: (Boolean) -> Unit = toggle@{ on ->
+        val m = mod ?: return@toggle
         if (!busy) {
             busy = true
             scope.launch {
                 val ok = withContext(Dispatchers.IO) {
-                    if (on) DuoModInstaller.enable(context, mod, File(installLocation)) else DuoModInstaller.disable(context, mod)
+                    if (on) DuoModInstaller.enable(context, m, File(installLocation)) else DuoModInstaller.disable(context, m)
                 }
                 if (ok) enabled = on
                 busy = false
@@ -68,30 +81,32 @@ fun DualScreenToggle(appId: String, installLocation: String?, isInstalled: Boole
                     on -> R.string.duo_mod_toggle_enabled
                     else -> R.string.duo_mod_toggle_disabled
                 }
-                SnackbarManager.show(context.getString(message, mod.title))
+                SnackbarManager.show(context.getString(message, m.title))
             }
         }
     }
 
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Surface(
-            onClick = { enabled?.let { toggle(!it) } },
-            enabled = enabled != null && !busy,
-            shape = RoundedCornerShape(12.dp),
-            color = Color.White.copy(alpha = 0.12f),
-            contentColor = Color.White,
-        ) {
-            Row(
-                modifier = Modifier.padding(start = 12.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+        if (mod != null) {
+            Surface(
+                onClick = { enabled?.let { toggle(!it) } },
+                enabled = enabled != null && !busy,
+                shape = RoundedCornerShape(12.dp),
+                color = Color.White.copy(alpha = 0.12f),
+                contentColor = Color.White,
             ) {
-                Icon(Icons.Outlined.Splitscreen, contentDescription = null, modifier = Modifier.size(20.dp))
-                Text(stringResource(R.string.duo_mod_toggle_label), style = MaterialTheme.typography.labelLarge)
-                if (busy || enabled == null) {
-                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = Color.White)
-                } else {
-                    Switch(checked = enabled == true, onCheckedChange = toggle)
+                Row(
+                    modifier = Modifier.padding(start = 12.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(Icons.Outlined.Splitscreen, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Text(stringResource(R.string.duo_mod_toggle_label), style = MaterialTheme.typography.labelLarge)
+                    if (busy || enabled == null) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = Color.White)
+                    } else {
+                        Switch(checked = enabled == true, onCheckedChange = toggle)
+                    }
                 }
             }
         }
@@ -111,5 +126,7 @@ fun DualScreenToggle(appId: String, installLocation: String?, isInstalled: Boole
             }
         }
     }
-    if (showCommunity) CommunityPackagesSheet(containerId = appId, gameTitle = mod.title, onDismiss = { showCommunity = false })
+    if (showCommunity) {
+        CommunityPackagesSheet(appId, mod?.title.orEmpty(), installLocation, onDismiss = { showCommunity = false })
+    }
 }

@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import app.gamenative.R
 import app.gamenative.duo.DualScreenHost
 import app.gamenative.duo.display.DeviceProfile
+import app.gamenative.duo.mods.DuoModInstaller
 import app.gamenative.duo.ui.UiLayoutStore
 import app.gamenative.ui.util.SnackbarManager
 import com.skydoves.landscapist.ImageOptions
@@ -62,21 +63,28 @@ private const val CONTRIBUTING_URL = "https://github.com/nono5822/GameNativeDuo-
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CommunityPackagesSheet(containerId: String, gameTitle: String, onDismiss: () -> Unit) {
+fun CommunityPackagesSheet(containerId: String, title: String, installLocation: String?, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val deviceId = remember { DeviceProfile.detect().id }
     var game by remember { mutableStateOf<CommunityGame?>(null) }
+    val gameTitle = title.ifEmpty { game?.title.orEmpty() }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var applied by remember { mutableStateOf<Map<CommunityKind, CommunityPackages.Applied>>(emptyMap()) }
     var busy by remember { mutableStateOf<String?>(null) }
     var confirm by remember { mutableStateOf<CommunityPackage?>(null) }
     var sharing by remember { mutableStateOf(false) }
+    var consent by remember { mutableStateOf<Pair<CommunityPackage, CommunityModInstaller.Plan>?>(null) }
+
+    /** Applied packages; a mod only while it is still the one installed (the Dual screen switch may have replaced it). */
+    fun loadApplied(): Map<CommunityKind, CommunityPackages.Applied> = CommunityPackages.applied(context, containerId).filter { (kind, a) ->
+        kind != CommunityKind.MOD || CommunityModInstaller.isInstalled(context, containerId, a.id)
+    }
 
     LaunchedEffect(containerId) {
         withContext(Dispatchers.IO) {
-            applied = CommunityPackages.applied(context, containerId)
+            applied = loadApplied()
             CommunityPackages.cached(context, containerId)?.let { game = it }
             try {
                 game = CommunityPackages.refresh(context, containerId)
@@ -94,8 +102,12 @@ fun CommunityPackagesSheet(containerId: String, gameTitle: String, onDismiss: ()
         scope.launch {
             val failure = withContext(Dispatchers.IO) {
                 try {
-                    CommunityPackages.apply(context, containerId, pkg)
-                    applied = CommunityPackages.applied(context, containerId)
+                    if (pkg.kind == CommunityKind.MOD) {
+                        CommunityModInstaller.install(context, containerId, java.io.File(installLocation.orEmpty()), pkg)
+                    } else {
+                        CommunityPackages.apply(context, containerId, pkg)
+                    }
+                    applied = loadApplied()
                     null
                 } catch (t: Throwable) {
                     Timber.tag(DualScreenHost.TAG).w(t, "Community: could not apply %s", pkg.id)
@@ -114,6 +126,15 @@ fun CommunityPackagesSheet(containerId: String, gameTitle: String, onDismiss: ()
     }
 
     fun requestApply(pkg: CommunityPackage) {
+        if (pkg.kind == CommunityKind.MOD) {
+            // Code: always ask, showing exactly what it will do.
+            try {
+                consent = pkg to CommunityModInstaller.plan(pkg)
+            } catch (t: Throwable) {
+                SnackbarManager.show(context.getString(R.string.duo_community_apply_failed, pkg.title, t.message.orEmpty()))
+            }
+            return
+        }
         // A layout the user made themselves is replaced only after asking.
         val ownLayout = pkg.kind == CommunityKind.UI_LAYOUT &&
             applied[CommunityKind.UI_LAYOUT] == null &&
@@ -121,13 +142,31 @@ fun CommunityPackagesSheet(containerId: String, gameTitle: String, onDismiss: ()
         if (ownLayout) confirm = pkg else apply(pkg)
     }
 
-    fun removeLayout() {
+    fun remove(pkg: CommunityPackage) {
+        busy = pkg.id
         scope.launch {
-            withContext(Dispatchers.IO) {
-                CommunityPackages.removeLayout(context, containerId)
-                applied = CommunityPackages.applied(context, containerId)
+            val failure = withContext(Dispatchers.IO) {
+                try {
+                    if (pkg.kind == CommunityKind.MOD) {
+                        CommunityModInstaller.uninstall(context, containerId)
+                    } else {
+                        CommunityPackages.removeLayout(context, containerId)
+                    }
+                    applied = loadApplied()
+                    null
+                } catch (t: Throwable) {
+                    Timber.tag(DualScreenHost.TAG).w(t, "Community: could not remove %s", pkg.id)
+                    t.message ?: t.javaClass.simpleName
+                }
             }
-            SnackbarManager.show(context.getString(R.string.duo_community_layout_removed))
+            busy = null
+            SnackbarManager.show(
+                if (failure == null) {
+                    context.getString(R.string.duo_community_removed, pkg.title)
+                } else {
+                    context.getString(R.string.duo_community_remove_failed, pkg.title, failure)
+                },
+            )
         }
     }
 
@@ -162,8 +201,9 @@ fun CommunityPackagesSheet(containerId: String, gameTitle: String, onDismiss: ()
                         testedHere = deviceId in pkg.testedOn,
                         applied = applied[pkg.kind]?.takeIf { it.id == pkg.id },
                         busy = busy == pkg.id,
+                        canInstallMods = !installLocation.isNullOrBlank(),
                         onApply = { requestApply(pkg) },
-                        onRemove = ::removeLayout,
+                        onRemove = { remove(pkg) },
                     )
                 }
             }
@@ -185,6 +225,21 @@ fun CommunityPackagesSheet(containerId: String, gameTitle: String, onDismiss: ()
     }
 
     if (sharing) ShareLayoutDialog(containerId, gameTitle, onDismiss = { sharing = false })
+
+    consent?.let { (pkg, plan) ->
+        ModConsentDialog(
+            pkg = pkg,
+            plan = plan,
+            gameTitle = gameTitle,
+            replacesMod = DuoModInstaller.isEnabled(context, containerId) &&
+                !CommunityModInstaller.isInstalled(context, containerId, pkg.id),
+            onConfirm = {
+                consent = null
+                apply(pkg)
+            },
+            onDismiss = { consent = null },
+        )
+    }
 
     confirm?.let { pkg ->
         AlertDialog(
@@ -208,13 +263,23 @@ private fun PackageCard(
     testedHere: Boolean,
     applied: CommunityPackages.Applied?,
     busy: Boolean,
+    canInstallMods: Boolean,
     onApply: () -> Unit,
     onRemove: () -> Unit,
 ) {
+    val isMod = pkg.kind == CommunityKind.MOD
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(pkg.title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                if (pkg.experimental) {
+                    Text(
+                        stringResource(R.string.duo_community_experimental),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(end = 8.dp),
+                    )
+                }
                 KindBadge(pkg.kind)
             }
             Text(
@@ -250,15 +315,15 @@ private fun PackageCard(
                 val updatable = applied != null && CommunityPackages.isNewer(pkg.version, applied.version)
                 when {
                     busy -> CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-                    pkg.kind !in CommunityIndex.APPLICABLE_KINDS -> Text(
-                        stringResource(R.string.duo_community_not_installable),
+                    pkg.kind !in CommunityIndex.APPLICABLE_KINDS || (isMod && !canInstallMods && applied == null) -> Text(
+                        stringResource(if (isMod) R.string.duo_community_install_game_first else R.string.duo_community_not_installable),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     updatable -> Button(onClick = onApply) { Text(stringResource(R.string.duo_community_update, pkg.version)) }
                     applied != null -> {
                         OutlinedButton(onClick = onApply) { Text(stringResource(R.string.duo_community_reapply)) }
-                        if (pkg.kind == CommunityKind.UI_LAYOUT) {
+                        if (pkg.kind == CommunityKind.UI_LAYOUT || isMod) {
                             TextButton(onClick = onRemove) { Text(stringResource(R.string.duo_community_remove)) }
                         }
                         Text(
@@ -267,7 +332,9 @@ private fun PackageCard(
                             color = MaterialTheme.colorScheme.primary,
                         )
                     }
-                    else -> Button(onClick = onApply) { Text(stringResource(R.string.duo_community_apply)) }
+                    else -> Button(onClick = onApply) {
+                        Text(stringResource(if (isMod) R.string.duo_community_install else R.string.duo_community_apply))
+                    }
                 }
             }
         }
@@ -301,5 +368,44 @@ private fun Message(text: String) {
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(horizontal = 20.dp, vertical = 24.dp),
+    )
+}
+
+/** What a code mod will do, in plain words, before anything is downloaded or written. */
+@Composable
+private fun ModConsentDialog(
+    pkg: CommunityPackage,
+    plan: CommunityModInstaller.Plan,
+    gameTitle: String,
+    replacesMod: Boolean,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.duo_mod_consent_title, pkg.title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.duo_mod_consent_warning, gameTitle), color = MaterialTheme.colorScheme.error)
+                Text(stringResource(R.string.duo_mod_consent_author, pkg.authors.joinToString(", "), pkg.license))
+                val lines = buildList {
+                    val game = plan.gameFiles.size + plan.sharedAssets.size
+                    if (game > 0) add(stringResource(R.string.duo_mod_consent_game_files, game))
+                    if (plan.prefixFiles.isNotEmpty()) add(stringResource(R.string.duo_mod_consent_prefix_files, plan.prefixFiles.size))
+                    if (plan.dllOverrides.isNotEmpty()) {
+                        add(stringResource(R.string.duo_mod_consent_dlls, plan.dllOverrides.joinToString(", ")))
+                    }
+                    plan.launchExecutable?.let { add(stringResource(R.string.duo_mod_consent_launch, it)) }
+                    add(stringResource(R.string.duo_mod_consent_split))
+                    if (plan.downloadBytes > 0) add(stringResource(R.string.duo_mod_consent_download, plan.downloadBytes / 1024))
+                    if (replacesMod) add(stringResource(R.string.duo_mod_consent_replaces))
+                    if (pkg.experimental) add(stringResource(R.string.duo_mod_consent_experimental))
+                }
+                lines.forEach { Text("• $it", style = MaterialTheme.typography.bodySmall) }
+                Text(stringResource(R.string.duo_mod_consent_undo), style = MaterialTheme.typography.bodySmall)
+            }
+        },
+        confirmButton = { TextButton(onClick = onConfirm) { Text(stringResource(R.string.duo_mod_consent_confirm)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(android.R.string.cancel)) } },
     )
 }
