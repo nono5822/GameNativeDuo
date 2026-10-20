@@ -33,6 +33,9 @@ internal static class Patches
             finalizer: new HarmonyMethod(typeof(Patches), nameof(DrawWorld_Finalizer))
         );
         Patch(harmony, nameof(Game1.drawMouseCursor), prefix: nameof(DrawMouseCursor_Prefix));
+        // Menus draw their own cursor (the inventory showed it next to a dragged item).
+        harmony.Patch(AccessTools.Method(typeof(IClickableMenu), nameof(IClickableMenu.drawMouse)),
+            prefix: new HarmonyMethod(typeof(Patches), nameof(MenuDrawMouse_Prefix)));
         foreach (string name in new[] { nameof(Game1.getMouseX), nameof(Game1.getOldMouseX) })
             Patch(harmony, name, postfix: nameof(MouseX_Postfix), args: new[] { typeof(bool) });
         foreach (string name in new[] { nameof(Game1.getMouseY), nameof(Game1.getOldMouseY) })
@@ -298,6 +301,9 @@ internal static class Patches
         AlphaSourceBlend = Blend.Zero,
         AlphaDestinationBlend = Blend.One,
     };
+
+    /// <summary>No menu cursor while a finger drives the game (held items are drawn separately and stay).</summary>
+    private static bool MenuDrawMouse_Prefix() => !(ModEntry.Active && TouchInput.Driving);
 
     /// <summary>No mouse cursor while the pointer is on the bottom (touch) screen or a finger drives it.</summary>
     private static bool DrawMouseCursor_Prefix()
