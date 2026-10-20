@@ -203,6 +203,8 @@ internal static class Patches
         {
             var device = Game1.graphics.GraphicsDevice;
             var batch = Game1.spriteBatch;
+            // HUD elements the user sent to the top screen, laid out for it (nothing to do when there are none).
+            RenderTarget2D? topUi = HudLayout.DrawTopPass(device);
             device.SetRenderTarget(null);
             device.Clear(Color.Black);
             // Copy the world's colour but keep the window opaque: Stardew's lighting pass can leave the world
@@ -227,6 +229,8 @@ internal static class Patches
             }
             if (__instance.uiScreen != null)
                 batch.Draw(__instance.uiScreen, new Vector2(L.Bottom.X, L.Bottom.Y), __instance.uiScreen.Bounds, Color.White, 0f, Vector2.Zero, Game1.options.uiScale, SpriteEffects.None, 1f);
+            if (topUi != null)
+                batch.Draw(topUi, new Vector2(L.Top.X, L.Top.Y), topUi.Bounds, Color.White, 0f, Vector2.Zero, Game1.options.uiScale, SpriteEffects.None, 1f);
             batch.End();
             return false;
         }
@@ -271,11 +275,13 @@ internal static class Patches
         AlphaDestinationBlend = Blend.One,
     };
 
-    /// <summary>No mouse cursor while the pointer is on the bottom (touch) screen.</summary>
+    /// <summary>No mouse cursor while the pointer is on the bottom (touch) screen or a finger drives it.</summary>
     private static bool DrawMouseCursor_Prefix()
     {
         if (!ModEntry.Active)
             return true;
+        if (TouchInput.Driving)
+            return false;
         var mouse = Game1.input.GetMouseState();
         return !L.Bottom.Contains(mouse.X, mouse.Y);
     }
