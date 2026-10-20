@@ -102,6 +102,19 @@ The editor opens on the bottom screen over the running game and has three tabs.
 Everything applies within a frame and is saved per game. Layouts are plain JSON and use the same format as community
 presets, so a shared layout carries its background and widgets too.
 
+<table>
+<tr>
+<td width="50%" align="center"><img src="assets/slime-rancher-editor.gif" alt="Slime Rancher on the AYN Thor: the ammo hotbar is selected in the layout editor, dragged up the bottom screen and enlarged step by step"></td>
+<td width="50%" align="center"><img src="assets/slime-rancher-layout.jpg" alt="The finished Slime Rancher layout: the world on the top screen, and on the bottom screen a dimmed still of the game behind a larger hotbar, the day and time, health, energy, keys and money, with FPS and battery widgets"></td>
+</tr>
+<tr>
+<td valign="top"><b>Moving the interface</b><br>Slime Rancher's ammo hotbar selected as one group, dragged up and
+enlarged in a few taps while the game keeps running.</td>
+<td valign="top"><b>The result</b><br>The hotbar at the centre where the thumb reaches it, day and time top left,
+health, energy, keys and money bottom left, FPS and battery top right, over a dimmed still of the game.</td>
+</tr>
+</table>
+
 ### Bottom screen background and widgets
 <img src="assets/stardew-blur-widgets.jpg" alt="Stardew Valley with a blurred world behind the HUD on the bottom screen and FPS, battery and clock widgets" width="420" align="right">
 
