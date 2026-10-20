@@ -79,7 +79,8 @@ the id: prebuilt `libkgslshim.so` matches on that substring.
 5. **Engine adapters**: Ren'Py, RPG Maker MV/MZ, Unity (uGUI/UI Toolkit; uGUI started, see below), Godot, Unreal (UMG); later a DXVK
    "UI split" that sends UI draws to a separate layer.
 6. **Community packages**: Git-based index, per-game presets that auto-apply (data-only by default, code mods
-   need consent), device profiles, signing, compatibility reports.
+   need consent), device profiles, signing, compatibility reports. **Started**: repo `nono5822/GameNativeDuo-community`
+   (schemas, validator, signed index on GitHub Pages); design and app-side plan in `duo/docs/community-packages.md`.
 
 Performance rules: the CPU is the bottleneck (Box64/FEX), so keep devkit work off it: low-priority threads,
 no CPU frame copies, data over pixels, idle at 0 fps when nothing changes.
