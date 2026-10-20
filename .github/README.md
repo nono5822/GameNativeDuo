@@ -8,10 +8,10 @@ A fork of [GameNative](https://github.com/utkarshdalal/GameNative) that makes th
 The world plays on the top screen. The HUD, inventory, map and dialogue live on the bottom screen, and you use them
 with your fingers.
 
-<img src="assets/stardew-hero.jpg" alt="Stardew Valley on the AYN Thor: the farm on the top screen with no interface, the clock, toolbar and energy bar on the bottom screen over the world continuing below" width="560">
+<img src="assets/stardew-walk.gif" alt="The farmer walking around the farm on the AYN Thor: the world scrolls across the top screen, the hinge and the bottom screen as one picture, with the HUD only on the bottom screen" width="480">
 
-<sub>Stardew Valley on an AYN Thor. Both screens are captured on the device and assembled at their physical scale,
-hinge included, so the farm lines up across the gap exactly as it does in your hands.</sub>
+<sub>Recorded on an AYN Thor. Both screens are captured on the device and assembled at their physical scale, hinge
+included, so the farm lines up across the gap exactly as it does in your hands.</sub>
 
 </div>
 
@@ -72,9 +72,15 @@ saved per game, as fractions of the screen, so a layout fits any device with the
 ## Features
 
 ### Two screens, one picture
+<img src="assets/stardew-hero.jpg" alt="Stardew Valley on the AYN Thor: the farm on the top screen with no interface, the clock, toolbar and energy bar on the bottom screen over the world continuing below" width="420" align="right">
+
 The game draws one frame for both screens and each screen shows its part of it. The split costs no extra rendering and
 no frame copies. Calibration (hinge gap, pixel density, horizontal offset) is set once per device from the two-finger
 menu and stays live, so you can line the screens up with a game running.
+
+The top screen keeps the full 1920x1080 view of the world with nothing drawn over it. The bottom screen shows the world
+continuing below, with the interface on top of it.
+<br clear="right">
 
 ### Native touch
 Bottom-screen touches are delivered to the game's own interface system: Unity's UI events, or the game's mouse state in
