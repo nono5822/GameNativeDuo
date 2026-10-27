@@ -1,0 +1,751 @@
+using System;
+using System.Collections.Generic;
+using GameNativeDuo.UnitySplit;
+using UnityEngine;
+
+namespace GameNativeDuo.HollowKnight
+{
+    /// <summary>
+    /// The game's own map, live on the bottom screen while you play, under the masks, soul and geo.
+    ///
+    /// Hollow Knight draws its map (GameManager.gameMap, "Game_Map(Clone)" under the HUD camera) only while the
+    /// quick map is held, which stops the Knight, or in the inventory. Here a camera of ours draws the same objects
+    /// into the free part of the bottom screen all the time. The map shows exactly what the inventory map would
+    /// (GameMap.SetupMap + WorldMap: mapped rooms, pins, markers), and the Knight's position only with the
+    /// Wayward Compass equipped, as in the game.
+    ///
+    /// While ours is shown, the map's objects sit on a layer no game camera draws, so the HUD camera does not draw
+    /// them over the HUD; whenever the game itself uses the map (inventory, vanilla quick map) they go back to the
+    /// UI layer and ours steps aside.
+    ///
+    /// The map button switches the zoom (Knight / area / whole map) instead of opening the quick map, so the Knight
+    /// keeps moving. Touch: drag to look around, pinch to zoom, double-tap to switch the zoom; the view drifts back
+    /// to the Knight a few seconds after the last touch.
+    /// </summary>
+    internal sealed class LiveMap : MonoBehaviour
+    {
+        internal enum Zoom
+        {
+            Knight,
+            Area,
+            World,
+        }
+
+        private const int UiLayer = 5;
+        private const float CameraDepth = 99.5f; // after the bottom screen's clear, before the HUD camera (100); see PlaceCamera
+        private const float FollowRate = 8f;
+        private const float RecenterSeconds = 4f;
+        private const float DoubleTapSeconds = 0.35f;
+        private const float TapSlopPx = 24f;
+        private const float Padding = 1.08f;
+
+        internal static LiveMap Instance;
+
+        /// <summary>True while the map button is ours (switches the zoom) rather than the game's quick map.</summary>
+        internal static bool OwnsMapButton => Instance != null && Instance._shown && Settings.MapButtonZooms.Value;
+
+        internal Zoom CurrentZoom { get; private set; } = Zoom.Knight;
+        internal bool Shown => _shown;
+
+        private Camera _cam;
+        private int _layer = -1;
+        private bool _shown;
+        private bool _onOurLayer;
+        private GameMap _map;
+        private static Transform _inventory;
+        private static readonly List<GameObject> _inventoryPanes = new List<GameObject>();
+        private bool _contentDirty = true;
+        private bool _snap = true;
+        private Bounds _areaBounds, _worldBounds;
+        private bool _hasArea, _hasWorld;
+        private Transform _boundsArea;
+        private Vector2 _panOffset;
+        private float _zoomFactor = 1f;
+        private float _lastTouch = -100f;
+        private float _nextLayerCheck;
+
+        private readonly Dictionary<int, Vector2> _fingers = new Dictionary<int, Vector2>();
+        private Vector2 _downPos;
+        private float _downTime, _lastTapTime = -100f;
+        private bool _moved;
+        private float _pinchStart, _pinchZoomStart;
+
+        private void Awake()
+        {
+            Instance = this;
+            Split.TouchFilter = OnTouch;
+            UnityEngine.SceneManagement.SceneManager.activeSceneChanged += (a, b) => OnSceneChanged();
+        }
+
+        private void OnDestroy()
+        {
+            if (ReferenceEquals(Split.TouchFilter, (Func<byte, int, float, float, bool>)OnTouch))
+                Split.TouchFilter = null;
+            Hide();
+        }
+
+        private void OnSceneChanged()
+        {
+            _contentDirty = true;
+            _inventory = null;
+            _inventoryPanes.Clear();
+            _dialogueRoot = null;
+        }
+
+        private void LateUpdate()
+        {
+            try
+            {
+                bool want = ShouldShow();
+                if (want && !_shown)
+                    Show();
+                else if (!want && _shown)
+                    Hide();
+                if (!_shown)
+                    return;
+                if (Settings.MapButtonZooms.Value && InputHandler.Instance != null && InputHandler.Instance.inputActions.quickMap.WasPressed)
+                    CycleZoom();
+                if (_contentDirty)
+                    RefreshContent();
+                if (Time.unscaledTime >= _nextLayerCheck)
+                {
+                    // Pins and markers the game turns on later keep their own layer: keep them on ours.
+                    _nextLayerCheck = Time.unscaledTime + 1f;
+                    SetMapLayer(_layer);
+                }
+                PlaceCamera();
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogError("Live map update failed: " + ex);
+                Hide();
+                enabled = false;
+            }
+        }
+
+        // ------------------------------------------------------------------ when
+
+        private bool ShouldShow()
+        {
+            if (!Settings.LiveMapEnabled.Value)
+                return false;
+            Split split = Split.Instance;
+            if (split == null || !split.Active || split.Layout == null)
+                return false;
+            GameManager gm = GameManager.instance;
+            if (gm == null || gm.gameMap == null || HeroController.instance == null || !gm.IsGameplayScene())
+                return false;
+            // Paused: the map stays, dimmed under the pause menu (see ShouldDim).
+            if (gm.gameState == GlobalEnums.GameState.CUTSCENE)
+                return false;
+            if (_map == null || _map.gameObject != gm.gameMap)
+            {
+                _map = gm.gameMap.GetComponent<GameMap>();
+                _contentDirty = true;
+            }
+            if (_map == null || !_map.gameObject.activeInHierarchy)
+                return false;
+            // The game's own map is open (vanilla quick map, when the button is left to the game).
+            if (_map.displayNextArea)
+                return false;
+            return !InventoryIsOpen();
+        }
+
+        /// <summary>True while one of the inventory's panes (inventory, charms, journal, map) is open.</summary>
+        internal static bool InventoryIsOpen()
+        {
+            if (_inventory == null)
+            {
+                GameCameras cams = GameCameras.instance;
+                _inventory = cams != null && cams.hudCamera != null ? cams.hudCamera.transform.Find("Inventory") : null;
+                _inventoryPanes.Clear();
+                if (_inventory != null)
+                {
+                    foreach (string pane in new[] { "Inv", "Charms", "Journal", "Map" })
+                    {
+                        Transform t = _inventory.Find(pane);
+                        if (t != null)
+                            _inventoryPanes.Add(t.gameObject);
+                    }
+                }
+            }
+            for (int i = 0; i < _inventoryPanes.Count; i++)
+            {
+                if (_inventoryPanes[i] != null && _inventoryPanes[i].activeSelf)
+                    return true;
+            }
+            return false;
+        }
+
+        // ------------------------------------------------------------------ show / hide
+
+        private void Show()
+        {
+            _layer = FreeLayer();
+            if (_layer < 0)
+            {
+                Plugin.Log.LogWarning("Live map: every layer is drawn by a game camera; leaving the map to the game");
+                return;
+            }
+            if (_cam == null)
+            {
+                var go = new GameObject("GameNativeDuo map camera");
+                go.hideFlags = HideFlags.HideAndDontSave;
+                DontDestroyOnLoad(go);
+                _cam = go.AddComponent<Camera>();
+                _cam.orthographic = true;
+                _cam.clearFlags = CameraClearFlags.Depth; // over the bottom screen's background
+                _cam.nearClipPlane = 0.1f;
+                _cam.farClipPlane = 500f;
+                _cam.depth = CameraDepth;
+                _cam.allowHDR = false;
+                _cam.allowMSAA = false;
+                _cam.useOcclusionCulling = false;
+                CameraPlacer.PluginCameras.Add(_cam);
+                _fade = MakeGradient(go.transform, "GameNativeDuo map fade", short.MaxValue - 1);
+                _dim = MakeGradient(go.transform, "GameNativeDuo map dim", short.MaxValue);
+
+                var clearGo = new GameObject("GameNativeDuo map clear camera");
+                clearGo.hideFlags = HideFlags.HideAndDontSave;
+                DontDestroyOnLoad(clearGo);
+                _clearCam = clearGo.AddComponent<Camera>();
+                _clearCam.cullingMask = 0;
+                _clearCam.clearFlags = CameraClearFlags.SolidColor;
+                _clearCam.allowHDR = false;
+                _clearCam.allowMSAA = false;
+                _clearCam.enabled = false;
+                CameraPlacer.PluginCameras.Add(_clearCam);
+            }
+            _fade.layer = _layer;
+            _dim.layer = _layer;
+            _dimAlpha = 0f;
+            _cam.cullingMask = 1 << _layer;
+            _cam.enabled = true;
+            _shown = true;
+            _snap = true;
+            _contentDirty = true;
+            Plugin.Log.LogInfo("Live map on (layer " + _layer + ")");
+        }
+
+        private void Hide()
+        {
+            if (_cam != null)
+                _cam.enabled = false;
+            ReleaseBottomClear();
+            if (_onOurLayer)
+                SetMapLayer(UiLayer);
+            if (_shown)
+                Plugin.Log.LogInfo("Live map off");
+            _shown = false;
+            _fingers.Clear();
+            // The game's map code turns its areas off when it closes; ours turns them back on next time.
+            _contentDirty = true;
+        }
+
+        /// <summary>A layer no game camera draws (built-in unnamed layers last), so only our camera sees the map.</summary>
+        private int FreeLayer()
+        {
+            int used = 0;
+            foreach (Camera c in Camera.allCameras)
+            {
+                if (c != _cam && c.targetTexture == null)
+                    used |= c.cullingMask;
+            }
+            for (int l = 31; l >= 8; l--)
+            {
+                if ((used & (1 << l)) == 0 && LayerMask.LayerToName(l).Length == 0)
+                    return l;
+            }
+            foreach (int l in new[] { 7, 6, 3 })
+            {
+                if ((used & (1 << l)) == 0)
+                    return l;
+            }
+            return -1;
+        }
+
+        private void SetMapLayer(int layer)
+        {
+            if (_map == null)
+                return;
+            SetLayerRecursive(_map.transform, layer);
+            _onOurLayer = layer != UiLayer;
+        }
+
+        private static void SetLayerRecursive(Transform t, int layer)
+        {
+            if (t.gameObject.layer != layer)
+                t.gameObject.layer = layer;
+            for (int i = 0; i < t.childCount; i++)
+                SetLayerRecursive(t.GetChild(i), layer);
+        }
+
+        // ------------------------------------------------------------------ content
+
+        /// <summary>What the inventory map shows: the mapped rooms and pins (SetupMap), every mapped area and the compass (WorldMap).</summary>
+        private void RefreshContent()
+        {
+            _contentDirty = false;
+            GameManager gm = GameManager.instance;
+            if (gm == null || !gm.IsGameplayScene())
+                return;
+            _map.SetupMap();
+            _map.WorldMap();
+            SetMapLayer(_layer);
+            _hasWorld = WorldBounds(ref _worldBounds);
+            _boundsArea = null;
+            _snap = true;
+        }
+
+        /// <summary>The map's areas, as GameMap knows them (its other children are pins and markers).</summary>
+        private GameObject[] Areas() => new[]
+        {
+            _map.areaAncientBasin, _map.areaCity, _map.areaCliffs, _map.areaCrossroads, _map.areaCrystalPeak, _map.areaDeepnest,
+            _map.areaFogCanyon, _map.areaFungalWastes, _map.areaGreenpath, _map.areaKingdomsEdge, _map.areaQueensGardens,
+            _map.areaRestingGrounds, _map.areaDirtmouth, _map.areaWaterways,
+        };
+
+        /// <summary>Every area the map shows now.</summary>
+        private bool WorldBounds(ref Bounds bounds)
+        {
+            bool any = false;
+            foreach (GameObject area in Areas())
+            {
+                Bounds b = default(Bounds);
+                if (area == null || !area.activeInHierarchy || !AreaBounds(area.transform, ref b))
+                    continue;
+                if (!any)
+                    bounds = b;
+                else
+                    bounds.Encapsulate(b);
+                any = true;
+            }
+            return any;
+        }
+
+        /// <summary>The area the Knight is in (the parent of the room GameMap.PositionCompass found), when it is on the map.</summary>
+        private Transform CurrentArea()
+        {
+            GameObject room = _map.currentScene;
+            if (room == null || !room.activeInHierarchy || room.transform.parent == null)
+                return null;
+            Transform area = room.transform.parent;
+            return Array.IndexOf(Areas(), area.gameObject) >= 0 ? area : null;
+        }
+
+        // ------------------------------------------------------------------ camera
+
+        private void PlaceCamera()
+        {
+            Layout layout = Split.Instance.Layout;
+            RectInt b = layout.Bottom;
+            int reserve = Mathf.Clamp(Settings.HudReservePx.Value, 0, b.height / 2);
+            var region = new RectInt(b.x, b.y + reserve, b.width, b.height - reserve);
+            Rect viewport = layout.Viewport(region);
+            if (_cam.rect != viewport)
+                _cam.rect = viewport;
+            OrderCameras(layout.Viewport(b));
+            float aspect = (float)region.width / Mathf.Max(1, region.height);
+
+            Vector3 focus;
+            float size;
+            if (!Frame(aspect, out focus, out size))
+                return;
+            float worldPerPx = 2f * size / Mathf.Max(1, region.height);
+            if (Time.unscaledTime - _lastTouch > RecenterSeconds && _fingers.Count == 0)
+            {
+                float k = 1f - Mathf.Exp(-Time.unscaledDeltaTime * 3f);
+                _panOffset = Vector2.Lerp(_panOffset, Vector2.zero, k);
+                if (_panOffset.sqrMagnitude < 1e-6f)
+                    _panOffset = Vector2.zero;
+            }
+            size *= _zoomFactor;
+            var target = new Vector3(focus.x + _panOffset.x, focus.y + _panOffset.y, focus.z - 100f);
+            if (_snap)
+            {
+                _snap = false;
+                _cam.transform.position = target;
+                _cam.orthographicSize = size;
+            }
+            else
+            {
+                float k = 1f - Mathf.Exp(-Time.unscaledDeltaTime * FollowRate);
+                _cam.transform.position = Vector3.Lerp(_cam.transform.position, target, k);
+                _cam.orthographicSize = Mathf.Lerp(_cam.orthographicSize, size, k);
+            }
+            _worldPerPx = worldPerPx * _zoomFactor;
+            PlaceOverlays();
+        }
+
+        // ------------------------------------------------------------------ draw order
+
+        private Camera _clearCam;
+        private Camera _takenBottom;
+        private Color _clearColor = Color.black;
+
+        /// <summary>
+        /// The map goes under everything else on the bottom screen: the pause menu and options (canvases on our bottom
+        /// UI camera) and the HUD and dialogue (the game's HUD camera) draw over it. So the bottom UI camera stops
+        /// clearing; a camera of ours clears the bottom screen in its colour first, then the map draws. With an image
+        /// background the bottom UI camera already clears nothing and the background camera clears.
+        /// </summary>
+        private void OrderCameras(Rect bottomViewport)
+        {
+            Camera bottom = Split.Instance.Router.BottomCamera;
+            if (bottom == null)
+            {
+                GameCameras cams = GameCameras.instance;
+                if (cams != null && cams.hudCamera != null && _cam.depth != cams.hudCamera.depth - 0.5f)
+                    _cam.depth = cams.hudCamera.depth - 0.5f;
+                return;
+            }
+            if (bottom.clearFlags == CameraClearFlags.SolidColor)
+            {
+                // Ours to clear (again, if a new background reset it).
+                _takenBottom = bottom;
+                _clearColor = bottom.backgroundColor;
+                bottom.clearFlags = CameraClearFlags.Depth;
+            }
+            bool clearing = _takenBottom == bottom;
+            if (_clearCam.enabled != clearing)
+                _clearCam.enabled = clearing;
+            if (clearing)
+            {
+                if (_clearCam.backgroundColor != _clearColor)
+                    _clearCam.backgroundColor = _clearColor;
+                if (_clearCam.rect != bottomViewport)
+                    _clearCam.rect = bottomViewport;
+                if (_clearCam.depth != bottom.depth - 0.2f)
+                    _clearCam.depth = bottom.depth - 0.2f;
+            }
+            if (_cam.depth != bottom.depth - 0.1f)
+                _cam.depth = bottom.depth - 0.1f;
+        }
+
+        private void ReleaseBottomClear()
+        {
+            if (_takenBottom != null && _takenBottom.clearFlags == CameraClearFlags.Depth)
+                _takenBottom.clearFlags = CameraClearFlags.SolidColor;
+            _takenBottom = null;
+            if (_clearCam != null)
+                _clearCam.enabled = false;
+        }
+
+        // ------------------------------------------------------------------ dimming
+
+        private GameObject _dim;
+        private float _dimAlpha;
+        private const float DimMax = 0.72f;
+        private static DialogueBox[] _dialogueBoxes;
+        private static Transform _dialogueRoot;
+
+        /// <summary>While a menu or a dialogue sits over the map: pause, options, NPC conversations.</summary>
+        private static bool ShouldDim()
+        {
+            GameManager gm = GameManager.instance;
+            if (gm != null && (gm.isPaused || gm.gameState == GlobalEnums.GameState.PAUSED))
+                return true;
+            UIManager ui = UIManager.instance;
+            if (ui != null && (ui.uiState == GlobalEnums.UIState.PAUSED || ui.uiState == GlobalEnums.UIState.OPTIONS))
+                return true;
+            return DialogueShown();
+        }
+
+        private static readonly HarmonyLib.AccessTools.FieldRef<DialogueBox, bool> DialogueHidden =
+            HarmonyLib.AccessTools.FieldRefAccess<DialogueBox, bool>("hidden");
+
+        /// <summary>A conversation's text is up (DialogueBox shows a page until HideText).</summary>
+        private static bool DialogueShown()
+        {
+            GameCameras cams = GameCameras.instance;
+            if (cams == null || cams.hudCamera == null)
+                return false;
+            if (_dialogueRoot == null)
+            {
+                _dialogueRoot = cams.hudCamera.transform.Find("DialogueManager");
+                _dialogueBoxes = _dialogueRoot != null ? _dialogueRoot.GetComponentsInChildren<DialogueBox>(true) : new DialogueBox[0];
+            }
+            foreach (DialogueBox box in _dialogueBoxes)
+            {
+                if (box != null && box.gameObject.activeInHierarchy && !DialogueHidden(box))
+                    return true;
+            }
+            return false;
+        }
+
+        private float _worldPerPx = 0.01f;
+        private GameObject _fade;
+        private const float FadeFraction = 0.12f;
+
+        /// <summary>
+        /// A sprite over the map, drawn last by our camera: the soft edge where the map meets the HUD strip (a gradient,
+        /// clear at the bottom) and the dim layer (solid). One 1x32 texture, white: the renderer's colour tints it.
+        /// </summary>
+        private static GameObject MakeGradient(Transform cameraTransform, string name, int order)
+        {
+            if (_gradient == null)
+            {
+                var tex = new Texture2D(1, 32, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
+                for (int y = 0; y < 32; y++)
+                    tex.SetPixel(0, y, new Color(1f, 1f, 1f, Mathf.SmoothStep(0f, 1f, y / 31f)));
+                tex.Apply(false, true);
+                _gradient = Sprite.Create(tex, new Rect(0, 0, 1, 32), new Vector2(0.5f, 1f), 32f);
+                var solid = new Texture2D(1, 1, TextureFormat.RGBA32, false);
+                solid.SetPixel(0, 0, Color.white);
+                solid.Apply(false, true);
+                _solid = Sprite.Create(solid, new Rect(0, 0, 1, 1), new Vector2(0.5f, 0.5f), 1f);
+            }
+            var go = new GameObject(name);
+            go.hideFlags = HideFlags.HideAndDontSave;
+            go.transform.SetParent(cameraTransform, false);
+            var r = go.AddComponent<SpriteRenderer>();
+            r.sprite = order == short.MaxValue ? _solid : _gradient;
+            SortingLayer[] layers = SortingLayer.layers;
+            if (layers.Length > 0)
+                r.sortingLayerID = layers[layers.Length - 1].id;
+            r.sortingOrder = order;
+            return go;
+        }
+
+        private static Sprite _gradient, _solid;
+
+        /// <summary>Keeps the edge fade across the top of the view and the dim layer over all of it; fades the dim in and out.</summary>
+        private void PlaceOverlays()
+        {
+            float h = _cam.orthographicSize * 2f;
+            float w = h * _cam.aspect;
+            var edge = _takenBottom != null ? _clearColor : Color.black;
+            edge.a = 1f;
+            _fade.transform.localPosition = new Vector3(0f, _cam.orthographicSize, 1f);
+            _fade.transform.localScale = new Vector3(w * 32f, h * FadeFraction, 1f); // the sprite is 1/32 x 1 units
+            var fr = _fade.GetComponent<SpriteRenderer>();
+            if (fr.color != edge)
+                fr.color = edge;
+
+            float target = ShouldDim() ? DimMax : 0f;
+            _dimAlpha = Mathf.MoveTowards(_dimAlpha, target, Time.unscaledDeltaTime * 4f);
+            bool on = _dimAlpha > 0.001f;
+            var dr = _dim.GetComponent<SpriteRenderer>();
+            if (dr.enabled != on)
+                dr.enabled = on;
+            if (on)
+            {
+                _dim.transform.localPosition = new Vector3(0f, 0f, 1f);
+                _dim.transform.localScale = new Vector3(w * 1.02f, h * 1.02f, 1f);
+                dr.color = new Color(0f, 0f, 0f, _dimAlpha);
+            }
+        }
+
+        /// <summary>Where to look and how much to show for the current zoom.</summary>
+        private bool Frame(float aspect, out Vector3 focus, out float size)
+        {
+            focus = Vector3.zero;
+            size = 1f;
+            Zoom zoom = EffectiveZoom();
+            if (zoom == Zoom.Knight)
+            {
+                focus = _map.compassIcon.transform.position;
+                size = Settings.KnightZoomSize.Value * _map.transform.lossyScale.y;
+                return true;
+            }
+            if (zoom == Zoom.Area)
+            {
+                Transform area = CurrentArea();
+                if (area != _boundsArea)
+                {
+                    _boundsArea = area;
+                    _hasArea = area != null && AreaBounds(area, ref _areaBounds);
+                }
+                if (_hasArea)
+                {
+                    FitBounds(_areaBounds, aspect, out focus, out size);
+                    return true;
+                }
+            }
+            if (!_hasWorld)
+                return false;
+            FitBounds(_worldBounds, aspect, out focus, out size);
+            return true;
+        }
+
+        private static bool AreaBounds(Transform area, ref Bounds bounds)
+        {
+            bool any = false;
+            for (int i = 0; i < area.childCount; i++)
+            {
+                Transform room = area.GetChild(i);
+                if (!room.gameObject.activeInHierarchy)
+                    continue;
+                var r = room.GetComponent<SpriteRenderer>();
+                if (r == null || r.sprite == null || !r.enabled)
+                    continue;
+                if (!any)
+                {
+                    bounds = r.bounds;
+                    any = true;
+                }
+                else
+                {
+                    bounds.Encapsulate(r.bounds);
+                }
+            }
+            return any;
+        }
+
+        /// <summary>Debug: each area's and the far rooms' bounds.</summary>
+        internal void LogBounds()
+        {
+            if (_map == null)
+                return;
+            Plugin.Log.LogInfo("World bounds " + _worldBounds + " (map at " + _map.transform.position + ", scale " + _map.transform.lossyScale + ")");
+            for (int i = 0; i < _map.transform.childCount; i++)
+            {
+                Transform area = _map.transform.GetChild(i);
+                Bounds b = default(Bounds);
+                if (area.gameObject.activeInHierarchy && AreaBounds(area, ref b))
+                    Plugin.Log.LogInfo("  area " + area.name + ": " + b);
+                foreach (SpriteRenderer r in area.GetComponentsInChildren<SpriteRenderer>(false))
+                {
+                    if (r.transform.parent == area && (r.bounds.center - _map.transform.position).magnitude > 40f)
+                        Plugin.Log.LogInfo("    far room " + area.name + "/" + r.name + ": " + r.bounds);
+                }
+            }
+        }
+
+        private static void FitBounds(Bounds b, float aspect, out Vector3 focus, out float size)
+        {
+            focus = b.center;
+            size = Mathf.Max(b.extents.y, b.extents.x / Mathf.Max(0.1f, aspect)) * Padding;
+        }
+
+        /// <summary>Following the Knight needs the Wayward Compass, as on the game's own map.</summary>
+        private Zoom EffectiveZoom()
+        {
+            bool compass = _map.compassIcon != null && _map.compassIcon.activeSelf;
+            if (CurrentZoom == Zoom.Knight && !compass)
+                return Zoom.Area;
+            return CurrentZoom;
+        }
+
+        internal void CycleZoom()
+        {
+            bool compass = _map != null && _map.compassIcon != null && _map.compassIcon.activeSelf;
+            switch (EffectiveZoom())
+            {
+                case Zoom.Knight:
+                    CurrentZoom = Zoom.Area;
+                    break;
+                case Zoom.Area:
+                    CurrentZoom = Zoom.World;
+                    break;
+                default:
+                    CurrentZoom = compass ? Zoom.Knight : Zoom.Area;
+                    break;
+            }
+            _panOffset = Vector2.zero;
+            _zoomFactor = 1f;
+            Plugin.Log.LogInfo("Live map zoom: " + CurrentZoom);
+        }
+
+        // ------------------------------------------------------------------ touch
+
+        /// <summary>Bottom-screen touches on the map: drag pans, pinch zooms, double-tap switches the zoom.</summary>
+        private bool OnTouch(byte action, int pointer, float x, float y)
+        {
+            if (!_shown || _cam == null)
+                return false;
+            Layout layout = Split.Instance.Layout;
+            RectInt b = layout.Bottom;
+            int reserve = Mathf.Clamp(Settings.HudReservePx.Value, 0, b.height / 2);
+            var pos = new Vector2(x, y);
+            bool inside = x >= b.x && x < b.xMax && y >= b.y + reserve && y < b.yMax;
+            switch (action)
+            {
+                case Bridge.TouchDown:
+                    if (!inside)
+                        return false;
+                    _fingers[pointer] = pos;
+                    _lastTouch = Time.unscaledTime;
+                    if (_fingers.Count == 1)
+                    {
+                        _downPos = pos;
+                        _downTime = Time.unscaledTime;
+                        _moved = false;
+                    }
+                    else if (_fingers.Count == 2)
+                    {
+                        _pinchStart = PinchDistance();
+                        _pinchZoomStart = _zoomFactor;
+                        _moved = true;
+                    }
+                    return true;
+                case Bridge.TouchMove:
+                {
+                    Vector2 last;
+                    if (!_fingers.TryGetValue(pointer, out last))
+                        return false;
+                    _fingers[pointer] = pos;
+                    _lastTouch = Time.unscaledTime;
+                    if (_fingers.Count >= 2)
+                    {
+                        float d = PinchDistance();
+                        if (_pinchStart > 1f && d > 1f)
+                            _zoomFactor = Mathf.Clamp(_pinchZoomStart * _pinchStart / d, 0.25f, 4f);
+                        // Pan by the fingers' midpoint movement too.
+                        Vector2 delta = (pos - last) * 0.5f;
+                        _panOffset += new Vector2(-delta.x, delta.y) * _worldPerPx;
+                    }
+                    else
+                    {
+                        if ((pos - _downPos).magnitude > TapSlopPx)
+                            _moved = true;
+                        if (_moved)
+                        {
+                            Vector2 delta = pos - last;
+                            _panOffset += new Vector2(-delta.x, delta.y) * _worldPerPx;
+                        }
+                    }
+                    return true;
+                }
+                case Bridge.TouchUp:
+                case Bridge.TouchCancel:
+                {
+                    if (!_fingers.Remove(pointer))
+                        return false;
+                    _lastTouch = Time.unscaledTime;
+                    if (action == Bridge.TouchUp && _fingers.Count == 0 && !_moved && Time.unscaledTime - _downTime < 0.3f)
+                    {
+                        if (Time.unscaledTime - _lastTapTime < DoubleTapSeconds)
+                        {
+                            _lastTapTime = -100f;
+                            CycleZoom();
+                        }
+                        else
+                        {
+                            _lastTapTime = Time.unscaledTime;
+                        }
+                    }
+                    if (_fingers.Count < 2)
+                        _pinchStart = 0f;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private float PinchDistance()
+        {
+            Vector2 a = Vector2.zero, c = Vector2.zero;
+            int n = 0;
+            foreach (Vector2 p in _fingers.Values)
+            {
+                if (n == 0)
+                    a = p;
+                else if (n == 1)
+                    c = p;
+                n++;
+            }
+            return n >= 2 ? (a - c).magnitude : 0f;
+        }
+    }
+}

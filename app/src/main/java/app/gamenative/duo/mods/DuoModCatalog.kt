@@ -83,7 +83,15 @@ object DuoModCatalog {
         ),
         unityGame(id = "slime-rancher", appId = "STEAM_433340", title = "Slime Rancher"),
         unityGame(id = "subnautica", appId = "STEAM_264710", title = "Subnautica"),
-        // Hollow Knight, Silksong and Risk of Rain 2 use the same plugin but are installed from the community list
+        // Plus a plugin of its own (source: duo/mods-src/unity/GameNativeDuo.HollowKnight): the map on the bottom
+        // screen while you play.
+        unityGame(
+            id = "hollow-knight",
+            appId = "STEAM_367520",
+            title = "Hollow Knight",
+            extraGameFiles = mapOf("duo/mods/hollow-knight/plugin" to "BepInEx/plugins/GameNativeDuo-hollowknight"),
+        ),
+        // Silksong and Risk of Rain 2 use the same plugin but are installed from the community list
         // (experimental mod packages reusing these shared assets).
     )
 
@@ -93,7 +101,7 @@ object DuoModCatalog {
      * duo/mods-src/unity). Both are shared by every Unity game (`assets/duo/mods/shared/`); a game's own folder only
      * holds its optional UI layout preset (`ui-layout.json`).
      */
-    private fun unityGame(id: String, appId: String, title: String) = DuoGameMod(
+    private fun unityGame(id: String, appId: String, title: String, extraGameFiles: Map<String, String> = emptyMap()) = DuoGameMod(
         id = id,
         appId = appId,
         title = title,
@@ -102,7 +110,7 @@ object DuoModCatalog {
             "$SHARED/BepInEx-LICENSE.txt" to "BepInEx/LICENSE-BepInEx.txt",
             "$SHARED/BepInEx-NOTICE.txt" to "BepInEx/NOTICE-GameNativeDuo.txt",
             "$SHARED/unity-split" to "BepInEx/plugins/GameNativeDuo-split",
-        ),
+        ) + extraGameFiles,
         dllOverrides = listOf("winhttp=n,b"),
         splitLayout = SplitLayout.NATIVE,
     )

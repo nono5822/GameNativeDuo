@@ -115,6 +115,9 @@ namespace GameNativeDuo.UnitySplit
             }
         }
 
+        /// <summary>Cameras a per-game plugin placed itself (e.g. Hollow Knight's live map): never moved.</summary>
+        internal static readonly HashSet<Camera> PluginCameras = new HashSet<Camera>();
+
         public bool IsGameUiCamera(Camera cam)
         {
             Tracked t;
@@ -132,7 +135,7 @@ namespace GameNativeDuo.UnitySplit
             {
                 Camera cam = _buffer[i];
                 _buffer[i] = null;
-                if (cam == null || _ours.Contains(cam) || cam.targetTexture != null || _tracked.ContainsKey(cam))
+                if (cam == null || _ours.Contains(cam) || PluginCameras.Contains(cam) || cam.targetTexture != null || _tracked.ContainsKey(cam))
                     continue;
                 var t = new Tracked { Cam = cam, Ui = IsUiCamera(cam), Tk = Tk2d.For(cam) };
                 _tracked[cam] = t;

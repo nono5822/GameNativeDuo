@@ -111,6 +111,9 @@ namespace GameNativeDuo.UnitySplit
         private Layout _layout;
         private UiRules _rules = UiRules.Empty;
         private Camera _bottomCam, _topCam, _hiddenCam;
+
+        /// <summary>Our bottom-screen UI camera (clears the bottom screen, draws canvases moved there); null before the first layout.</summary>
+        internal Camera BottomCamera => _bottomCam;
         private readonly CameraPlacer _cameras = new CameraPlacer();
         private readonly BottomBackground _background = new BottomBackground();
         private readonly Dictionary<Canvas, RootState> _roots = new Dictionary<Canvas, RootState>();

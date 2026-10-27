@@ -18,7 +18,7 @@ namespace GameNativeDuo.UnitySplit
     /// (<see cref="TouchInjector"/>). Nothing changes unless the window matches GameNative Duo's layout.json, and every
     /// step catches its own errors so the game keeps running.
     /// </summary>
-    [BepInPlugin("app.gamenative.duo.unitysplit", "GameNative Duo Unity Split", "0.4.0")]
+    [BepInPlugin("app.gamenative.duo.unitysplit", "GameNative Duo Unity Split", "0.4.1")]
     public sealed class Plugin : BaseUnityPlugin
     {
         internal static ManualLogSource Log;
@@ -108,6 +108,27 @@ namespace GameNativeDuo.UnitySplit
                 _bridge.Dispose();
         }
 
+        /// <summary>
+        /// A per-game plugin's own bottom-screen touch handling (e.g. Hollow Knight's map): gets each touch first,
+        /// returns true when it used it. Arguments as in <see cref="TouchInjector.Handle"/>.
+        /// </summary>
+        internal static Func<byte, int, float, float, bool> TouchFilter;
+
+        private bool Filtered(Bridge.Message m)
+        {
+            if (TouchFilter == null)
+                return false;
+            try
+            {
+                return TouchFilter(m.Action, m.Pointer, m.X, m.Y);
+            }
+            catch (Exception ex)
+            {
+                Log.LogError("Touch filter failed: " + ex);
+                return false;
+            }
+        }
+
         /// <summary>Time spent in this plugin (all its per-frame hooks), reported with the frame stats.</summary>
         internal static long OwnTicks;
 
@@ -143,7 +164,7 @@ namespace GameNativeDuo.UnitySplit
                     switch (m.Type)
                     {
                         case Bridge.Touch:
-                            if (Active)
+                            if (Active && !Filtered(m))
                                 _touch.Handle(m.Action, m.Pointer, m.X, m.Y);
                             break;
                         case Bridge.RulesChanged:
