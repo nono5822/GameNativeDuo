@@ -209,6 +209,39 @@ dotnet build -c Release -p:ManagedPath=<Game_Data/Managed> -p:BepInExPath=<BepIn
   `adb shell am start -a app.gamenative.LAUNCH_GAME -n app.gamenative.duo/app.gamenative.MainActivity --ei app_id <steam id> --es game_source STEAM`.
   Bisect by switching mod features off between launches (this is how the Stardew hang was found).
 
+## Local Qwen worker
+
+A local Qwen3.8-27B runs on the PC (`duo/agents/start-qwen.sh`) and is reachable through the `qwen` MCP server.
+It is there to keep bulk text out of your context. It is a 3-bit model: treat everything it writes as a draft.
+
+**Logs: never read a long log yourself.**
+1. Save logs to files first: `adb logcat -d > duo/agents/runs/<run>/logcat.txt`, pull `BepInEx/LogOutput.log`
+   with `run-as`, `adb shell dmesg > .../dmesg.txt`.
+2. `triage_log` on them (exact, free). It knows the GPU-hang, dex-verify, BepInEx, SMAPI and Harmony patterns
+   and folds the `Frames (...)` lines into one table.
+3. Only if the cause is not obvious: `qwen_summarize_log` with a `focus` saying what the test checked.
+4. Before a fix or a conclusion that matters, read the cited lines yourself (Read with offset/limit).
+
+**Delegate to Qwen**
+- Unit tests for pure logic in `app.gamenative.duo` (`ScreenCalibration`, `LayoutFile`, `UiLayout`, `RegionView`,
+  `CommunityIndex`, `DeviceProfile`): `qwen_draft` with the class and one existing test as context, then
+  `./gradlew :app:testModernDebugUnitTest --tests 'app.gamenative.duo.*'`, then read the diff.
+- Compile errors confined to one file under 800 lines: `qwen_fix_build` (max 3 attempts) before fixing by hand.
+- New Unity game catalog entries: `qwen_draft` with `DuoModCatalog.kt` and an existing entry's preset as context.
+
+**Keep for yourself**
+- Harmony patches and engine adapters (the `ref` argument rule, hidden fields like `Toolbar.yPositionOnScreen`).
+- `duo/native`, the renderer, swapchain and GPU-hang work, `DuoBridge` protocol changes.
+- `XServerScreen.kt` and every upstream file in the "Every upstream file we modify" list.
+- Performance conclusions and anything that decides what to test next.
+
+**Rules**
+- Never commit Qwen-written code without a passing build or test and a read of the diff.
+- If a qwen tool says the server is unreachable, carry on yourself; do not retry in a loop.
+- Usage is logged to `duo/agents/qwen-usage.jsonl` (tokens Qwen processed instead of you).
+- End every unattended run with a note in `duo/notes/<date>-agent-run.md` in the usual shape: what was tested,
+  bugs found and fixed, what still needs a person.
+
 ## Known issues / open questions
 
 - Work in progress and its full history: `duo/notes/` (start with the newest file). Ranked list of games to support:
