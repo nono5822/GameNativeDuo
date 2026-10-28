@@ -3,6 +3,7 @@ package app.gamenative.duo.community
 import android.content.Context
 import android.util.Base64
 import app.gamenative.duo.DualScreenHost
+import app.gamenative.duo.settings.DuoContainerSettings
 import app.gamenative.duo.settings.DuoSettingsStore
 import app.gamenative.duo.ui.UiLayout
 import app.gamenative.duo.ui.UiLayoutStore
@@ -58,11 +59,14 @@ object CommunityPackages {
         }.build()
         Net.http.newCall(request).execute().use { response ->
             when {
-                response.code == 304 -> return cached(context, containerId) ?: throw IOException("cache unreadable")
+                response.code == 304 -> return (cached(context, containerId) ?: throw IOException("cache unreadable")).also {
+                    markChecked(context, key)
+                }
                 response.code == 404 -> {
                     json.delete()
                     sig.delete()
                     etagFile.delete()
+                    markChecked(context, key)
                     return CommunityGame(key, "", emptyList())
                 }
                 !response.isSuccessful -> throw IOException("HTTP ${response.code}")
@@ -74,10 +78,24 @@ object CommunityPackages {
             writeAtomic(json, body)
             writeAtomic(sig, signature.toByteArray())
             response.header("ETag")?.let { etagFile.writeText(it) } ?: etagFile.delete()
+            markChecked(context, key)
             Timber.tag(DualScreenHost.TAG).i("Community: %d package(s) for %s", game.packages.size, key)
             return game
         }
     }
+
+    /** When the game's list was last confirmed current with the server (epoch ms), or null if never. */
+    fun checkedAt(context: Context, containerId: String): Long? =
+        checkedFile(context, CommunityIndex.gameKey(containerId)).takeIf { it.isFile }?.lastModified()?.takeIf { it > 0 }
+
+    private fun markChecked(context: Context, key: String) {
+        val file = checkedFile(context, key)
+        file.parentFile?.mkdirs()
+        file.writeText("")
+        file.setLastModified(System.currentTimeMillis())
+    }
+
+    private fun checkedFile(context: Context, key: String) = File(dir(context), "index/$key.json.checked")
 
     /** The bytes of [file], from the local cache or downloaded, checked against its sha256. */
     fun download(context: Context, file: CommunityFile): ByteArray {
@@ -115,6 +133,12 @@ object CommunityPackages {
                 val file = pkg.file("duo-settings.json") ?: throw IOException("the package has no duo-settings.json")
                 val json = JSONObject(String(download(context, file), Charsets.UTF_8))
                 val current = DuoSettingsStore.load(context, containerId)
+                // What it changes, to put back when Dual screen is switched off (kept from the first apply).
+                val undo = settingsUndoFile(context, containerId)
+                if (!undo.isFile) {
+                    undo.parentFile?.mkdirs()
+                    writeAtomic(undo, current.toJson().toString(2).toByteArray())
+                }
                 // Only the settings the package names change.
                 DuoSettingsStore.save(
                     context,
@@ -133,6 +157,38 @@ object CommunityPackages {
         }
         markApplied(context, containerId, pkg)
         Timber.tag(DualScreenHost.TAG).i("Community: applied %s %s to %s", pkg.id, pkg.version, containerId)
+    }
+
+    /**
+     * Undoes an applied settings package: the settings it changes go back to what they were before (screen split off
+     * when there is no record, e.g. applied by an older version). Other settings the user changed since stay.
+     */
+    fun removeSettings(context: Context, containerId: String) {
+        val undo = settingsUndoFile(context, containerId)
+        val before = try {
+            undo.takeIf { it.isFile }?.let { DuoContainerSettings.fromJson(JSONObject(it.readText())) }
+        } catch (t: Throwable) {
+            null
+        }
+        val current = DuoSettingsStore.load(context, containerId)
+        DuoSettingsStore.save(
+            context,
+            containerId,
+            if (before == null) {
+                current.copy(screenSplit = false)
+            } else {
+                current.copy(
+                    screenSplit = before.screenSplit,
+                    splitLayout = before.splitLayout,
+                    nativeTouch = before.nativeTouch,
+                    bottomPanelEnabled = before.bottomPanelEnabled,
+                    region = before.region,
+                )
+            },
+        )
+        undo.delete()
+        forget(context, containerId, CommunityKind.DUO_SETTINGS)
+        Timber.tag(DualScreenHost.TAG).i("Community: settings package removed from %s", containerId)
     }
 
     /** Undoes an applied layout (back to the bundled preset or nothing). Settings stay as they are. */
@@ -215,5 +271,9 @@ object CommunityPackages {
         File(dir(context), "index/$key.json") to File(dir(context), "index/$key.json.sig")
 
     private fun appliedFile(context: Context, containerId: String) =
-        File(dir(context), "applied/" + containerId.replace(Regex("[^A-Za-z0-9_.-]"), "_") + ".json")
+        File(dir(context), "applied/" + safe(containerId) + ".json")
+
+    private fun settingsUndoFile(context: Context, containerId: String) = File(dir(context), "applied/" + safe(containerId) + ".settings-undo.json")
+
+    private fun safe(containerId: String) = containerId.replace(Regex("[^A-Za-z0-9_.-]"), "_")
 }
