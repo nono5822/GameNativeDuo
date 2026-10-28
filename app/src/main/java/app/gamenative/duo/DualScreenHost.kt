@@ -45,6 +45,9 @@ object DualScreenHost {
     @JvmStatic
     fun attach(context: Context, lifecycleView: View, container: Container, xServer: XServer?): DualScreenSession? = try {
         DuoModInstaller.refreshIfUpdated(context, container.id)
+        if (!Container.isX11Display(container.containerVariant, container.displayServer)) {
+            Timber.tag(TAG).w("Gamescope display server: screen split and bottom-screen views need X11 (Graphics tab)")
+        }
         DualScreenSession(context, container, xServer).also { session ->
             session.start()
             current = session

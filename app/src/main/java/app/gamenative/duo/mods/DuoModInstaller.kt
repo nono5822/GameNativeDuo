@@ -9,6 +9,7 @@ import app.gamenative.duo.split.LayoutFile
 import app.gamenative.duo.split.ScreenSplit
 import app.gamenative.duo.split.SplitLayout
 import app.gamenative.utils.ContainerUtils
+import com.winlator.container.Container
 import com.winlator.core.envvars.EnvVars
 import java.io.File
 import java.io.InputStream
@@ -147,6 +148,12 @@ object DuoModInstaller {
         mod.launchExecutable?.let {
             state.put("previousExecutablePath", container.executablePath)
             container.executablePath = it
+        }
+
+        // Under Gamescope the X server's renderer never presents, so neither screen split nor the bottom screen works.
+        if (!Container.isX11Display(container.containerVariant, container.displayServer)) {
+            state.put("previousDisplayServer", container.displayServer)
+            container.displayServer = Container.DISPLAY_SERVER_X11
         }
         container.saveData()
 
@@ -319,6 +326,10 @@ object DuoModInstaller {
 
         if (state.has("previousExecutablePath") && container.executablePath == launchExecutable) {
             container.executablePath = state.optString("previousExecutablePath", "")
+        }
+        // Back to Gamescope unless the user picked another display server since.
+        if (state.has("previousDisplayServer") && container.displayServer == Container.DISPLAY_SERVER_X11) {
+            container.displayServer = state.optString("previousDisplayServer", Container.DISPLAY_SERVER_X11)
         }
         container.saveData()
 
