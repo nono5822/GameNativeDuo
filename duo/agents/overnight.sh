@@ -113,7 +113,17 @@ Branch: agent/$STAMP (earlier tasks of this queue may have committed to it: see 
   fi
 }
 
+MIN_BATTERY="${MIN_BATTERY:-10}"
+battery() { adb shell dumpsys battery 2>/dev/null | awk '/^ *level:/ { print $2; exit }'; }
+
 for task in "${TASK_FILES[@]}"; do
+  if [ -z "${NO_DEVICE:-}" ]; then
+    level="$(battery)"
+    if [ -z "$level" ] || [ "$level" -lt "$MIN_BATTERY" ]; then
+      echo "Thor battery ${level:-unreachable}% (< $MIN_BATTERY%): stopping the queue before $(basename "$task")." >&2
+      break
+    fi
+  fi
   run_task "$task"
 done
 

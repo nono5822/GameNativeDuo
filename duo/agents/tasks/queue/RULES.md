@@ -22,6 +22,10 @@ Earlier tasks may have committed already: start with `git log --oneline -15` and
 - Stop a line of investigation after five failed attempts and write down what you learned.
 
 ## Safety
+- **Battery**: before every game launch and at least every 15 minutes of device work, read
+  `adb shell dumpsys battery | grep level`. Below 10% (or the device gone from adb): stop the game cleanly, remove
+  any test-mode files (e.g. `hk-test.txt`), verify save checksums, commit your work (WIP commits are fine, say so),
+  write the run-note section with where you stopped and what is left, and end the task.
 - Real saves: back up and checksum a game's save before launching it, prefer each game's test mode, verify the
   checksum after. Never unlock achievements (GameNative uploads them live): seeded/test modes only.
 - Never push, never force anything, never touch DRM. Upstream files only through documented hooks (update the
