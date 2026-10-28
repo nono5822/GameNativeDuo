@@ -172,6 +172,7 @@ namespace GameNativeDuo.HollowKnight
                     _contentDirty = true;
                 }
                 bool want = ShouldShow();
+                _showTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
                 if (want && !_shown)
                     Show();
                 else if (!want && _shown)
@@ -187,10 +188,15 @@ namespace GameNativeDuo.HollowKnight
                 {
                     // Pins and markers the game turns on later come with their own layer: bring them over to ours.
                     _nextLayerCheck = Time.unscaledTime + 1f;
+                    long w0 = System.Diagnostics.Stopwatch.GetTimestamp();
                     MoveMapToOurLayer();
+                    _walkTicks += System.Diagnostics.Stopwatch.GetTimestamp() - w0;
+                    _walks++;
                 }
                 ShowKnightAlways();
+                long p0 = System.Diagnostics.Stopwatch.GetTimestamp();
                 PlaceCamera();
+                _placeTicks += System.Diagnostics.Stopwatch.GetTimestamp() - p0;
                 _lastShownFrame = Time.frameCount;
             }
             catch (Exception ex)
@@ -202,8 +208,34 @@ namespace GameNativeDuo.HollowKnight
             finally
             {
                 // Counted in the split's per-frame cost ("this plugin ... ms per frame" in the Frames log line).
-                Split.OwnTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
+                long spent = System.Diagnostics.Stopwatch.GetTimestamp() - t0;
+                Split.OwnTicks += spent;
+                if (TestHarness.On)
+                    CostReport(spent);
             }
+        }
+
+        private long _walkTicks, _allTicks, _showTicks, _placeTicks;
+        private int _walks, _frames;
+        private float _costReportAt;
+
+        /// <summary>Test mode: the live map's own cost every 30 s, split into the layer walk and everything else.</summary>
+        private void CostReport(long spent)
+        {
+            _allTicks += spent;
+            _frames++;
+            if (_costReportAt == 0f)
+                _costReportAt = Time.unscaledTime + 30f;
+            if (Time.unscaledTime < _costReportAt)
+                return;
+            double ms = 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+            int f = Mathf.Max(1, _frames);
+            Plugin.Log.LogInfo(string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                "Live map cost: {0:0.000} ms per frame over {1} frames (when {5:0.000}, camera {6:0.000}); layer walk {2:0.00} ms each ({3} walks, {4:0.000} ms per frame)",
+                _allTicks * ms / f, _frames, _walkTicks * ms / Mathf.Max(1, _walks), _walks, _walkTicks * ms / f, _showTicks * ms / f, _placeTicks * ms / f));
+            _allTicks = _walkTicks = _showTicks = _placeTicks = 0;
+            _walks = _frames = 0;
+            _costReportAt = Time.unscaledTime + 30f;
         }
 
         // ------------------------------------------------------------------ when
@@ -219,7 +251,7 @@ namespace GameNativeDuo.HollowKnight
             if (split == null || !split.Active || split.Layout == null)
                 return No("split off");
             GameManager gm = GameManager.instance;
-            if (gm == null || gm.gameMap == null || HeroController.instance == null || !gm.IsGameplayScene())
+            if (gm == null || gm.gameMap == null || HeroController.instance == null || !IsGameplayScene(gm))
                 return No("not in gameplay");
             // Paused: the map stays, dimmed under the pause menu (see ShouldDim).
             if (gm.gameState == GlobalEnums.GameState.CUTSCENE)
@@ -237,6 +269,28 @@ namespace GameNativeDuo.HollowKnight
             if (InventoryIsOpen())
                 return No("inventory open");
             return true;
+        }
+
+        private string _gameplayScene;
+        private bool _gameplay;
+        private float _gameplayAt;
+
+        /// <summary>
+        /// GameManager.IsGameplayScene, asked again when the scene changes and four times a second otherwise: it compares
+        /// the scene name with ~15 names and asks InGameCutsceneInfo, 0.21 ms per call on the Thor (measured), more than
+        /// the rest of the live map's frame. A cutscene starting mid-scene is seen within 0.25 s (and CUTSCENE at once).
+        /// </summary>
+        private bool IsGameplayScene(GameManager gm)
+        {
+            float now = Time.unscaledTime;
+            // By value: the game may hand out a new string for the same scene.
+            if (!string.Equals(gm.sceneName, _gameplayScene, StringComparison.Ordinal) || now >= _gameplayAt)
+            {
+                _gameplayScene = gm.sceneName;
+                _gameplay = gm.IsGameplayScene();
+                _gameplayAt = now + 0.25f;
+            }
+            return _gameplay;
         }
 
         private bool No(string why)
@@ -298,6 +352,12 @@ namespace GameNativeDuo.HollowKnight
                 CameraPlacer.PluginCameras.Add(_cam);
                 _fade = MakeGradient(go.transform, "GameNativeDuo map fade", short.MaxValue - 1);
                 _dim = MakeGradient(go.transform, "GameNativeDuo map dim", short.MaxValue);
+                _camT = go.transform;
+                _fadeT = _fade.transform;
+                _dimT = _dim.transform;
+                _fadeR = _fade.GetComponent<SpriteRenderer>();
+                _dimR = _dim.GetComponent<SpriteRenderer>();
+                _dimR.enabled = false; // white until PlaceOverlays tints it
 
                 var clearGo = new GameObject("GameNativeDuo map clear camera");
                 clearGo.hideFlags = HideFlags.HideAndDontSave;
@@ -543,8 +603,11 @@ namespace GameNativeDuo.HollowKnight
             RectInt b = layout.Bottom;
             RectInt region = MapRegion(layout);
             Rect viewport = layout.Viewport(region);
-            if (_cam.rect != viewport)
+            if (_camRect != viewport)
+            {
+                _camRect = viewport;
                 _cam.rect = viewport;
+            }
             OrderCameras(layout.Viewport(b));
             float aspect = (float)region.width / Mathf.Max(1, region.height);
 
@@ -562,20 +625,25 @@ namespace GameNativeDuo.HollowKnight
             }
             size *= _zoomFactor;
             var target = new Vector3(focus.x + _panOffset.x, focus.y + _panOffset.y, focus.z - 100f);
+            // Every Unity call costs microseconds under emulation: only write what moved (nothing once settled).
             if (_snap)
             {
                 _snap = false;
-                _cam.transform.position = target;
+                _camPos = target;
+                _camSize = size;
+                _camT.position = target;
                 _cam.orthographicSize = size;
             }
-            else
+            else if ((_camPos - target).sqrMagnitude > 1e-8f || Mathf.Abs(_camSize - size) > 1e-5f)
             {
                 float k = 1f - Mathf.Exp(-Time.unscaledDeltaTime * FollowRate);
-                _cam.transform.position = Vector3.Lerp(_cam.transform.position, target, k);
-                _cam.orthographicSize = Mathf.Lerp(_cam.orthographicSize, size, k);
+                _camPos = Vector3.Lerp(_camPos, target, k);
+                _camSize = Mathf.Lerp(_camSize, size, k);
+                _camT.position = _camPos;
+                _cam.orthographicSize = _camSize;
             }
             _worldPerPx = worldPerPx * _zoomFactor;
-            PlaceOverlays();
+            PlaceOverlays(aspect);
         }
 
         // ------------------------------------------------------------------ draw order
@@ -598,6 +666,7 @@ namespace GameNativeDuo.HollowKnight
                 GameCameras cams = GameCameras.instance;
                 if (cams != null && cams.hudCamera != null && _cam.depth != cams.hudCamera.depth - 0.5f)
                     _cam.depth = cams.hudCamera.depth - 0.5f;
+                _camDepthFor = float.NaN;
                 return;
             }
             if (bottom.clearFlags == CameraClearFlags.SolidColor)
@@ -607,21 +676,34 @@ namespace GameNativeDuo.HollowKnight
                 _clearColor = bottom.backgroundColor;
                 bottom.clearFlags = CameraClearFlags.Depth;
             }
-            bool clearing = _takenBottom == bottom;
-            if (_clearCam.enabled != clearing)
-                _clearCam.enabled = clearing;
-            if (clearing)
+            bool clearing = ReferenceEquals(_takenBottom, bottom);
+            if (_clearOn != clearing)
             {
-                if (_clearCam.backgroundColor != _clearColor)
-                    _clearCam.backgroundColor = _clearColor;
-                if (_clearCam.rect != bottomViewport)
-                    _clearCam.rect = bottomViewport;
-                if (_clearCam.depth != bottom.depth - 0.2f)
-                    _clearCam.depth = bottom.depth - 0.2f;
+                _clearOn = clearing;
+                _clearCam.enabled = clearing;
             }
-            if (_cam.depth != bottom.depth - 0.1f)
-                _cam.depth = bottom.depth - 0.1f;
+            float depth = bottom.depth;
+            if (clearing && (_clearSetColor != _clearColor || _clearSetRect != bottomViewport || _clearSetDepth != depth))
+            {
+                _clearSetColor = _clearColor;
+                _clearSetRect = bottomViewport;
+                _clearSetDepth = depth;
+                _clearCam.backgroundColor = _clearColor;
+                _clearCam.rect = bottomViewport;
+                _clearCam.depth = depth - 0.2f;
+            }
+            if (_camDepthFor != depth)
+            {
+                _camDepthFor = depth;
+                _cam.depth = depth - 0.1f;
+            }
         }
+
+        // What was last written to our cameras (reading back costs a Unity call each).
+        private Rect _camRect, _clearSetRect;
+        private Color _clearSetColor;
+        private float _clearSetDepth = float.NaN, _camDepthFor = float.NaN;
+        private bool _clearOn;
 
         private void ReleaseBottomClear()
         {
@@ -630,6 +712,7 @@ namespace GameNativeDuo.HollowKnight
             _takenBottom = null;
             if (_clearCam != null)
                 _clearCam.enabled = false;
+            _clearOn = false;
         }
 
         // ------------------------------------------------------------------ dimming
@@ -738,31 +821,50 @@ namespace GameNativeDuo.HollowKnight
         private static Sprite _gradient, _solid;
 
         /// <summary>Keeps the edge fade across the top of the view and the dim layer over all of it; fades the dim in and out.</summary>
-        private void PlaceOverlays()
+        private void PlaceOverlays(float aspect)
         {
-            float h = _cam.orthographicSize * 2f;
-            float w = h * _cam.aspect;
+            float h = _camSize * 2f;
+            float w = h * aspect;
+            bool resized = h != _overlayH || w != _overlayW;
+            _overlayH = h;
+            _overlayW = w;
             var edge = _takenBottom != null ? _clearColor : Color.black;
             edge.a = 1f;
-            _fade.transform.localPosition = new Vector3(0f, _cam.orthographicSize, 1f);
-            _fade.transform.localScale = new Vector3(w * 32f, h * FadeFraction, 1f); // the sprite is 1/32 x 1 units
-            var fr = _fade.GetComponent<SpriteRenderer>();
-            if (fr.color != edge)
-                fr.color = edge;
+            if (resized)
+            {
+                _fadeT.localPosition = new Vector3(0f, _camSize, 1f);
+                _fadeT.localScale = new Vector3(w * 32f, h * FadeFraction, 1f); // the sprite is 1/32 x 1 units
+            }
+            if (edge != _fadeColor)
+            {
+                _fadeColor = edge;
+                _fadeR.color = edge;
+            }
 
             float target = ShouldDim() ? Settings.Dim : 0f;
-            _dimAlpha = Mathf.MoveTowards(_dimAlpha, target, Time.unscaledDeltaTime * 4f);
-            bool on = _dimAlpha > 0.001f;
-            var dr = _dim.GetComponent<SpriteRenderer>();
-            if (dr.enabled != on)
-                dr.enabled = on;
-            if (on)
+            float alpha = Mathf.MoveTowards(_dimAlpha, target, Time.unscaledDeltaTime * 4f);
+            bool on = alpha > 0.001f;
+            bool wasOn = _dimOn;
+            if (wasOn != on)
             {
-                _dim.transform.localPosition = new Vector3(0f, 0f, 1f);
-                _dim.transform.localScale = new Vector3(w * 1.02f, h * 1.02f, 1f);
-                dr.color = new Color(0f, 0f, 0f, _dimAlpha);
+                _dimOn = on;
+                _dimR.enabled = on;
             }
+            if (on && (alpha != _dimAlpha || resized || !wasOn))
+            {
+                _dimT.localPosition = new Vector3(0f, 0f, 1f);
+                _dimT.localScale = new Vector3(w * 1.02f, h * 1.02f, 1f);
+                _dimR.color = new Color(0f, 0f, 0f, alpha);
+            }
+            _dimAlpha = alpha;
         }
+
+        private Transform _camT, _fadeT, _dimT;
+        private SpriteRenderer _fadeR, _dimR;
+        private Vector3 _camPos;
+        private float _camSize, _overlayH = -1f, _overlayW = -1f;
+        private Color _fadeColor = Color.clear;
+        private bool _dimOn;
 
         /// <summary>Where to look and how much to show for the current zoom.</summary>
         private bool Frame(float aspect, out Vector3 focus, out float size)
