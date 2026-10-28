@@ -38,12 +38,12 @@ Upstream lands ~4-5 commits/day; `XServerScreen.kt` (~6,800 lines) changes almos
 | `ui/screen/xserver/XServerScreen.kt` | import + one `DualScreenHost.attach(...)` line after the external-display controllers start |
 | `app/build.gradle.kts` | `applicationId = "app.gamenative.duo"` |
 | `build.gradle.kts` (root) | `buildscript` pins D8/R8 `com.android.tools:r8` (see Known issues) |
-| `com/winlator/renderer/VulkanRenderer.java` | `duoViewRect` crop in `updateTransform`, `setDuoViewRect`, `duoSetSecondary`/`duoClearSecondary` + their natives |
+| `com/winlator/renderer/VulkanRenderer.java` | `duoViewRect` crop in `updateTransform` (right after the surface guard, before upstream's effective-screen scaling; uses the full `xServer.screenInfo`), `setDuoViewRect`, `duoSetSecondary`/`duoClearSecondary` + their natives |
 | `cpp/winlator/VulkanRendererContext.{h,cpp}` | declarations, `duoRenderSecondary()` after both present paths, `duoWaitSecondary()` before the `deleteQueue` flush, `duoDestroySecondary()` in the destructor (new code in `DuoSecondaryOutput.cpp`) |
 | `cpp/CMakeLists.txt` | `DuoSecondaryOutput.cpp` source line |
 | `modern/jniLibs/arm64-v8a/libvulkan_renderer.so` | **rebuilt by us** (see `duo/native/README.md`); rebuild after upstream renderer changes |
 | `AndroidManifest.xml` | 3 launcher labels -> `@string/duo_app_name` |
-| `ui/component/QuickMenu.kt` | five lines marked `// GameNativeDuo`: a `DUO` tab id, rail button, title, list entry and content (`duo/ui/DuoQuickMenu.kt`) |
+| `ui/component/QuickMenu.kt` | five lines marked `// GameNativeDuo`: a `DUO` tab id (9: upstream's ids end at `GAMESCOPE = 8`; take the next free one after merges), rail button, title, list entry and content (`duo/ui/DuoQuickMenu.kt`) |
 | `ui/theme/Color.kt` | `PluviaPrimary`/`customPrimary`/`PluviaPurple` -> logo blue `#5B8DF6`, `PluviaPink` -> logo purple (values only, marked) |
 | `com/winlator/container/Container.java` | `AppPaths` for default drives/MEDIACONV paths; `setDrives`/`setEnvVars` rewrite old paths; `getBox64Version` strips labels like " (Default)" |
 | `com/winlator/core/DXVKHelper.java`, `WineUtils.java` | `AppPaths` instead of `/data/data/app.gamenative` |
@@ -275,6 +275,11 @@ It is there to keep bulk text out of your context. It is a 3-bit model: treat ev
 - The CI artifact did not install over a local build (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`), so CI and local signing
   currently differ despite `duo/debug.keystore`; investigate before relying on CI APKs.
 
+- Upstream v1.4.0 added a **Gamescope display server** (`Container.displayServer`, Graphics tab), the default for
+  new Bionic containers (older ones migrate to `x11`). Under Gamescope the X renderer never presents, so screen
+  split, bottom-screen output and region views do not work: the Dual screen toggle sets `x11` (undo record
+  `previousDisplayServer`) and `DualScreenHost` logs a warning. A user who switches back to Gamescope by hand loses
+  the split; a Gamescope-native bottom-screen path is future work.
 - Deep-link schemes (`gamenative://`, `app.gamenative://` for Nexus login) are shared with official GameNative,
   so Android may ask which app to open them with.
 - Frontends (Beacon, ES-DE) must target package `app.gamenative.duo` to launch games in the fork.
