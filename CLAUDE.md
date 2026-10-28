@@ -118,12 +118,14 @@ no CPU frame copies, data over pixels, idle at 0 fps when nothing changes.
   backend (`*_Data/Managed`, no `GameAssembly.dll`). Crosshairs/reticles stay on top by name. Compile-check against a
   game: `-p:ManagedPath=<game>_Data/Managed` (Unity 2021+ needs its `netstandard.dll`, picked up automatically).
   Bundled: Slime Rancher, Subnautica, Hollow Knight (plus its own plugin `duo/mods-src/unity/GameNativeDuo.HollowKnight`:
-  live map on the bottom screen, WIP, see `duo/notes/2026-10-27-hollow-knight.md`); community (experimental): Silksong, Risk of Rain 2.
+  live map on the bottom screen, its settings are the "Live map" element of the UI layout, see
+  `duo/notes/2026-10-27-hollow-knight.md`); community (experimental): Silksong, Risk of Rain 2.
   The shared DLL is built against Slime Rancher's Managed (oldest Unity). HK tests: `hk-test.txt` harness (no saves).
 - **UI layout** (per game, user-editable): each UI element on the bottom screen, the top screen or hidden, resized and
   shifted. `duo/ui/` (store, controller, editor), user layouts in `files/duo/ui/<game>.json`, presets bundled as
   `assets/duo/mods/<mod>/ui-layout.json`, handed to the mod as `ui.json`. The editor opens with a two-finger long press
-  on the bottom screen -> "Edit UI layout".
+  on the bottom screen -> "Edit UI layout". A mod can add its own element with settings (`screens`, `options` in
+  `elements.json`, the choice in the rule's `options`; contract "Plugin elements"): both editors list it first.
 - **Bottom screen look** (part of the UI layout, so it is shared with layouts): background `game` / `blur` / `color` /
   `image` with dim (drawn by the mod on the GPU, announced in HELLO capabilities 8/16/32: Stardew all, Unity color and
   image), and widgets (FPS, CPU, GPU, temperature, battery, clock) drawn by the app (`duo/ui/WidgetLayer.kt`, reads

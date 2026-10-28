@@ -20,7 +20,7 @@ Branch `duo/hollow-knight` (from `duo/balatro`). Hollow Knight is now a **bundle
   - `TestHarness`: only if `%AppData%\GameNativeDuo\hk-test.txt` exists at game start: **no saving, invincible**, commands
     from that file (zoom, dump, gates, scene, compass, fsm, event, pause, state, bounds). Use it for every automated test
     on the user's real save. Remove the file afterwards (done at end of this session) and restart the game.
-- Shared plugin 0.4.1: `Split.TouchFilter` hook, `CameraPlacer.PluginCameras`, `UiRouter.BottomCamera`. The bundled
+- Shared plugin 0.4.1 (0.4.2 adds plugin elements): `Split.TouchFilter` hook, `CameraPlacer.PluginCameras`, `UiRouter.BottomCamera`. The bundled
   DLL is built against **Slime Rancher's** Managed (Unity 2019, oldest target):
   `dotnet build -c Release -p:ManagedPath=<SlimeRancher_Data/Managed> -p:BepInExPath=app/src/main/assets/duo/mods/shared/bepinex/BepInEx/core`.
   HK plugin: `-p:ManagedPath=<Hollow Knight/hollow_knight_Data/Managed>` (PC Steam copy works).
@@ -33,15 +33,29 @@ Branch `duo/hollow-knight` (from `duo/balatro`). Hollow Knight is now a **bundle
 - Touch double-tap / drag / recenter. Map button with real input (user) switches zoom.
 - Pause menu readable over the dimmed map, undims after.
 
+## 2026-10-28 (agent queue, two sessions): done
+
+- Map button: never opens a second map (all `ListenForQuickMap` FSMs; the live map owns the button whenever it is in
+  charge); the live map shows exactly what the inventory map shows (layer moves restore each object's own layer).
+  Overlap pass of every pane and overlay; shops, dialogue, pause, options fixed or verified. See
+  `duo/notes/2026-10-28-agent-run.md` and the commit messages.
+- Settings are the **"Live map" element of the UI layout** (BepInEx cfg gone): on/off, rectangle (scale/shift of the
+  area below the HUD strip), start zoom, after a pan, under menus, Knight icon, map button, top screen in inventory.
+  Contract: `engine-adapter-contract.md` "Plugin elements". Preset `assets/duo/mods/hollow-knight/ui-layout.json`.
+- Cost: plugin 0.26 ms/frame with the map on (0.15 off; live map 0.12), 60 fps either way. In test mode the plugin
+  logs `Live map cost:` every 30 s. Lesson: under Box64 every Unity/game call counts; `GameManager.IsGameplayScene()`
+  alone was 0.21 ms.
+
 ## Open / next
 
-- Dialogue dimming with a real NPC (untested). Shops (uGUI? HudCamera?) untested.
-- Steady-state frame time with the map on (baseline without: 60.0 fps, plugin 0.12 ms). Add LiveMap time to
-  `Split.OwnTicks` so the stats include it.
-- Slime Rancher / Subnautica smoke test with shared plugin 0.4.1.
-- `MapButtonZooms=false` (vanilla quick map on the bottom) untested.
-- Settings are a BepInEx cfg only; consider rows in the GameNative Duo tab.
-- Area name label, ui-layout preset for the HUD, Godhome/dream areas, first-map-less early game.
+- Retire the community package `gamenative-duo.hollow-knight-dual-screen` (superseded by the bundled mod): the agent
+  could not run git in `../GameNativeDuo-community`; steps in `duo/notes/2026-10-28-agent-run.md`.
+- PC editor: option dropdowns not looked at in a browser (API verified).
+- The bottom-screen editor draws outlines of every inactive HK UI element over the map; tapping the map selects one
+  of those (use List: the live map is first).
+- The first two-finger long press right after a game loads is often missed (second works); seen with `sendevent`,
+  check by hand.
+- Slime Rancher / Subnautica smoke test with shared plugin 0.4.2.
+- Area name label, Godhome/dream areas, first-map-less early game.
 - adb key events are unreliable here (one stuck input walked the Knight into spikes before test mode existed); drive
-  tests with the harness, not keys.
-- Community package `gamenative-duo.hollow-knight-dual-screen` is now superseded by the bundled mod: retire it.
+  tests with the harness, not keys. The harness's first `pad` command after a launch can be lost: send one first.
