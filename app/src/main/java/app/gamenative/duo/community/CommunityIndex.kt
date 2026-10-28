@@ -31,6 +31,9 @@ object CommunityIndex {
         "gamenative-duo.ayn-thor",
         "gamenative-duo.dead-cells-minimap-below",
         "gamenative-duo.hollow-knight-dual-screen",
+        "gamenative-duo.isaac-minimap-below",
+        "gamenative-duo.silksong-dual-screen",
+        "gamenative-duo.ror2-dual-screen",
     )
 
     const val REPO_URL = "https://github.com/nono5822/GameNativeDuo-community"

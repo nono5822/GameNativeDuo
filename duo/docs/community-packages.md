@@ -59,9 +59,12 @@ sees what it writes.
 
 Built (`duo/community/`): `CommunityPackages` (fetch with ETag, ed25519 + sha256 verification, disk cache in
 `files/duo/community/`, apply/remove, applied versions in `applied/<containerId>.json`), `Ed25519` (verify-only, RFC 8032,
-unit-tested against the RFC vectors and a published catalog), and `CommunityPackagesSheet`, opened by the "Community"
-button next to the Dual screen switch. Layouts and settings apply in one tap; a layout the user made is only replaced
-after asking; updates show when the index has a newer `packageVersion`.
+unit-tested against the RFC vectors and a published catalog), and the mod explorer (`duo/mods/ModExplorer.kt`,
+`ModHub`, `ModHubState`), opened by the chevron of the Dual screen control next to Play. It lists bundled mods and
+community packages together: code mods (or, for games without one, settings packages) are what the switch applies,
+one at a time, switched through `DuoModInstaller`'s undo record; layouts and settings are add-ons on top. Layouts
+and settings apply in one tap; a layout the user made is only replaced after asking; code mods need consent once
+per version; updates show when the index has a newer `packageVersion`. Ratings: `duo/docs/community-ratings.md`.
 
 Still to build:
 

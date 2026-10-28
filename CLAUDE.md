@@ -145,9 +145,13 @@ no CPU frame copies, data over pixels, idle at 0 fps when nothing changes.
   Changing it resizes the container (and the mod's undo record) on save; Unity games need their in-game resolution
   set to the new window once.
 - **Community packages**: repo `nono5822/GameNativeDuo-community` (schemas, validator, signed index on Pages, share bot,
-  ratings from discussions). App: `duo/community/` (Community button next to the Dual screen switch; also shown for
-  games that only have community packages). Code mods install after a consent dialog through `DuoModInstaller`.
-  Design: `duo/docs/community-packages.md`. Index signing key: repo secret + `~/.config/gamenative-duo/` (maintainer).
+  ratings from discussions). App: `duo/community/` + the mod explorer (`duo/mods/ModExplorer.kt`, `ModHub`): one
+  Dual screen control next to Play (switch + chevron), also for games that only have community packages; the
+  explorer lists bundled and community mods, the switch applies the selected one, switching goes through
+  `DuoModInstaller`'s undo record. Code mods install after a consent dialog (once per version). "Official" comes only
+  from the bundled catalog, `CommunityIndex.OFFICIAL_PACKAGES` or the signed index's top-level `official` list.
+  Design: `duo/docs/community-packages.md`, ratings: `duo/docs/community-ratings.md`. Index signing key: repo
+  secret + `~/.config/gamenative-duo/` (maintainer).
 - `layout.json` (`%AppData%\GameNativeDuo\` in the prefix) is the contract with in-game mods: `screen`, `top`,
   `bottom` (window px, origin top-left), plus `gap`, `bottomScale`, `bottomShift`, `bridge.port`. Mods act only when
   the window matches `screen`. `ui.json` (UI layout) and `elements.json` (for the editor) sit next to it.
