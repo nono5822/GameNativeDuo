@@ -1,4 +1,6 @@
-# Task 4: regression pass after the upstream merge, then polish every other mod
+# Task 10: regression pass, then polish every other mod
+
+Owner: Opus · Thor needed: yes · Depends on: 02, 03
 
 Read `duo/agents/tasks/queue/RULES.md`.
 

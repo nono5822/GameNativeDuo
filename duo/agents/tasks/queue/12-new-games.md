@@ -1,4 +1,9 @@
-# Task 6: Disco Elysium and Skyrim, and the updated future-games list
+# Task 12 (low priority): Disco Elysium and Skyrim, and the updated future-games list
+
+Owner: Opus (device feasibility) / Qwen draft + Codex edit (futuregames.md) · Thor needed: yes · Depends on: 04
+
+Skyrim: study SkyrimWebMonitor (github.com/andreyvelsk/SkyrimWebMonitor: character, inventory/magic, quests, live map
+on a second screen) as the reference for a Skyrim companion (task 04 framework).
 
 Read `duo/agents/tasks/queue/RULES.md` and `duo/futuregames.md`. The user has downloaded **Disco Elysium** and
 **The Elder Scrolls V: Skyrim Special Edition** in GameNative on the Thor (find them under

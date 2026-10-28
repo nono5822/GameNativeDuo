@@ -1,4 +1,8 @@
-# Task 5: the best toolkit for dual-screen modders
+# Task 09: the best toolkit for dual-screen modders
+
+Owner: Codex (CLI, templates, docs) / Opus (developer mode, needs the Thor) · Thor needed: for developer mode · Depends on: 04
+
+Overlaps task 04d: the companion SDK is part of this toolkit; one `duo-dev` CLI, one `duo/sdk/` entry page.
 
 Read `duo/agents/tasks/queue/RULES.md`, `duo/docs/engine-adapter-contract.md`, `duo/docs/community-packages.md`,
 and the community repo's `CONTRIBUTING.md`. Goal: a typical modder makes a working dual-screen layout or mod for a new

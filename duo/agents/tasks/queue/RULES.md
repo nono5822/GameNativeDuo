@@ -1,6 +1,8 @@
 # Rules for every queued task (read this first)
 
 The queue runs in file order on one branch, each task in a fresh session: `duo/agents/overnight.sh duo/agents/tasks/queue/[0-9]*.md`.
+The `Owner` line on each task is for the planned dispatcher (Opus for Thor work, Codex for code-only work, Qwen
+for drafts). Until that exists, whoever runs the task does all of it.
 Earlier tasks may have committed already: start with `git log --oneline -15` and the newest `duo/notes/` file.
 
 ## Quality bar
