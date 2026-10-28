@@ -201,18 +201,32 @@ internal class UiLayoutEditor(
     private lateinit var optionRows: LinearLayout
     private var optionRowsFor: String? = null
 
+    /** Settings rows shown; folded by default so the panel leaves the element itself in sight while it is moved. */
+    private var optionsOpen = false
+
     /**
-     * The selected element's own settings (declared by its mod, e.g. the live map's zoom), one row each: tapping the
-     * value switches to the next one. Rebuilt when the selection or a value changes.
+     * The selected element's own settings (declared by its mod, e.g. the live map's zoom) behind a "Settings" toggle,
+     * one row each: tapping the value switches to the next one. Rebuilt when the selection or a value changes.
      */
     private fun updateOptionRows(e: UiElement?) {
         if (!::optionRows.isInitialized) return
         val rule = e?.let { controller.layout.rule(it.id) }
-        val key = e?.let { it.id + rule?.options } // same element and values: nothing to rebuild
+        val key = e?.let { it.id + rule?.options + optionsOpen } // same element, values and fold: nothing to rebuild
         if (key == optionRowsFor) return
         optionRowsFor = key
         optionRows.removeAllViews()
-        if (e == null || rule == null) return
+        if (e == null || rule == null || e.options.isEmpty()) return
+        val changed = e.options.count { it.value(rule) != it.default }
+        val header = DuoUi.row(context)
+        DuoUi.add(
+            header,
+            DuoUi.chip(context, (if (optionsOpen) "Settings ▾" else "Settings ▸") + if (changed > 0) "  ($changed changed)" else "") {
+                optionsOpen = !optionsOpen
+                updateOptionRows(selected)
+            },
+        )
+        optionRows.addView(header)
+        if (!optionsOpen) return
         e.options.forEach { option ->
             val value = option.value(rule)
             val row = DuoUi.row(context)
@@ -449,12 +463,28 @@ internal class UiLayoutEditor(
 
     // ---- element list (reaches hidden and tiny elements) ------------------------------------------------------
 
+    private var listedFrom: UiElementList? = null
+    private var listedCache: List<UiElement> = emptyList()
+
+    /**
+     * The list's rows: the mod's own elements first (e.g. Hollow Knight's live map, which would otherwise come after
+     * hundreds of game UI elements), then the game's UI in tree order.
+     */
+    private fun listed(): List<UiElement> {
+        val now = elements
+        if (now !== listedFrom) {
+            listedFrom = now
+            listedCache = now?.elements?.sortedBy { it.screens == null && it.options.isEmpty() } ?: emptyList()
+        }
+        return listedCache
+    }
+
     private fun buildList() {
         list.apply {
             listAdapter = object : BaseAdapter() {
-                override fun getCount() = elements?.elements?.size ?: 0
+                override fun getCount() = listed().size
 
-                override fun getItem(position: Int) = elements!!.elements[position]
+                override fun getItem(position: Int) = listed()[position]
 
                 override fun getItemId(position: Int) = position.toLong()
 
@@ -485,7 +515,7 @@ internal class UiLayoutEditor(
             }
             adapter = listAdapter
             setOnItemClickListener { _, _, position, _ ->
-                select(elements?.elements?.getOrNull(position))
+                select(listed().getOrNull(position))
                 showList(false)
             }
         }

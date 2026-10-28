@@ -419,7 +419,9 @@ function effectiveScreen(e) { const r = ruleOf(e.id).screen; return r !== "defau
 function renderList() {
   const q = $("#search").value.trim().toLowerCase(), list = $("#list");
   list.innerHTML = "";
-  for (const e of state.elements) {
+  // The mod's own elements (e.g. Hollow Knight's live map) first, then the game's UI in tree order.
+  const own = (e) => !!(e.screens || e.options);
+  for (const e of state.elements.filter(own).concat(state.elements.filter((e) => !own(e)))) {
     if (q && !e.name.toLowerCase().includes(q) && !e.id.toLowerCase().includes(q)) continue;
     const d = document.createElement("div");
     d.className = "item" + (e.graphic ? " graphic" : "") + (e.id === selected ? " sel" : "");

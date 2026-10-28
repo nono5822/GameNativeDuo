@@ -91,6 +91,27 @@ Parents before children (`parent` is an index). Rectangles are where the element
 pixels. `graphic`: it draws something (the editor outlines those). Write it after the frame's rules are applied. It is
 only requested while the editor is open, so walking the whole UI is fine.
 
+### Plugin elements: a mod's own element with settings
+
+A mod can list something it draws itself (Hollow Knight's live map, id `GameNativeDuo/LiveMap`) as an element, and
+give it settings the editors show (bottom screen and PC editor) without any app change:
+
+```json
+{"id":"GameNativeDuo/LiveMap","name":"Live map","parent":-1,"screen":"bottom","x":340,"y":1230,"w":1240,"h":930,"graphic":true,
+ "screens":["bottom","hidden"],
+ "options":[{"id":"zoom","label":"Start zoom","values":[["knight","Knight"],["area","Area"],["world","Whole map"]]}]}
+```
+
+- **`screens`** (optional): the only screens the editors offer for it (`hidden` = turned off). Absent: all.
+- **`options`** (optional): one setting each, `values` as `[id, label]` pairs; the **first value is the default**. The
+  user's choice is stored in the element's rule in `ui.json`: `"options":{"zoom":"world"}` (defaults are left out).
+  Unknown values (an option dropped in a newer mod) fall back to the default; values are short strings.
+- `scale`, `x`, `y` mean what the mod says they mean (live map: its rectangle on the bottom screen), and the reported
+  rectangle is the one with the rule applied, like any element. Re-read the rule whenever `ui.json` is re-read.
+- Unity: register a source in `UiRouter.PluginElements` and read the rule with `UiRouter.Rule(id)` when
+  `UiRouter.RulesVersion` changes; objects the mod draws itself go in `UiRouter.NotInEditor` so they are not listed
+  as UI.
+
 ## Cost rules
 
 - Idle cost ~0: no polling on the app side, a blocked receive thread on the adapter side, one HELLO per 2 s.
