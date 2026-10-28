@@ -193,6 +193,40 @@ internal class UiLayoutEditor(
         DuoUi.add(controls, DuoUi.chip(context, "+") { stepScale(1.1f) })
         DuoUi.add(controls, DuoUi.chip(context, "Reset") { selected?.let { change(it.id, UiRule(), final = true) } })
         content.addView(controls)
+        optionRows = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        optionRowsFor = null
+        content.addView(optionRows)
+    }
+
+    private lateinit var optionRows: LinearLayout
+    private var optionRowsFor: String? = null
+
+    /**
+     * The selected element's own settings (declared by its mod, e.g. the live map's zoom), one row each: tapping the
+     * value switches to the next one. Rebuilt when the selection or a value changes.
+     */
+    private fun updateOptionRows(e: UiElement?) {
+        if (!::optionRows.isInitialized) return
+        val rule = e?.let { controller.layout.rule(it.id) }
+        val key = e?.let { it.id + rule?.options } // same element and values: nothing to rebuild
+        if (key == optionRowsFor) return
+        optionRowsFor = key
+        optionRows.removeAllViews()
+        if (e == null || rule == null) return
+        e.options.forEach { option ->
+            val value = option.value(rule)
+            val row = DuoUi.row(context)
+            DuoUi.add(row, DuoUi.label(context, option.label, 14f, Color.WHITE), weight = 1f)
+            DuoUi.add(
+                row,
+                DuoUi.chip(context, option.label(value)) {
+                    val now = controller.layout.rule(e.id)
+                    val next = option.next(option.value(now))
+                    change(e.id, now.withOption(option.id, next.takeIf { it != option.default }), final = true)
+                },
+            )
+            optionRows.addView(row)
+        }
     }
 
     // ---- background tab --------------------------------------------------------------------------------------
@@ -407,8 +441,10 @@ internal class UiLayoutEditor(
         screenButtons.forEach { (screen, b) ->
             b.isEnabled = e != null
             b.on = current == screen
+            b.visibility = if (e == null || e.allows(screen)) VISIBLE else GONE
         }
         if (::controls.isInitialized) controls.visibility = if (e == null) GONE else VISIBLE
+        updateOptionRows(e)
     }
 
     // ---- element list (reaches hidden and tiny elements) ------------------------------------------------------

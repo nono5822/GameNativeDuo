@@ -20,7 +20,7 @@ namespace GameNativeDuo.HollowKnight
             try
             {
                 Camera world = WorldCamera();
-                bool want = Settings.WorldOnTop.Value && SplitActive() && world != null && LiveMap.InventoryIsOpen();
+                bool want = Settings.WorldOnTop && SplitActive() && world != null && LiveMap.InventoryIsOpen();
                 if (want)
                 {
                     if (!_loggedState)

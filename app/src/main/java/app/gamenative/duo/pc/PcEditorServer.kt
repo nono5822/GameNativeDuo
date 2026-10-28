@@ -290,6 +290,22 @@ internal class PcEditorServer(private val context: Context, private val host: Pc
         .put("x", e.rect.left.toDouble()).put("y", e.rect.top.toDouble())
         .put("w", e.rect.width().toDouble()).put("h", e.rect.height().toDouble())
         .put("graphic", e.graphic)
+        .apply {
+            e.screens?.let { s -> put("screens", JSONArray().apply { s.forEach { put(it.id) } }) }
+            if (e.options.isNotEmpty()) {
+                put(
+                    "options",
+                    JSONArray().apply {
+                        e.options.forEach { o ->
+                            put(
+                                JSONObject().put("id", o.id).put("label", o.label)
+                                    .put("values", JSONArray().apply { o.values.forEach { (v, l) -> put(JSONArray().put(v).put(l)) } }),
+                            )
+                        }
+                    },
+                )
+            }
+        }
 
     /** Runs [block] on the main thread and waits for the value it passes to its callback (null on timeout). */
     private fun <T> onMain(timeoutMs: Long, block: (done: (T?) -> Unit) -> Unit): T? {

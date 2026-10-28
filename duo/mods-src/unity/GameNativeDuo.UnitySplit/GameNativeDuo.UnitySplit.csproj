@@ -7,11 +7,14 @@
   <PropertyGroup>
     <AssemblyName>GameNativeDuo.UnitySplit</AssemblyName>
     <RootNamespace>GameNativeDuo.UnitySplit</RootNamespace>
-    <Version>0.4.1</Version>
+    <Version>0.4.2</Version>
     <TargetFramework>net46</TargetFramework>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!-- Defaults: the bundled DLL is built against Slime Rancher (oldest Unity we ship; Linux Steam copy) and the BepInEx bundled with the app. -->
+    <ManagedPath Condition="'$(ManagedPath)' == ''">$(HOME)/.local/share/Steam/steamapps/common/Slime Rancher/SlimeRancher_Data/Managed</ManagedPath>
+    <BepInExPath Condition="'$(BepInExPath)' == ''">$(MSBuildThisFileDirectory)../../../../app/src/main/assets/duo/mods/shared/bepinex/BepInEx/core</BepInExPath>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />

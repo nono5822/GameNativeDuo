@@ -207,6 +207,7 @@ async function setRule(id, rule) {
   if (Math.abs(rule.scale - 1) > 1e-4) clean.scale = +rule.scale.toFixed(4);
   if (Math.abs(rule.x) > 1e-5) clean.x = +rule.x.toFixed(4);
   if (Math.abs(rule.y) > 1e-5) clean.y = +rule.y.toFixed(4);
+  if (rule.options && Object.keys(rule.options).length) clean.options = rule.options;
   if (Object.keys(clean).length) rules()[id] = clean; else delete rules()[id];
   await api("/api/rule", { id, rule: clean });
   scheduleRefresh();
@@ -447,7 +448,27 @@ function renderSelection() {
   card.children[0].textContent = e.name || e.id; card.children[1].textContent = e.id;
   card.querySelectorAll("[data-s]").forEach((b) => {
     b.classList.toggle("on", b.dataset.s === s);
+    // A mod's own element may offer fewer screens (e.g. the live map: bottom or hidden).
+    if (e.screens && e.screens.indexOf(b.dataset.s) < 0) b.style.display = "none";
     b.onclick = () => setRule(e.id, Object.assign(ruleOf(e.id), { screen: b.dataset.s, x: b.dataset.s === s ? ruleOf(e.id).x : 0, y: b.dataset.s === s ? ruleOf(e.id).y : 0 }));
+  });
+  // Settings the mod declares for this element: one select each; the first value is the default (left out of the file).
+  (e.options || []).forEach((opt) => {
+    if (!opt.id || !opt.values || !opt.values.length) return;
+    const field = document.createElement("div"); field.className = "field";
+    const name = document.createElement("span"); name.textContent = opt.label || opt.id;
+    const pick = document.createElement("select");
+    opt.values.forEach((v) => { const o = document.createElement("option"); o.value = v[0]; o.textContent = v[1] || v[0]; pick.appendChild(o); });
+    const cur = (r.options || {})[opt.id];
+    pick.value = opt.values.some((v) => v[0] === cur) ? cur : opt.values[0][0];
+    pick.onchange = () => {
+      const nr = ruleOf(e.id), o = Object.assign({}, nr.options || {});
+      if (pick.value === opt.values[0][0]) delete o[opt.id]; else o[opt.id] = pick.value;
+      nr.options = o; if (nr.screen === "default") nr.screen = s;
+      setRule(e.id, nr);
+    };
+    field.appendChild(name); field.appendChild(pick);
+    card.insertBefore(field, card.lastElementChild);
   });
   const range = card.querySelector("input"), out = card.querySelector(".field span:last-child");
   range.value = Math.round(r.scale * 100); out.textContent = range.value + "%";

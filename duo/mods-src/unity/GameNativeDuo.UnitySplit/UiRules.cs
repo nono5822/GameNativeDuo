@@ -25,6 +25,16 @@ namespace GameNativeDuo.UnitySplit
         /// <summary>Added by the plugin's own heuristics (e.g. crosshairs stay on top), not by the user.</summary>
         public bool Implicit;
 
+        /// <summary>The element's own settings (option id -> value id), for elements that declare options (plugin elements); null when none.</summary>
+        public Dictionary<string, string> Options;
+
+        /// <summary>The value chosen for option <paramref name="id"/>, or <paramref name="fallback"/>.</summary>
+        public string Option(string id, string fallback)
+        {
+            string v;
+            return Options != null && Options.TryGetValue(id, out v) && !string.IsNullOrEmpty(v) ? v : fallback;
+        }
+
         public bool ChangesTransform => Screen == DuoScreen.Hidden || Scale != 1f || X != 0f || Y != 0f;
 
         public bool SameAs(UiRule o) => o != null && o.Screen == Screen && o.Scale == Scale && o.X == X && o.Y == Y;
@@ -148,13 +158,28 @@ namespace GameNativeDuo.UnitySplit
                     var o = pair.Value as Dictionary<string, object>;
                     if (o == null)
                         continue;
-                    rules._rules[pair.Key] = new UiRule
+                    var rule = new UiRule
                     {
                         Screen = UiRule.ParseScreen(MiniJson.Str(o, "screen", "default")),
                         Scale = Clamp((float)MiniJson.Num(o, "scale", 1), 0.1f, 5f, 1f),
                         X = Clamp((float)MiniJson.Num(o, "x", 0), -2f, 2f, 0f),
                         Y = Clamp((float)MiniJson.Num(o, "y", 0), -2f, 2f, 0f),
                     };
+                    var options = MiniJson.Obj(o, "options");
+                    if (options != null)
+                    {
+                        rule.Options = new Dictionary<string, string>();
+                        foreach (var opt in options)
+                        {
+                            if (opt.Value is string s)
+                                rule.Options[opt.Key] = s;
+                            else if (opt.Value is double d)
+                                rule.Options[opt.Key] = d.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                            else if (opt.Value is bool b)
+                                rule.Options[opt.Key] = b ? "true" : "false";
+                        }
+                    }
+                    rules._rules[pair.Key] = rule;
                 }
             }
             catch (Exception ex)

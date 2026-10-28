@@ -52,7 +52,7 @@ namespace GameNativeDuo.HollowKnight
             get
             {
                 LiveMap map = Instance;
-                if (map == null || !map.enabled || !Settings.LiveMapEnabled.Value || !Settings.MapButtonZooms.Value)
+                if (map == null || !map.enabled || !Settings.Enabled || !Settings.MapButtonZooms)
                     return false;
                 Split split = Split.Instance;
                 if (split == null || !split.Active)
@@ -100,6 +100,9 @@ namespace GameNativeDuo.HollowKnight
         {
             Instance = this;
             Split.TouchFilter = OnTouch;
+            UiRouter.PluginElements.Add(DescribeElement);
+            // The map's rooms and pins sit under the HUD camera like HUD sprites: they are the live map, not UI to move.
+            UiRouter.NotInEditor.Add("_GameCameras/HudCamera/Game_Map(Clone)");
             UnityEngine.SceneManagement.SceneManager.activeSceneChanged += (a, b) => OnSceneChanged();
         }
 
@@ -107,7 +110,42 @@ namespace GameNativeDuo.HollowKnight
         {
             if (ReferenceEquals(Split.TouchFilter, (Func<byte, int, float, float, bool>)OnTouch))
                 Split.TouchFilter = null;
+            UiRouter.PluginElements.Remove(DescribeElement);
             Hide();
+        }
+
+        /// <summary>The live map as an element of the UI layout editors: where it is (or would be), and its options.</summary>
+        private UiRouter.PluginElement DescribeElement()
+        {
+            Split split = Split.Instance;
+            if (split == null || !split.Active || split.Layout == null)
+                return null;
+            RectInt r = MapRegion(split.Layout);
+            return new UiRouter.PluginElement
+            {
+                Id = Settings.ElementId,
+                Name = "Live map",
+                Screen = Settings.Enabled ? DuoScreen.Bottom : DuoScreen.Hidden,
+                Rect = new Rect(r.x, r.y, r.width, r.height),
+                ExtraJson = Settings.OptionsJson,
+            };
+        }
+
+        /// <summary>
+        /// The map's rectangle in window pixels: by default the bottom screen below the HUD strip; the user's layout
+        /// scales it about its centre and shifts it by fractions of the bottom screen, and it always stays on that screen.
+        /// </summary>
+        internal static RectInt MapRegion(Layout layout)
+        {
+            RectInt b = layout.Bottom;
+            int reserve = Mathf.Clamp(Settings.HudReservePx, 0, b.height / 2);
+            float w = Mathf.Min(b.width, b.width * Settings.Scale);
+            float h = Mathf.Min(b.height, (b.height - reserve) * Settings.Scale);
+            float cx = b.x + b.width * 0.5f + Settings.X * b.width;
+            float cy = b.y + reserve + (b.height - reserve) * 0.5f + Settings.Y * b.height;
+            float x = Mathf.Clamp(cx - w * 0.5f, b.x, b.xMax - w);
+            float y = Mathf.Clamp(cy - h * 0.5f, b.y, b.yMax - h);
+            return new RectInt(Mathf.RoundToInt(x), Mathf.RoundToInt(y), Mathf.Max(1, Mathf.RoundToInt(w)), Mathf.Max(1, Mathf.RoundToInt(h)));
         }
 
         private void OnSceneChanged()
@@ -122,8 +160,17 @@ namespace GameNativeDuo.HollowKnight
 
         private void LateUpdate()
         {
+            long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
             try
             {
+                if (Settings.Refresh())
+                {
+                    // The user changed the layout: start from the chosen zoom, at the Knight, with the map set up again
+                    // (the Knight icon rule may have changed).
+                    SetZoom(Settings.StartZoom);
+                    _snap = true;
+                    _contentDirty = true;
+                }
                 bool want = ShouldShow();
                 if (want && !_shown)
                     Show();
@@ -132,7 +179,7 @@ namespace GameNativeDuo.HollowKnight
                 if (!_shown)
                     return;
                 // Not under the pause menu or a dialogue: the map is dimmed out of sight there, as the game ignores the button.
-                if (Settings.MapButtonZooms.Value && InputHandler.Instance != null && InputHandler.Instance.inputActions.quickMap.WasPressed && !ShouldDim())
+                if (Settings.MapButtonZooms && InputHandler.Instance != null && InputHandler.Instance.inputActions.quickMap.WasPressed && !ShouldDim())
                     CycleZoom();
                 if (_contentDirty)
                     RefreshContent();
@@ -142,6 +189,7 @@ namespace GameNativeDuo.HollowKnight
                     _nextLayerCheck = Time.unscaledTime + 1f;
                     MoveMapToOurLayer();
                 }
+                ShowKnightAlways();
                 PlaceCamera();
                 _lastShownFrame = Time.frameCount;
             }
@@ -150,6 +198,11 @@ namespace GameNativeDuo.HollowKnight
                 Plugin.Log.LogError("Live map update failed: " + ex);
                 Hide();
                 enabled = false;
+            }
+            finally
+            {
+                // Counted in the split's per-frame cost ("this plugin ... ms per frame" in the Frames log line).
+                Split.OwnTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
             }
         }
 
@@ -160,7 +213,7 @@ namespace GameNativeDuo.HollowKnight
 
         private bool ShouldShow()
         {
-            if (!Settings.LiveMapEnabled.Value)
+            if (!Settings.Enabled)
                 return No("turned off");
             Split split = Split.Instance;
             if (split == null || !split.Active || split.Layout == null)
@@ -415,6 +468,37 @@ namespace GameNativeDuo.HollowKnight
             _snap = true;
         }
 
+        private float _nextCompass;
+
+        /// <summary>
+        /// Option "Knight on the map: Always" (off by default, the game shows the Knight only with the Wayward Compass):
+        /// GameMap.PositionCompass always works out where the Knight is and only then hides the icon without the charm, so
+        /// the live map asks it a few times a second and keeps the icon on. Not in dream areas, White Palace or Godhome
+        /// (the game has no position there). Only while the live map is shown: handing the map back resets the icon.
+        /// </summary>
+        private void ShowKnightAlways()
+        {
+            if (!Settings.KnightAlways || _map == null || _map.compassIcon == null || Time.unscaledTime < _nextCompass)
+                return;
+            _nextCompass = Time.unscaledTime + 0.25f;
+            if (PlayerData.instance == null || PlayerData.instance.equippedCharm_2)
+                return; // the game shows it itself
+            string zone = GameManager.instance != null ? GameManager.instance.GetCurrentMapZone() : "";
+            if (zone == "DREAM_WORLD" || zone == "WHITE_PALACE" || zone == "GODS_GLORY")
+                return;
+            OurCall = true;
+            try
+            {
+                _map.PositionCompass(false);
+            }
+            finally
+            {
+                OurCall = false;
+            }
+            if (!_map.compassIcon.activeSelf)
+                _map.compassIcon.SetActive(true);
+        }
+
         /// <summary>The map's areas, as GameMap knows them (its other children are pins and markers).</summary>
         private GameObject[] Areas() => new[]
         {
@@ -457,8 +541,7 @@ namespace GameNativeDuo.HollowKnight
         {
             Layout layout = Split.Instance.Layout;
             RectInt b = layout.Bottom;
-            int reserve = Mathf.Clamp(Settings.HudReservePx.Value, 0, b.height / 2);
-            var region = new RectInt(b.x, b.y + reserve, b.width, b.height - reserve);
+            RectInt region = MapRegion(layout);
             Rect viewport = layout.Viewport(region);
             if (_cam.rect != viewport)
                 _cam.rect = viewport;
@@ -470,7 +553,7 @@ namespace GameNativeDuo.HollowKnight
             if (!Frame(aspect, out focus, out size))
                 return;
             float worldPerPx = 2f * size / Mathf.Max(1, region.height);
-            if (Time.unscaledTime - _lastTouch > RecenterSeconds && _fingers.Count == 0)
+            if (Settings.DriftBack && Time.unscaledTime - _lastTouch > RecenterSeconds && _fingers.Count == 0)
             {
                 float k = 1f - Mathf.Exp(-Time.unscaledDeltaTime * 3f);
                 _panOffset = Vector2.Lerp(_panOffset, Vector2.zero, k);
@@ -553,7 +636,6 @@ namespace GameNativeDuo.HollowKnight
 
         private GameObject _dim;
         private float _dimAlpha;
-        private const float DimMax = 0.72f;
         private static DialogueBox[] _dialogueBoxes;
         private static Transform _dialogueRoot;
 
@@ -668,7 +750,7 @@ namespace GameNativeDuo.HollowKnight
             if (fr.color != edge)
                 fr.color = edge;
 
-            float target = ShouldDim() ? DimMax : 0f;
+            float target = ShouldDim() ? Settings.Dim : 0f;
             _dimAlpha = Mathf.MoveTowards(_dimAlpha, target, Time.unscaledDeltaTime * 4f);
             bool on = _dimAlpha > 0.001f;
             var dr = _dim.GetComponent<SpriteRenderer>();
@@ -691,7 +773,7 @@ namespace GameNativeDuo.HollowKnight
             if (zoom == Zoom.Knight)
             {
                 focus = _map.compassIcon.transform.position;
-                size = Settings.KnightZoomSize.Value * _map.transform.lossyScale.y;
+                size = Settings.KnightZoomSize * _map.transform.lossyScale.y;
                 return true;
             }
             if (zoom == Zoom.Area)
@@ -817,11 +899,9 @@ namespace GameNativeDuo.HollowKnight
                 _fingers.Clear();
                 return false;
             }
-            Layout layout = Split.Instance.Layout;
-            RectInt b = layout.Bottom;
-            int reserve = Mathf.Clamp(Settings.HudReservePx.Value, 0, b.height / 2);
+            RectInt r = MapRegion(Split.Instance.Layout);
             var pos = new Vector2(x, y);
-            bool inside = x >= b.x && x < b.xMax && y >= b.y + reserve && y < b.yMax;
+            bool inside = x >= r.x && x < r.xMax && y >= r.y && y < r.yMax;
             switch (action)
             {
                 case Bridge.TouchDown:

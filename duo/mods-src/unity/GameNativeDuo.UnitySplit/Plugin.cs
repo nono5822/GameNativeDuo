@@ -18,7 +18,7 @@ namespace GameNativeDuo.UnitySplit
     /// (<see cref="TouchInjector"/>). Nothing changes unless the window matches GameNative Duo's layout.json, and every
     /// step catches its own errors so the game keeps running.
     /// </summary>
-    [BepInPlugin("app.gamenative.duo.unitysplit", "GameNative Duo Unity Split", "0.4.1")]
+    [BepInPlugin("app.gamenative.duo.unitysplit", "GameNative Duo Unity Split", "0.4.2")]
     public sealed class Plugin : BaseUnityPlugin
     {
         internal static ManualLogSource Log;

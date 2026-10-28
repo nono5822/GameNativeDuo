@@ -162,6 +162,11 @@ namespace GameNativeDuo.HollowKnight
                             }
                         }
                         break;
+                    case "elements":
+                        // What the layout editor's element request writes (elements.json next to ui.json).
+                        if (GameNativeDuo.UnitySplit.Split.Instance != null)
+                            GameNativeDuo.UnitySplit.Split.Instance.Router.WriteElements(Path.Combine(GameNativeDuo.UnitySplit.Layout.Dir, "elements.json"));
+                        break;
                     case "tree":
                     {
                         GameObject go = a.Length >= 2 ? Find(a[1].Replace('_', ' ')) : null;

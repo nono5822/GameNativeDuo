@@ -22,7 +22,6 @@ namespace GameNativeDuo.HollowKnight
             Log = Logger;
             try
             {
-                Settings.Bind(Config);
                 var harmony = new Harmony("app.gamenative.duo.hollowknight");
                 harmony.PatchAll(typeof(QuickMapPatch));
                 harmony.PatchAll(typeof(GameOpensMapPatch));

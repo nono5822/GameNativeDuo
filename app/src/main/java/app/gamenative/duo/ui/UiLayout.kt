@@ -23,28 +23,78 @@ enum class UiScreen(val id: String) {
 
 /**
  * The user's choice for one UI element. [x] and [y] shift it by fractions of its screen's width and height
- * (+ is right and down), so a layout fits any device with the same screen shapes.
+ * (+ is right and down), so a layout fits any device with the same screen shapes. [options] are the element's own
+ * settings (option id -> value id) for elements whose mod declares options (see [UiElementOption]).
  */
-data class UiRule(val screen: UiScreen = UiScreen.DEFAULT, val scale: Float = 1f, val x: Float = 0f, val y: Float = 0f) {
+data class UiRule(
+    val screen: UiScreen = UiScreen.DEFAULT,
+    val scale: Float = 1f,
+    val x: Float = 0f,
+    val y: Float = 0f,
+    val options: Map<String, String> = emptyMap(),
+) {
     val isNeutral: Boolean get() = this == UiRule()
+
+    fun withOption(id: String, value: String?): UiRule = copy(options = if (value == null) options - id else options + (id to value))
 
     fun toJson(): JSONObject = JSONObject().apply {
         if (screen != UiScreen.DEFAULT) put("screen", screen.id)
         if (scale != 1f) put("scale", round(scale))
         if (x != 0f) put("x", round(x))
         if (y != 0f) put("y", round(y))
+        if (options.isNotEmpty()) put("options", JSONObject().apply { options.toSortedMap().forEach { (k, v) -> put(k, v) } })
     }
 
     companion object {
         const val SCALE_MIN = 0.25f
         const val SCALE_MAX = 4f
+        private const val MAX_OPTIONS = 32
 
         fun fromJson(o: JSONObject) = UiRule(
             screen = UiScreen.fromId(o.optString("screen")),
             scale = o.optDouble("scale", 1.0).toFloat().takeIf { it.isFinite() }?.coerceIn(SCALE_MIN, SCALE_MAX) ?: 1f,
             x = o.optDouble("x", 0.0).toFloat().takeIf { it.isFinite() }?.coerceIn(-2f, 2f) ?: 0f,
             y = o.optDouble("y", 0.0).toFloat().takeIf { it.isFinite() }?.coerceIn(-2f, 2f) ?: 0f,
+            options = o.optJSONObject("options")?.let { opts ->
+                buildMap {
+                    opts.keys().asSequence().take(MAX_OPTIONS).forEach { k ->
+                        val v = opts.opt(k)
+                        if (v is String || v is Number || v is Boolean) put(k, v.toString().take(64))
+                    }
+                }
+            } ?: emptyMap(),
         )
+    }
+}
+
+/**
+ * A setting a mod declares for one of its own elements (e.g. Hollow Knight's live map: start zoom, map button), listed
+ * with the element in `elements.json`: `{"id":"zoom","label":"Start zoom","values":[["knight","Knight"],...]}`. The
+ * first value is the default; the choice is stored in the element's [UiRule.options].
+ */
+data class UiElementOption(val id: String, val label: String, val values: List<Pair<String, String>>) {
+    val default: String get() = values.first().first
+
+    /** The value chosen in [rule] (the default when none, or when the mod no longer offers it). */
+    fun value(rule: UiRule): String = rule.options[id]?.takeIf { v -> values.any { it.first == v } } ?: default
+
+    fun label(value: String): String = values.firstOrNull { it.first == value }?.second ?: value
+
+    /** The value after [current], wrapping around. */
+    fun next(current: String): String = values[(values.indexOfFirst { it.first == current } + 1).mod(values.size)].first
+
+    companion object {
+        fun fromJson(o: JSONObject): UiElementOption? {
+            val id = o.optString("id").takeIf { it.isNotEmpty() } ?: return null
+            val array = o.optJSONArray("values") ?: return null
+            val values = (0 until array.length()).mapNotNull { i ->
+                array.optJSONArray(i)?.let { pair ->
+                    val v = pair.optString(0)
+                    if (v.isEmpty()) null else v to pair.optString(1).ifEmpty { v }
+                }
+            }
+            return if (values.isEmpty()) null else UiElementOption(id, o.optString("label").ifEmpty { id }, values)
+        }
     }
 }
 

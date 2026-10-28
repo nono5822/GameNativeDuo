@@ -22,8 +22,14 @@ class UiElement(
     val screen: UiScreen,
     val rect: RectF,
     val graphic: Boolean,
+    /** The screens the element can go to (null: any). A mod's own element may offer fewer, e.g. bottom or hidden. */
+    val screens: Set<UiScreen>? = null,
+    /** Settings the mod declares for this element (its own elements only). */
+    val options: List<UiElementOption> = emptyList(),
 ) {
     val area: Float get() = rect.width() * rect.height()
+
+    fun allows(screen: UiScreen): Boolean = screens == null || screen in screens
 }
 
 /** The game's UI elements, parents before children. */
@@ -52,6 +58,12 @@ class UiElementList(val windowW: Int, val windowH: Int, val elements: List<UiEle
                     screen = UiScreen.fromId(o.optString("screen")),
                     rect = RectF(x, y, x + o.optDouble("w").toFloat(), y + o.optDouble("h").toFloat()),
                     graphic = o.optBoolean("graphic"),
+                    screens = o.optJSONArray("screens")?.let { a ->
+                        (0 until a.length()).map { UiScreen.fromId(a.optString(it)) }.filter { it != UiScreen.DEFAULT }.toSet()
+                    }?.takeIf { it.isNotEmpty() },
+                    options = o.optJSONArray("options")?.let { a ->
+                        (0 until a.length()).mapNotNull { a.optJSONObject(it)?.let(UiElementOption::fromJson) }
+                    } ?: emptyList(),
                 )
             }
             return UiElementList(screen?.optInt("w") ?: 0, screen?.optInt("h") ?: 0, list)

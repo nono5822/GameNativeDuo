@@ -141,10 +141,35 @@ namespace GameNativeDuo.UnitySplit
             _background.Apply(_layout, _bottomCam);
         }
 
+        /// <summary>The user's rule for element <paramref name="id"/> (null when none), e.g. a game plugin's own element.</summary>
+        internal UiRule Rule(string id) => _rules.Get(id);
+
+        /// <summary>Goes up each time ui.json is read again: game plugins re-read their elements' rules when it changes.</summary>
+        internal int RulesVersion { get; private set; }
+
+        /// <summary>
+        /// One element a game plugin adds to the layout editor's list (e.g. Hollow Knight's live map): drawn by the
+        /// plugin, edited like any other element. <see cref="ExtraJson"/> is appended to the element's JSON object as is
+        /// (e.g. <c>"screens":["bottom","hidden"],"options":[...]</c>, see engine-adapter-contract.md).
+        /// </summary>
+        internal sealed class PluginElement
+        {
+            public string Id, Name, ExtraJson;
+            public DuoScreen Screen;
+            public Rect Rect;
+        }
+
+        /// <summary>Game plugins' element sources, asked on each element dump; a source returns null when it has nothing to show.</summary>
+        internal static readonly List<Func<PluginElement>> PluginElements = new List<Func<PluginElement>>();
+
+        /// <summary>Element ids left out of the editor's list with everything under them (e.g. a game's map objects under its HUD camera).</summary>
+        internal static readonly HashSet<string> NotInEditor = new HashSet<string>();
+
         /// <summary>New rules from ui.json: applied right away to everything already found.</summary>
         public void SetRules(UiRules rules)
         {
             _rules = rules ?? UiRules.Empty;
+            RulesVersion++;
             _background.Set(_rules.Background);
             _background.Apply(_layout, _bottomCam);
             _cameras.SetOurs(_bottomCam, _topCam, _hiddenCam, _background.Camera);
@@ -973,6 +998,38 @@ namespace GameNativeDuo.UnitySplit
                 sb.Append(",\"graphic\":").Append(e.Graphic ? "true" : "false");
                 sb.Append('}');
             }
+            bool first = _dump.Count == 0;
+            foreach (Func<PluginElement> source in PluginElements)
+            {
+                PluginElement p;
+                try
+                {
+                    p = source();
+                }
+                catch (Exception ex)
+                {
+                    Plugin.Log.LogWarning("A plugin element failed to describe itself: " + ex.Message);
+                    continue;
+                }
+                if (p == null)
+                    continue;
+                if (!first)
+                    sb.Append(',');
+                first = false;
+                sb.Append("{\"id\":");
+                MiniJson.Quote(sb, p.Id);
+                sb.Append(",\"name\":");
+                MiniJson.Quote(sb, p.Name);
+                sb.Append(",\"parent\":-1,\"screen\":\"").Append(UiRule.ScreenId(p.Screen)).Append('"');
+                sb.Append(",\"x\":").Append(Mathf.RoundToInt(p.Rect.x));
+                sb.Append(",\"y\":").Append(Mathf.RoundToInt(p.Rect.y));
+                sb.Append(",\"w\":").Append(Mathf.RoundToInt(p.Rect.width));
+                sb.Append(",\"h\":").Append(Mathf.RoundToInt(p.Rect.height));
+                sb.Append(",\"graphic\":true");
+                if (!string.IsNullOrEmpty(p.ExtraJson))
+                    sb.Append(',').Append(p.ExtraJson);
+                sb.Append('}');
+            }
             sb.Append("]}");
             string tmp = path + ".tmp";
             File.WriteAllText(tmp, sb.ToString());
@@ -995,7 +1052,7 @@ namespace GameNativeDuo.UnitySplit
         /// </summary>
         private Rect Walk(Transform t, string id, int parent, int depth, DuoScreen screen, Camera cam, bool sprites)
         {
-            if (_dump.Count >= MaxDumpElements)
+            if (_dump.Count >= MaxDumpElements || NotInEditor.Contains(id))
                 return new Rect();
             DuoPlaceholder ph = t.GetComponent<DuoPlaceholder>();
             if (ph != null)
