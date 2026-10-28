@@ -41,11 +41,37 @@ namespace GameNativeDuo.HollowKnight
 
         internal static LiveMap Instance;
 
-        /// <summary>True while the map button is ours (switches the zoom) rather than the game's quick map.</summary>
-        internal static bool OwnsMapButton => Instance != null && Instance._shown && Settings.MapButtonZooms.Value;
+        /// <summary>
+        /// True while the map button is ours (switches the zoom) rather than the game's quick map (the Knight's and the
+        /// benches' listeners). Not tied to the map being drawn this frame: it steps aside while the inventory is open
+        /// or closing and while a room loads, and a press then must not open the game's quick map either. The
+        /// inventory's own map pane keeps the button (<see cref="InInventory"/>).
+        /// </summary>
+        internal static bool OwnsMapButton
+        {
+            get
+            {
+                LiveMap map = Instance;
+                if (map == null || !map.enabled || !Settings.LiveMapEnabled.Value || !Settings.MapButtonZooms.Value)
+                    return false;
+                Split split = Split.Instance;
+                if (split == null || !split.Active)
+                    return false;
+                GameManager gm = GameManager.instance;
+                return gm != null && gm.gameMap != null;
+            }
+        }
+
+        /// <summary>True for objects of the inventory (its map pane zooms out with the map button).</summary>
+        internal static bool InInventory(GameObject go)
+        {
+            InventoryIsOpen(); // finds the inventory once per scene
+            return go != null && _inventory != null && go.transform.IsChildOf(_inventory);
+        }
 
         internal Zoom CurrentZoom { get; private set; } = Zoom.Knight;
         internal bool Shown => _shown;
+        internal int CullingMask => _cam != null ? _cam.cullingMask : 0;
 
         private Camera _cam;
         private int _layer = -1;
@@ -103,15 +129,16 @@ namespace GameNativeDuo.HollowKnight
                     Hide();
                 if (!_shown)
                     return;
-                if (Settings.MapButtonZooms.Value && InputHandler.Instance != null && InputHandler.Instance.inputActions.quickMap.WasPressed)
+                // Not under the pause menu or a dialogue: the map is dimmed out of sight there, as the game ignores the button.
+                if (Settings.MapButtonZooms.Value && InputHandler.Instance != null && InputHandler.Instance.inputActions.quickMap.WasPressed && !ShouldDim())
                     CycleZoom();
                 if (_contentDirty)
                     RefreshContent();
                 if (Time.unscaledTime >= _nextLayerCheck)
                 {
-                    // Pins and markers the game turns on later keep their own layer: keep them on ours.
+                    // Pins and markers the game turns on later come with their own layer: bring them over to ours.
                     _nextLayerCheck = Time.unscaledTime + 1f;
-                    SetMapLayer(_layer);
+                    MoveMapToOurLayer();
                 }
                 PlaceCamera();
             }
@@ -125,30 +152,41 @@ namespace GameNativeDuo.HollowKnight
 
         // ------------------------------------------------------------------ when
 
+        /// <summary>Why the map is not shown (logged when it hides).</summary>
+        private string _why = "";
+
         private bool ShouldShow()
         {
             if (!Settings.LiveMapEnabled.Value)
-                return false;
+                return No("turned off");
             Split split = Split.Instance;
             if (split == null || !split.Active || split.Layout == null)
-                return false;
+                return No("split off");
             GameManager gm = GameManager.instance;
             if (gm == null || gm.gameMap == null || HeroController.instance == null || !gm.IsGameplayScene())
-                return false;
+                return No("not in gameplay");
             // Paused: the map stays, dimmed under the pause menu (see ShouldDim).
             if (gm.gameState == GlobalEnums.GameState.CUTSCENE)
-                return false;
+                return No("cutscene");
             if (_map == null || _map.gameObject != gm.gameMap)
             {
                 _map = gm.gameMap.GetComponent<GameMap>();
                 _contentDirty = true;
             }
             if (_map == null || !_map.gameObject.activeInHierarchy)
-                return false;
+                return No("game map inactive");
             // The game's own map is open (vanilla quick map, when the button is left to the game).
             if (_map.displayNextArea)
-                return false;
-            return !InventoryIsOpen();
+                return No("game's quick map open");
+            if (InventoryIsOpen())
+                return No("inventory open");
+            return true;
+        }
+
+        private bool No(string why)
+        {
+            _why = why;
+            return false;
         }
 
         /// <summary>True while one of the inventory's panes (inventory, charms, journal, map) is open.</summary>
@@ -233,9 +271,9 @@ namespace GameNativeDuo.HollowKnight
                 _cam.enabled = false;
             ReleaseBottomClear();
             if (_onOurLayer)
-                SetMapLayer(UiLayer);
+                RestoreGameLayers();
             if (_shown)
-                Plugin.Log.LogInfo("Live map off");
+                Plugin.Log.LogInfo("Live map off (" + _why + ")");
             _shown = false;
             _fingers.Clear();
             // The game's map code turns its areas off when it closes; ours turns them back on next time.
@@ -264,20 +302,58 @@ namespace GameNativeDuo.HollowKnight
             return -1;
         }
 
-        private void SetMapLayer(int layer)
+        /// <summary>The game's own layer of each map object on ours, given back when the game uses the map again.</summary>
+        private readonly Dictionary<GameObject, int> _gameLayers = new Dictionary<GameObject, int>();
+        private bool _layersLogged;
+
+        /// <summary>
+        /// Moves the map's objects that the game's HUD camera draws onto our layer. The game hides some map objects by
+        /// layer (one its cameras never draw): those stay where they are, or the live map would show what the game's
+        /// own map does not. Objects the game turns on or moves later are picked up by the next call.
+        /// </summary>
+        private void MoveMapToOurLayer()
         {
             if (_map == null)
                 return;
-            SetLayerRecursive(_map.transform, layer);
-            _onOurLayer = layer != UiLayer;
+            GameCameras cams = GameCameras.instance;
+            int drawn = cams != null && cams.hudCamera != null ? cams.hudCamera.cullingMask : 1 << UiLayer;
+            if (TestHarness.On && !_layersLogged)
+            {
+                _layersLogged = true;
+                var s = new System.Text.StringBuilder("Game map objects the HUD camera does not draw (mask 0x" + drawn.ToString("x") + "):");
+                foreach (Transform t in _map.GetComponentsInChildren<Transform>(true))
+                {
+                    if ((drawn & (1 << t.gameObject.layer)) == 0)
+                        s.Append("\n  layer ").Append(t.gameObject.layer).Append(' ').Append(Diagnostics.Path(t));
+                }
+                Plugin.Log.LogInfo(s.ToString());
+            }
+            MoveRecursive(_map.transform, drawn);
+            _onOurLayer = true;
         }
 
-        private static void SetLayerRecursive(Transform t, int layer)
+        private void MoveRecursive(Transform t, int drawn)
         {
-            if (t.gameObject.layer != layer)
-                t.gameObject.layer = layer;
+            GameObject go = t.gameObject;
+            int layer = go.layer;
+            if (layer != _layer && (drawn & (1 << layer)) != 0)
+            {
+                _gameLayers[go] = layer;
+                go.layer = _layer;
+            }
             for (int i = 0; i < t.childCount; i++)
-                SetLayerRecursive(t.GetChild(i), layer);
+                MoveRecursive(t.GetChild(i), drawn);
+        }
+
+        private void RestoreGameLayers()
+        {
+            foreach (KeyValuePair<GameObject, int> kv in _gameLayers)
+            {
+                if (kv.Key != null && kv.Key.layer == _layer)
+                    kv.Key.layer = kv.Value;
+            }
+            _gameLayers.Clear();
+            _onOurLayer = false;
         }
 
         // ------------------------------------------------------------------ content
@@ -291,7 +367,7 @@ namespace GameNativeDuo.HollowKnight
                 return;
             _map.SetupMap();
             _map.WorldMap();
-            SetMapLayer(_layer);
+            MoveMapToOurLayer();
             _hasWorld = WorldBounds(ref _worldBounds);
             _boundsArea = null;
             _snap = true;
@@ -625,6 +701,17 @@ namespace GameNativeDuo.HollowKnight
             if (CurrentZoom == Zoom.Knight && !compass)
                 return Zoom.Area;
             return CurrentZoom;
+        }
+
+        /// <summary>Re-reads what the map shows (after the player's map data changed).</summary>
+        internal void MarkDirty() => _contentDirty = true;
+
+        internal void SetZoom(Zoom zoom)
+        {
+            CurrentZoom = zoom;
+            _panOffset = Vector2.zero;
+            _zoomFactor = 1f;
+            Plugin.Log.LogInfo("Live map zoom: " + CurrentZoom);
         }
 
         internal void CycleZoom()

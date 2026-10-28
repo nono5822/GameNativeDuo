@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using HarmonyLib;
 using UnityEngine;
 
@@ -13,10 +14,22 @@ namespace GameNativeDuo.HollowKnight
     ///   dump                       cameras, HUD and map trees
     ///   gates                      the current scene's transition points
     ///   scene &lt;name&gt; &lt;gate&gt;        travel through a door (e.g. "scene Town left1")
-    ///   compass on|off             equip or unequip the Wayward Compass's effect (charm 2), no save
+    ///   setstate &lt;object path&gt; &lt;fsm&gt; &lt;state...&gt;   force an FSM into a state (_ for spaces)
+    ///   compass on|off            equip or unequip the Wayward Compass's effect (charm 2), no save
     ///   fsm &lt;object path&gt;          the PlayMaker FSMs on an object: active state, events
     ///   event &lt;object path&gt; &lt;fsm&gt; &lt;event...&gt;   send an FSM event (names may contain spaces: use _ for them)
     ///   bounds                     the live map's area bounds
+    ///   press tap|hold &lt;s&gt;|spam &lt;n&gt; [delay s]   press the map button through the game's input (a virtual InControl pad)
+    ///   pad &lt;action&gt; tap|hold &lt;s&gt;|spam &lt;n&gt; [delay s]   the same for any HeroActions action (openInventory, pause, jump, left, ...)
+    ///   refs &lt;member&gt;            every method in the game's code that touches a member by that name
+    ///   snap &lt;name&gt; / diff &lt;a&gt; &lt;b&gt;  what Game_Map shows now (visible renderers) / the difference of two snaps
+    ///   pd &lt;prefix&gt; | pd &lt;field&gt; &lt;value&gt;   list or set PlayerData bools/ints (memory only)
+    ///   keepareas &lt;area...&gt;       pretend only these areas are mapped (memory only), e.g. "keepareas Crossroads Town"
+    ///   zoomto knight|area|world   set the live map's zoom
+    ///   closemap                   the game's own map reset (GameMap.CloseQuickMap)
+    ///   il &lt;type&gt; &lt;method&gt;         a method's IL (e.g. "il GameMap SetupMap")
+    ///   fsms &lt;text&gt;              every FSM with an action type, event or state containing the text
+    /// Calls into the game's map-opening methods (GameMap.QuickMap*, WorldMap) are logged with their caller ("TRACE").
     /// </summary>
     internal sealed class TestHarness : MonoBehaviour
     {
@@ -33,6 +46,7 @@ namespace GameNativeDuo.HollowKnight
             On = true;
             harmony.Patch(AccessTools.Method(typeof(GameManager), "SaveGame", new[] { typeof(int), typeof(Action<bool>) }),
                 prefix: new HarmonyMethod(typeof(TestHarness), nameof(SkipSave)));
+            Diagnostics.TraceMapCalls(harmony);
             host.AddComponent<TestHarness>();
             Plugin.Log.LogWarning("TEST MODE (" + FilePath + "): saving is off and the Knight is invincible");
         }
@@ -79,7 +93,10 @@ namespace GameNativeDuo.HollowKnight
             return null;
         }
 
-        private static void Run(string[] lines)
+        private static float Num(string[] a, int i) =>
+            a.Length > i ? float.Parse(a[i], System.Globalization.CultureInfo.InvariantCulture) : 0f;
+
+        private void Run(string[] lines)
         {
             foreach (string raw in lines)
             {
@@ -95,6 +112,49 @@ namespace GameNativeDuo.HollowKnight
                             LiveMap.Instance.CycleZoom();
                         else
                             Plugin.Log.LogInfo("Live map not shown");
+                        break;
+                    case "press":
+                        PadScript.Run(gameObject, "quickMap", a.Length >= 2 ? a[1] : "tap", Num(a, 2), Num(a, 3));
+                        break;
+                    case "pad":
+                        if (a.Length >= 2)
+                            PadScript.Run(gameObject, a[1], a.Length >= 3 ? a[2] : "tap", Num(a, 3), Num(a, 4));
+                        break;
+                    case "refs":
+                        if (a.Length >= 2)
+                            Diagnostics.Refs(a[1]);
+                        break;
+                    case "snap":
+                        Diagnostics.Snap(a.Length >= 2 ? a[1] : "now");
+                        break;
+                    case "diff":
+                        if (a.Length >= 3)
+                            Diagnostics.Diff(a[1], a[2]);
+                        break;
+                    case "pd":
+                        Diagnostics.PlayerDataCmd(a);
+                        break;
+                    case "keepareas":
+                        Diagnostics.KeepAreas(a.Length > 1 ? a.Where((x, i) => i > 0).ToArray() : new string[0]);
+                        if (LiveMap.Instance != null)
+                            LiveMap.Instance.MarkDirty();
+                        break;
+                    case "closemap":
+                        // The game's own reset of its map (areas off), so the next opening starts clean.
+                        if (gm != null && gm.gameMap != null)
+                            gm.gameMap.GetComponent<GameMap>().CloseQuickMap();
+                        break;
+                    case "zoomto":
+                        if (LiveMap.Instance != null && a.Length >= 2)
+                            LiveMap.Instance.SetZoom((LiveMap.Zoom)Enum.Parse(typeof(LiveMap.Zoom), a[1], true));
+                        break;
+                    case "il":
+                        if (a.Length >= 3)
+                            Diagnostics.Il(a[1], a[2]);
+                        break;
+                    case "fsms":
+                        if (a.Length >= 2)
+                            Diagnostics.Fsms(string.Join(" ", a, 1, a.Length - 1));
                         break;
                     case "pause":
                         if (gm != null)
@@ -161,6 +221,19 @@ namespace GameNativeDuo.HollowKnight
                         string ev = string.Join(" ", a, 3, a.Length - 3).Replace('_', ' ');
                         fsm.SendEvent(ev);
                         Plugin.Log.LogInfo("  sent '" + ev + "', state now '" + fsm.ActiveStateName + "'");
+                        break;
+                    }
+                    case "setstate":
+                    {
+                        GameObject go = a.Length >= 4 ? Find(a[1]) : null;
+                        PlayMakerFSM fsm = go != null ? PlayMakerFSM.FindFsmOnGameObject(go, a[2].Replace('_', ' ')) : null;
+                        if (fsm == null)
+                        {
+                            Plugin.Log.LogInfo("  no fsm " + (a.Length >= 3 ? a[1] + " / " + a[2] : ""));
+                            break;
+                        }
+                        fsm.SetState(string.Join(" ", a, 3, a.Length - 3).Replace('_', ' '));
+                        Plugin.Log.LogInfo("  state now '" + fsm.ActiveStateName + "'");
                         break;
                     }
                     case "compass":

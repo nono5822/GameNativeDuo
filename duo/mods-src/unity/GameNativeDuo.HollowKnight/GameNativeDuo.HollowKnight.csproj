@@ -13,12 +13,15 @@
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!-- Defaults: the Linux Steam copy of the game and the BepInEx bundled with the app, so a plain build works. -->
+    <ManagedPath Condition="'$(ManagedPath)' == ''">$(HOME)/.local/share/Steam/steamapps/common/Hollow Knight/hollow_knight_Data/Managed</ManagedPath>
+    <BepInExPath Condition="'$(BepInExPath)' == ''">$(MSBuildThisFileDirectory)../../../../app/src/main/assets/duo/mods/shared/bepinex/BepInEx/core</BepInExPath>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="../GameNativeDuo.UnitySplit/GameNativeDuo.UnitySplit.csproj"><Private>false</Private></ProjectReference>
+    <ProjectReference Include="../GameNativeDuo.UnitySplit/GameNativeDuo.UnitySplit.csproj"><Private>false</Private><AdditionalProperties>ManagedPath=$(ManagedPath);BepInExPath=$(BepInExPath)</AdditionalProperties></ProjectReference>
     <Reference Include="BepInEx"><HintPath>$(BepInExPath)/BepInEx.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="0Harmony"><HintPath>$(BepInExPath)/0Harmony.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Assembly-CSharp"><HintPath>$(ManagedPath)/Assembly-CSharp.dll</HintPath><Private>false</Private></Reference>
