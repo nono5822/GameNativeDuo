@@ -15,3 +15,5 @@ Read `duo/agents/tasks/queue/RULES.md`.
    "Known issues" suggests `-screen-width/-screen-height` or the registry keys: implement it if it is safe).
 3. Give each mod a good default `ui-layout.json` preset if it lacks one.
 4. Update each mod's note with what changed and what is still open.
+5. Stardew: drag and drop in shops, the shipping bin, the museum and tool upgrades (see
+   `duo/notes/2026-10-28-stardew-drag-drop.md` "Open"; drive tests with `sdv-test.txt` and bottom-screen swipes).

@@ -1,7 +1,7 @@
 {
   "Name": "GameNative Duo Screen Split",
   "Author": "GameNativeDuo",
-  "Version": "0.3.0",
+  "Version": "0.4.0",
   "Description": "Shows the world on the top screen and the HUD and menus on the bottom screen of dual-screen handhelds (GameNative Duo).",
   "UniqueID": "GameNativeDuo.StardewSplit",
   "EntryDll": "GameNativeDuo.StardewSplit.dll",

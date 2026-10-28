@@ -46,7 +46,10 @@ public sealed class ModEntry : Mod
         ReloadRules();
         StartBridge();
         helper.Events.Input.ButtonPressed += OnButtonPressed;
-        helper.Events.GameLoop.UpdateTicking += (_, _) => Guard("bridge", DrainBridge);
+        Guard("test harness", () => TestHarness.Install(helper));
+        TouchInput.DrainBridge = () => Guard("bridge", DrainBridge);
+        // Normally already done this tick when SMAPI read the mouse (lower latency); this covers ticks where it did not.
+        helper.Events.GameLoop.UpdateTicking += (_, _) => Guard("touch", TouchInput.Tick);
         helper.Events.GameLoop.UpdateTicked += (_, e) =>
         {
             if (e.IsMultipleOf(6))
@@ -98,7 +101,7 @@ public sealed class ModEntry : Mod
         }
     }
 
-    /// <summary>Before each game update: touches become the mouse for this tick; layout changes apply at once.</summary>
+    /// <summary>Once per tick, before the game update (see <see cref="TouchInput.Tick"/>): touches, layout changes.</summary>
     private void DrainBridge()
     {
         if (_bridge != null)
@@ -123,7 +126,6 @@ public sealed class ModEntry : Mod
             }
             Messages.Clear();
         }
-        TouchInput.Tick();
     }
 
     /// <summary>Touch, UI rules, the element list, and every bottom-screen background (game, blur, color, image).</summary>

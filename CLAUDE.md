@@ -103,7 +103,8 @@ no CPU frame copies, data over pixels, idle at 0 fps when nothing changes.
   vanilla's "on screen" checks are patched to `GNDuo.room_h()` / `GNDuo.vanilla_y()`; shaders are recompiled per
   screen. Full list of vanilla assumptions and the long-run checklist: `duo/notes/2026-10-20-balatro.md`. Testing must
   set `G.F_NO_ACHIEVEMENTS` and seeded runs: GameNative uploads achievements to Steam live.
-- Stardew Valley: SMAPI + `duo/mods-src/stardew` (world continues across both screens, UI on the bottom). Never force
+- Stardew Valley: SMAPI + `duo/mods-src/stardew` (world continues across both screens, UI on the bottom; touch drag and
+  drop in `TouchInput.cs`, tests via `sdv-test.txt`: `duo/notes/2026-10-28-stardew-drag-drop.md`). Never force
   `Game1.ShouldDrawOnBuffer` on the title/loading screens: it hangs the GPU (see `duo/notes/`).
 - Physical screen alignment (`ScreenCalibration`: hinge gap, pixel-density scale, shift) is per device, defaults in
   `DeviceProfile` (Thor: gap 249, scale 1.142, shift 0), tuned in-game with a two-finger long press on the bottom
