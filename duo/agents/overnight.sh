@@ -78,6 +78,7 @@ ALLOWED+=",Bash(git show *),Bash(git checkout -- *),Bash(git merge *),Bash(git f
 for c in status diff log show add commit; do ALLOWED+=",Bash(git -C ../GameNativeDuo-community $c *)"; done   # no push
 ALLOWED+=",Bash(python3 duo/agents/triage.py *),Bash(mkdir *),Bash(ls *),Bash(sha256sum *),Bash(cmp *),Bash(cp *),Bash(jq *)"
 ALLOWED+=",Bash(python3 duo/tools/*),Bash(python3 ../GameNativeDuo-community/tools/*),Bash(python3 -m pytest *)"
+ALLOWED+=",Bash(python3 -I ../GameNativeDuo-community/tools/*),Bash(python3 -I $(dirname "$REPO")/GameNativeDuo-community/tools/*)"
 ALLOWED+=",Bash(curl -s https://api.gamenative.app/*)"
 
 run_task() {
@@ -91,7 +92,8 @@ Device available: $([ -z "${NO_DEVICE:-}" ] && echo yes || echo no).
 Branch: agent/$STAMP (earlier tasks of this queue may have committed to it: see git log)."
     --output-format json
     --permission-prompts none
-    --allowedTools "$ALLOWED")
+    --allowedTools "$ALLOWED"
+    --add-dir "$(dirname "$REPO")/GameNativeDuo-community")   # edits there are auto-accepted too
   if [ -n "${PERMISSION_MODE:-}" ]; then
     args+=(--permission-mode "$PERMISSION_MODE")
   else

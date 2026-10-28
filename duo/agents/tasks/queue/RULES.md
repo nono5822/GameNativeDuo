@@ -15,6 +15,11 @@ Earlier tasks may have committed already: start with `git log --oneline -15` and
 - Settings the user can change go in the GameNative Duo tab or the UI layout editor, never only in a config file.
 
 ## Token economy (the user pays for these runs)
+- **Using Qwen is required, not optional**: the user checks `qwen-usage.jsonl` after each run, and every run so far
+  made 0 Qwen calls. Every log you would otherwise open goes through `triage_log` (and `qwen_summarize_log` when
+  unclear); every new unit test file, doc table, template or catalog entry is drafted with `qwen_draft` first.
+- Shell: one command per call where possible. Never `cd dir && ...`: use `git -C ../GameNativeDuo-community ...`
+  and `python3 ../GameNativeDuo-community/tools/<script> ...` (both allowed); edit that repo's files directly.
 - Never read a long log: `triage_log` first, `qwen_summarize_log` only if the cause is unclear (CLAUDE.md "Local Qwen worker").
 - Delegate to Qwen what suits it: unit tests for pure logic, single-file compile fixes, boilerplate (catalog entries,
   docs tables, templates). Always review its diff before committing.
