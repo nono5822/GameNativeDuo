@@ -1,9 +1,35 @@
+using System.Collections.Generic;
+using System.Reflection;
 using HarmonyLib;
 using HutongGames.PlayMaker;
 using HutongGames.PlayMaker.Actions;
+using UnityEngine;
 
 namespace GameNativeDuo.HollowKnight
 {
+    /// <summary>
+    /// Notes when the game itself opens its map (the inventory map's WorldMap, the quick map's QuickMap&lt;area&gt;), so
+    /// the live map, stepping aside in that frame, does not switch the game's freshly opened map off again.
+    /// </summary>
+    [HarmonyPatch]
+    internal static class GameOpensMapPatch
+    {
+        private static IEnumerable<MethodBase> TargetMethods()
+        {
+            foreach (MethodInfo m in typeof(GameMap).GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly))
+            {
+                if (m.GetParameters().Length == 0 && (m.Name == "WorldMap" || (m.Name.StartsWith("QuickMap") && m.Name != "QuickMap")))
+                    yield return m;
+            }
+        }
+
+        private static void Prefix()
+        {
+            if (!LiveMap.OurCall)
+                LiveMap.GameOpenedMapFrame = Time.frameCount;
+        }
+    }
+
     /// <summary>
     /// The map button reaches the game only through this PlayMaker action (the Knight's "Map Control", a bench's
     /// "Bench Control" and the inventory map all listen with it). While the live map owns the button, the game sees it

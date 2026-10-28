@@ -116,6 +116,8 @@ namespace GameNativeDuo.HollowKnight
             _inventory = null;
             _inventoryPanes.Clear();
             _dialogueRoot = null;
+            _shopPrompts.Clear();
+            _shopScanAt = Time.unscaledTime + 1f;
         }
 
         private void LateUpdate()
@@ -141,6 +143,7 @@ namespace GameNativeDuo.HollowKnight
                     MoveMapToOurLayer();
                 }
                 PlaceCamera();
+                _lastShownFrame = Time.frameCount;
             }
             catch (Exception ex)
             {
@@ -273,11 +276,42 @@ namespace GameNativeDuo.HollowKnight
             if (_onOurLayer)
                 RestoreGameLayers();
             if (_shown)
+            {
                 Plugin.Log.LogInfo("Live map off (" + _why + ")");
+                HandMapBack();
+            }
             _shown = false;
             _fingers.Clear();
-            // The game's map code turns its areas off when it closes; ours turns them back on next time.
             _contentDirty = true;
+        }
+
+        /// <summary>True while the live map itself calls into GameMap (so <see cref="GameOpensMapPatch"/> ignores it).</summary>
+        internal static bool OurCall;
+
+        /// <summary>The last frame in which the game itself opened its map (inventory map, quick map).</summary>
+        internal static int GameOpenedMapFrame = -1;
+
+        private int _lastShownFrame;
+
+        /// <summary>
+        /// The game expects its map switched off when it is not using it (its CloseQuickMap does that when its own map
+        /// closes): the inventory's zoomed-out map pane otherwise shows the whole detailed map behind its area overview.
+        /// So the live map switches it off the same way when it steps aside, unless the game has just opened the map
+        /// itself (zoomed-in inventory map, quick map), which it then would wipe.
+        /// </summary>
+        private void HandMapBack()
+        {
+            if (_map == null || GameOpenedMapFrame >= _lastShownFrame)
+                return;
+            OurCall = true;
+            try
+            {
+                _map.CloseQuickMap();
+            }
+            finally
+            {
+                OurCall = false;
+            }
         }
 
         /// <summary>A layer no game camera draws (built-in unnamed layers last), so only our camera sees the map.</summary>
@@ -365,8 +399,16 @@ namespace GameNativeDuo.HollowKnight
             GameManager gm = GameManager.instance;
             if (gm == null || !gm.IsGameplayScene())
                 return;
-            _map.SetupMap();
-            _map.WorldMap();
+            OurCall = true;
+            try
+            {
+                _map.SetupMap();
+                _map.WorldMap();
+            }
+            finally
+            {
+                OurCall = false;
+            }
             MoveMapToOurLayer();
             _hasWorld = WorldBounds(ref _worldBounds);
             _boundsArea = null;
@@ -524,7 +566,35 @@ namespace GameNativeDuo.HollowKnight
             UIManager ui = UIManager.instance;
             if (ui != null && (ui.uiState == GlobalEnums.UIState.PAUSED || ui.uiState == GlobalEnums.UIState.OPTIONS))
                 return true;
-            return DialogueShown();
+            return DialogueShown() || ShopShown();
+        }
+
+        private static readonly List<GameObject> _shopPrompts = new List<GameObject>();
+        private static float _shopScanAt;
+
+        /// <summary>
+        /// A shop's menu is up (Sly, Iselda, Salubra, ...): its "Action Cancel" prompt shows exactly while the item list
+        /// or the purchase confirmation is open. The shop menus are looked up once per room, a moment after it loads.
+        /// </summary>
+        private static bool ShopShown()
+        {
+            if (_shopScanAt > 0f && Time.unscaledTime >= _shopScanAt)
+            {
+                _shopScanAt = 0f;
+                _shopPrompts.Clear();
+                foreach (ShopMenuStock stock in FindObjectsOfType<ShopMenuStock>())
+                {
+                    Transform prompt = stock.transform.Find("Action Cancel");
+                    if (prompt != null)
+                        _shopPrompts.Add(prompt.gameObject);
+                }
+            }
+            for (int i = 0; i < _shopPrompts.Count; i++)
+            {
+                if (_shopPrompts[i] != null && _shopPrompts[i].activeInHierarchy)
+                    return true;
+            }
+            return false;
         }
 
         private static readonly HarmonyLib.AccessTools.FieldRef<DialogueBox, bool> DialogueHidden =
@@ -741,6 +811,12 @@ namespace GameNativeDuo.HollowKnight
         {
             if (!_shown || _cam == null)
                 return false;
+            if (ShouldDim())
+            {
+                // A menu or a dialogue is over the map: touches are for it (pause menu, options, dialogue choices).
+                _fingers.Clear();
+                return false;
+            }
             Layout layout = Split.Instance.Layout;
             RectInt b = layout.Bottom;
             int reserve = Mathf.Clamp(Settings.HudReservePx.Value, 0, b.height / 2);

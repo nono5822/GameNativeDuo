@@ -25,6 +25,7 @@ namespace GameNativeDuo.HollowKnight
                 Settings.Bind(Config);
                 var harmony = new Harmony("app.gamenative.duo.hollowknight");
                 harmony.PatchAll(typeof(QuickMapPatch));
+                harmony.PatchAll(typeof(GameOpensMapPatch));
                 // Our own object: the game may destroy BepInEx's manager object while loading.
                 var go = new GameObject("GameNativeDuo.HollowKnight");
                 go.hideFlags = HideFlags.HideAndDontSave;

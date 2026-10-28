@@ -27,6 +27,8 @@ namespace GameNativeDuo.HollowKnight
     ///   keepareas &lt;area...&gt;       pretend only these areas are mapped (memory only), e.g. "keepareas Crossroads Town"
     ///   zoomto knight|area|world   set the live map's zoom
     ///   closemap                   the game's own map reset (GameMap.CloseQuickMap)
+    ///   find &lt;text&gt; / goto &lt;object&gt;   list root objects by name / put the Knight next to one (to talk to an NPC)
+    ///   hurt|heal|soul|geo [n]     change masks, soul or geo (memory only; the HUD reacts as in play)
     ///   il &lt;type&gt; &lt;method&gt;         a method's IL (e.g. "il GameMap SetupMap")
     ///   fsms &lt;text&gt;              every FSM with an action type, event or state containing the text
     /// Calls into the game's map-opening methods (GameMap.QuickMap*, WorldMap) are logged with their caller ("TRACE").
@@ -93,6 +95,17 @@ namespace GameNativeDuo.HollowKnight
             return null;
         }
 
+        /// <summary>The first object with an NPC's talk prompt FSM (npc_control) in the scene.</summary>
+        private static GameObject FirstNpc()
+        {
+            foreach (PlayMakerFSM f in FindObjectsOfType<PlayMakerFSM>())
+            {
+                if (f.FsmName.Equals("npc_control", StringComparison.OrdinalIgnoreCase))
+                    return f.gameObject;
+            }
+            return null;
+        }
+
         private static float Num(string[] a, int i) =>
             a.Length > i ? float.Parse(a[i], System.Globalization.CultureInfo.InvariantCulture) : 0f;
 
@@ -139,6 +152,66 @@ namespace GameNativeDuo.HollowKnight
                         if (LiveMap.Instance != null)
                             LiveMap.Instance.MarkDirty();
                         break;
+                    case "find":
+                        if (a.Length >= 2)
+                        {
+                            foreach (GameObject go in FindObjectsOfType<GameObject>())
+                            {
+                                if (go.name.IndexOf(a[1], StringComparison.OrdinalIgnoreCase) >= 0 && go.transform.parent == null)
+                                    Plugin.Log.LogInfo("  found " + go.name + " at " + go.transform.position + " active " + go.activeInHierarchy);
+                            }
+                        }
+                        break;
+                    case "tree":
+                    {
+                        GameObject go = a.Length >= 2 ? Find(a[1].Replace('_', ' ')) : null;
+                        if (go != null)
+                            Dump.Tree(go.transform, a.Length >= 3 ? int.Parse(a[2]) : 2);
+                        else
+                            Plugin.Log.LogInfo("  no object " + (a.Length >= 2 ? a[1] : ""));
+                        break;
+                    }
+                    case "talkables":
+                        foreach (PlayMakerFSM f in FindObjectsOfType<PlayMakerFSM>())
+                        {
+                            if (f.FsmName.IndexOf("Conversation", StringComparison.OrdinalIgnoreCase) >= 0 || f.FsmName.IndexOf("npc", StringComparison.OrdinalIgnoreCase) >= 0
+                                || f.FsmName.IndexOf("Shop", StringComparison.OrdinalIgnoreCase) >= 0)
+                                Plugin.Log.LogInfo("  talkable " + Diagnostics.Path(f.transform) + " fsm '" + f.FsmName + "' at " + f.transform.position);
+                        }
+                        break;
+                    case "talknear":
+                    case "goto":
+                    {
+                        // Next to an object (e.g. an NPC), on its left, so "up" talks to it; talknear: the scene's first NPC.
+                        GameObject target = a[0] == "talknear" ? FirstNpc() : a.Length >= 2 ? GameObject.Find(a[1]) : null;
+                        if (target == null || HeroController.instance == null)
+                        {
+                            Plugin.Log.LogInfo("  no object " + (a.Length >= 2 ? a[1] : ""));
+                            break;
+                        }
+                        Vector3 p = target.transform.position;
+                        HeroController.instance.transform.position = new Vector3(p.x - 1f, p.y + 0.5f, HeroController.instance.transform.position.z);
+                        Plugin.Log.LogInfo("  Knight moved next to " + target.name + " " + p);
+                        break;
+                    }
+                    case "hurt":
+                        if (HeroController.instance != null)
+                            HeroController.instance.TakeHealth(a.Length >= 2 ? int.Parse(a[1]) : 1);
+                        if (GameCameras.instance != null)
+                            PlayMakerFSM.BroadcastEvent("HERO DAMAGED");
+                        break;
+                    case "heal":
+                        if (HeroController.instance != null)
+                            HeroController.instance.AddHealth(a.Length >= 2 ? int.Parse(a[1]) : 1);
+                        break;
+                    case "soul":
+                        if (HeroController.instance != null)
+                            HeroController.instance.AddMPCharge(a.Length >= 2 ? int.Parse(a[1]) : 33);
+                        break;
+                    case "geo":
+                        if (HeroController.instance != null)
+                            HeroController.instance.AddGeo(a.Length >= 2 ? int.Parse(a[1]) : 100);
+                        break;
                     case "closemap":
                         // The game's own reset of its map (areas off), so the next opening starts clean.
                         if (gm != null && gm.gameMap != null)
@@ -159,6 +232,11 @@ namespace GameNativeDuo.HollowKnight
                     case "pause":
                         if (gm != null)
                             gm.StartCoroutine(gm.PauseGameToggle());
+                        break;
+                    case "unpause":
+                        // What the pause menu's Continue does.
+                        if (UIManager.instance != null)
+                            UIManager.instance.UIClosePauseMenu();
                         break;
                     case "state":
                         Plugin.Log.LogInfo("  paused " + (gm != null && gm.isPaused) + ", game " + (gm != null ? gm.gameState.ToString() : "?") +
