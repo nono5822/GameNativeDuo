@@ -17,6 +17,7 @@ claude -p (Opus) ── MCP ──> qwen_mcp.py ──> llama serve (Qwen, 127.0
 | `triage.py` | Deterministic log scanner: GPU hangs, crashes, dex verify, BepInEx/SMAPI/Harmony errors, `Frames` table |
 | `qwen_mcp.py` | MCP server: `triage_log`, `qwen_summarize_log`, `qwen_draft`, `qwen_fix_build` |
 | `overnight.sh` | Unattended run: fresh branch, Qwen and Thor checks, `claude -p`, cost and Qwen usage summary |
+| `thor-wifi.sh` | adb to the Thor over Wi-Fi: `tcpip` while plugged in, remembered IP, or Wireless debugging (mDNS) |
 | `tasks/regression-pass.md` | Example task: regression pass across the bundled games |
 
 ## Setup (once per PC)
@@ -46,6 +47,7 @@ and grade what Qwen did. If its code fails, keep it to log summaries (that is mo
 ```bash
 duo/agents/overnight.sh duo/agents/tasks/regression-pass.md          # with the Thor plugged in
 NO_DEVICE=1 duo/agents/overnight.sh my-refactor-task.md               # code-only
+THOR_WIFI=1 duo/agents/overnight.sh duo/agents/tasks/regression-pass.md  # Thor over Wi-Fi (thor-wifi.sh)
 MAX_BUDGET_USD=15 duo/agents/overnight.sh ...                          # spend cap on API billing
 ```
 
