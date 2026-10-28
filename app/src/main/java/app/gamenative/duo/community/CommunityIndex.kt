@@ -21,8 +21,9 @@ object CommunityIndex {
     val SHARED_ASSETS = setOf("bepinex", "unity-split", "BepInEx-LICENSE.txt", "BepInEx-NOTICE.txt")
 
     /**
-     * Community packages published by GameNative Duo itself, shown with the official badge. Pinned here (not read from
-     * the index) because every field of a package entry comes from its author's manifest; adding one needs an app update.
+     * Community packages published by GameNative Duo itself, shown with the official badge. Pinned here because every
+     * field of a package entry comes from its author's manifest. Newer ones come from the game file's top-level
+     * `official` list, which the index builder writes from the maintainer's `OFFICIAL` file (see [CommunityGame]).
      */
     val OFFICIAL_PACKAGES = setOf(
         "gamenative-duo.crosshair-on-top",
@@ -122,7 +123,9 @@ data class CommunityRating(
             // Opened in the browser: only GitHub links, even from the signed index.
             if (!url.startsWith("https://github.com/")) return null
             val compat = it.optJSONObject("compat")?.let { c ->
-                c.keys().asSequence().mapNotNull { device -> CompatReports.fromJson(c.optJSONObject(device))?.let { r -> device to r } }.toMap()
+                c.keys().asSequence().mapNotNull { device ->
+                    CompatReports.fromJson(c.optJSONObject(device))?.let { r -> device to r }
+                }.toMap()
             }.orEmpty()
             CommunityRating(
                 up = it.optInt("up").coerceAtLeast(0),
@@ -189,14 +192,16 @@ data class CommunityPackage(
     /** Experimental packages are listed with a warning. */
     val experimental: Boolean = tags.contains("experimental"),
     val changelog: List<ChangelogEntry> = emptyList(),
+    /**
+     * Made by GameNative Duo: set by [CommunityGame.fromJson] from the pinned list or the index's maintainer list,
+     * never from anything in the package's own entry.
+     */
+    val official: Boolean = false,
 ) {
     fun file(path: String): CommunityFile? = files.firstOrNull { it.path == path }
 
     /** Download size in bytes (files of unknown size count as 0). */
     val size: Long get() = files.sumOf { maxOf(it.size, 0) }
-
-    /** Made by GameNative Duo: only from the list pinned in the app, never from anything the package says. */
-    val official: Boolean get() = id in CommunityIndex.OFFICIAL_PACKAGES
 
     companion object {
         /** Null for an entry this app cannot read (a newer index format, a broken entry): it is skipped, not fatal. */
@@ -236,12 +241,18 @@ data class CommunityPackage(
     }
 }
 
-/** One game's packages, as published in `games/<key>.json`. */
+/**
+ * One game's packages, as published in `games/<key>.json`. The file's top-level `official` list is written by the index
+ * builder from the maintainer's `OFFICIAL` file (no manifest field reaches it) and covered by the index signature.
+ */
 class CommunityGame(val key: String, val title: String, val packages: List<CommunityPackage>) {
     companion object {
         fun fromJson(json: JSONObject): CommunityGame {
+            val official = CommunityIndex.OFFICIAL_PACKAGES + json.optJSONArray("official").strings()
             val array = json.optJSONArray("packages") ?: JSONArray()
-            val packages = (0 until array.length()).mapNotNull { array.optJSONObject(it)?.let(CommunityPackage::fromJson) }
+            val packages = (0 until array.length()).mapNotNull { i ->
+                array.optJSONObject(i)?.let(CommunityPackage::fromJson)?.let { it.copy(official = it.id in official) }
+            }
             return CommunityGame(json.optString("key"), json.optJSONObject("game")?.optString("title").orEmpty(), packages)
         }
     }

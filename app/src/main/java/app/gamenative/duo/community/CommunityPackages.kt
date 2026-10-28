@@ -85,8 +85,12 @@ object CommunityPackages {
     }
 
     /** When the game's list was last confirmed current with the server (epoch ms), or null if never. */
-    fun checkedAt(context: Context, containerId: String): Long? =
-        checkedFile(context, CommunityIndex.gameKey(containerId)).takeIf { it.isFile }?.lastModified()?.takeIf { it > 0 }
+    fun checkedAt(context: Context, containerId: String): Long? {
+        val key = CommunityIndex.gameKey(containerId)
+        // Caches from before the marker existed: the list's own download time.
+        return listOf(checkedFile(context, key), indexFiles(context, key).first)
+            .firstOrNull { it.isFile }?.lastModified()?.takeIf { it > 0 }
+    }
 
     private fun markChecked(context: Context, key: String) {
         val file = checkedFile(context, key)
@@ -273,7 +277,10 @@ object CommunityPackages {
     private fun appliedFile(context: Context, containerId: String) =
         File(dir(context), "applied/" + safe(containerId) + ".json")
 
-    private fun settingsUndoFile(context: Context, containerId: String) = File(dir(context), "applied/" + safe(containerId) + ".settings-undo.json")
+    private fun settingsUndoFile(context: Context, containerId: String) = File(
+        dir(context),
+        "applied/" + safe(containerId) + ".settings-undo.json",
+    )
 
     private fun safe(containerId: String) = containerId.replace(Regex("[^A-Za-z0-9_.-]"), "_")
 }

@@ -136,7 +136,8 @@ object ModHub {
     /** The switchable entry that is on now, or null when Dual screen is off. */
     fun active(context: Context, containerId: String, entries: List<HubEntry>): HubEntry? {
         DuoModInstaller.enabledModId(context, containerId)?.let { id ->
-            return entries.firstOrNull { it.id == id } ?: DuoModCatalog.forApp(containerId)?.takeIf { it.id == id }?.let { HubEntry.Bundled(it) }
+            return entries.firstOrNull { it.id == id }
+                ?: DuoModCatalog.forApp(containerId)?.takeIf { it.id == id }?.let { HubEntry.Bundled(it) }
         }
         if (DuoModInstaller.isEnabled(context, containerId)) return null
         val settings = CommunityPackages.applied(context, containerId)[CommunityKind.DUO_SETTINGS] ?: return null
@@ -182,7 +183,9 @@ object ModHub {
     /** Turns [entry] on. Throws [IOException] with a user-facing reason. */
     fun turnOn(context: Context, containerId: String, gameDir: File, entry: HubEntry) {
         when (entry) {
-            is HubEntry.Bundled -> if (!DuoModInstaller.enable(context, entry.mod, gameDir)) throw IOException("installing failed (see logs)")
+            is HubEntry.Bundled -> if (!DuoModInstaller.enable(context, entry.mod, gameDir)) {
+                throw IOException("installing failed (see logs)")
+            }
             is HubEntry.Community -> when (entry.pkg.kind) {
                 CommunityKind.MOD -> CommunityModInstaller.install(context, containerId, gameDir, entry.pkg)
                 CommunityKind.DUO_SETTINGS -> CommunityPackages.apply(context, containerId, entry.pkg)
@@ -193,17 +196,15 @@ object ModHub {
     }
 
     /** Turns off whatever dual-screen mod is on, restoring what it changed. Throws [IOException] on failure. */
-    fun turnOff(context: Context, containerId: String) {
+    fun turnOff(context: Context, containerId: String, entries: List<HubEntry>) {
+        // Read before anything changes: a settings package counts only while it is what the switch turned on.
+        val settingsOn = (active(context, containerId, entries) as? HubEntry.Community)?.pkg?.kind == CommunityKind.DUO_SETTINGS
         if (DuoModInstaller.isEnabled(context, containerId)) {
             if (!DuoModInstaller.disable(context, containerId)) throw IOException("removing failed (see logs)")
             CommunityPackages.forget(context, containerId, CommunityKind.MOD)
         }
-        if (CommunityPackages.applied(context, containerId).containsKey(CommunityKind.DUO_SETTINGS) &&
-            DuoModCatalog.forApp(containerId) == null
-        ) {
-            // Only games where a settings package was the switch's target (see [switchable]).
-            CommunityPackages.removeSettings(context, containerId)
-        }
+        // With a code mod, settings packages are add-ons (see [switchable]) and stay.
+        if (settingsOn) CommunityPackages.removeSettings(context, containerId)
     }
 
     /**
@@ -214,19 +215,20 @@ object ModHub {
     fun switchTo(context: Context, containerId: String, gameDir: File, next: HubEntry, entries: List<HubEntry>) {
         val previous = active(context, containerId, entries)
         if (previous?.id == next.id) return
-        turnOff(context, containerId)
+        turnOff(context, containerId, entries)
         try {
             turnOn(context, containerId, gameDir, next)
             Timber.tag(DualScreenHost.TAG).i("Mod hub: %s -> %s for %s", previous?.id, next.id, containerId)
         } catch (e: IOException) {
             Timber.tag(DualScreenHost.TAG).w(e, "Mod hub: %s failed for %s, restoring %s", next.id, containerId, previous?.id)
-            val restored = previous != null && try {
-                turnOn(context, containerId, gameDir, previous)
-                true
-            } catch (t: Throwable) {
-                Timber.tag(DualScreenHost.TAG).e(t, "Mod hub: could not restore %s", previous.id)
-                false
-            }
+            val restored = previous != null &&
+                try {
+                    turnOn(context, containerId, gameDir, previous)
+                    true
+                } catch (t: Throwable) {
+                    Timber.tag(DualScreenHost.TAG).e(t, "Mod hub: could not restore %s", previous.id)
+                    false
+                }
             throw IOException(e.message + if (restored) "; ${previous?.title} is back on" else "", e)
         }
     }
