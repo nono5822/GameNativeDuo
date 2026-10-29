@@ -21,6 +21,10 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia
 import app.gamenative.duo.DualScreenHost
 import app.gamenative.duo.bridge.DuoBridge
+import app.gamenative.duo.companion.CompanionHost
+import app.gamenative.duo.companion.CompanionPickers
+import app.gamenative.duo.companion.CompanionSession
+import app.gamenative.duo.companion.CompanionView
 import app.gamenative.duo.display.DeviceProfile
 import app.gamenative.duo.display.ScreenCalibration
 import app.gamenative.duo.display.ScreenCalibrationStore
@@ -68,6 +72,8 @@ class SplitScreenController(
     private val modExpected: Boolean = false,
     /** The bottom screen output is running (for the session's status record). */
     private val onOutputAttached: () -> Unit = {},
+    /** The game's companion: opens from the bottom screen's menu over the game's bottom part. */
+    private val companion: CompanionSession? = null,
 ) {
     private val topRenderer: VulkanRenderer? get() = xServer.renderer as? VulkanRenderer
     private var presentation: SplitBottomPresentation? = null
@@ -137,6 +143,7 @@ class SplitScreenController(
                 modExpected = modExpected && layout != SplitLayout.REGION,
                 modConnected = modConnected,
                 onOutputAttached = onOutputAttached,
+                companion = companion,
             ).also { it.show() }
             Timber.tag(DualScreenHost.TAG).i(
                 "Screen split on: X screen %dx%d, top %s, bottom %s on display %d",
@@ -177,6 +184,9 @@ class SplitScreenController(
 
     /** Opens the bottom screen's own menu (the one a two-finger long press opens). */
     fun openMenu(): Boolean = presentation?.openMenu() == true
+
+    /** Opens the game's companion on the bottom screen. False when there is none. */
+    fun openCompanion(): Boolean = presentation?.openCompanion() == true
 
     /** Starts the PC editor (if needed); its address and code, or null when it cannot run. */
     fun startPcEditor(showCard: Boolean): Pair<String?, String>? = presentation?.startPc(showCard)
@@ -276,9 +286,11 @@ private class SplitBottomPresentation(
     private val modExpected: Boolean,
     private var modConnected: Boolean,
     private val onOutputAttached: () -> Unit,
+    private val companion: CompanionSession?,
 ) : Presentation(outerContext, display),
     SurfaceHolder.Callback,
-    PcEditorHost {
+    PcEditorHost,
+    CompanionHost {
     /** How the current gesture reaches the game, decided when its first finger lands. */
     private enum class Gesture { NONE, MOUSE, NATIVE, IGNORED }
 
@@ -432,10 +444,43 @@ private class SplitBottomPresentation(
     }
 
     private fun hideOverlay() {
+        val wasCompanion = overlay is CompanionView
         overlay?.let { root?.removeView(it) }
         overlay = null
         editor = null
+        if (wasCompanion) {
+            // The game's bottom part comes back: its surface is created again and the output reattaches.
+            surfaceView?.visibility = View.VISIBLE
+        }
     }
+
+    // ---- companion -------------------------------------------------------------------------------------------------
+
+    /** The companion covers the bottom screen; the game's bottom part stops rendering meanwhile (its surface goes). */
+    private fun showCompanion() {
+        val c = companion ?: return
+        try {
+            showOverlay(CompanionView(context, c, this, onClose = ::hideOverlay))
+            surfaceView?.visibility = View.INVISIBLE
+        } catch (t: Throwable) {
+            Timber.tag(DualScreenHost.TAG).e(t, "Failed to open the companion")
+            hideOverlay()
+        }
+    }
+
+    /** From GameNative's menu (the game is paused until it closes). */
+    fun openCompanion(): Boolean {
+        if (companion == null) return false
+        handler.postDelayed({ if (overlay !is CompanionView) showCompanion() }, 400)
+        return true
+    }
+
+    override fun pickImage(done: (ByteArray?) -> Unit) = CompanionPickers.image(outerContext, done)
+
+    override fun pickText(done: (ByteArray?) -> Unit) = CompanionPickers.text(outerContext, done)
+
+    override fun editText(title: String, initial: String, multiLine: Boolean, done: (String) -> Unit) =
+        CompanionPickers.editText(outerContext, title, initial, multiLine, done)
 
     // ---- background image, snapshots, PC editor ----------------------------------------------------------------
 
@@ -571,6 +616,7 @@ private class SplitBottomPresentation(
                     onChooseRegion = if (regionView) ::showRegion else null,
                     onEditOnPc = if (uiLayout != null) ::showPc else null,
                     pcRunning = pc != null,
+                    onCompanion = if (companion != null) ::showCompanion else null,
                 ),
             )
         } catch (t: Throwable) {

@@ -39,6 +39,11 @@ data class DuoContainerSettings(
     val splitScale: Float = 1f,
     /** Region view ([splitLayout] "region"): the part of the game the bottom screen shows, "x,y,w,h" fractions; "" = default. */
     val region: String = "",
+    /**
+     * The companion (duo/docs/companions.md): "auto" (the game's own, else the general one), "off", or a companion id.
+     * Without a screen split it is the bottom screen; with one it opens from the bottom screen's menu.
+     */
+    val companion: String = "auto",
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("bottomPanelEnabled", bottomPanelEnabled)
@@ -47,6 +52,7 @@ data class DuoContainerSettings(
         put("nativeTouch", nativeTouch)
         put("splitScale", splitScale.toDouble())
         put("region", region)
+        put("companion", companion)
     }
 
     companion object {
@@ -62,6 +68,7 @@ data class DuoContainerSettings(
                 splitScale = json.optDouble("splitScale", fallback.splitScale.toDouble()).toFloat()
                     .takeIf { it in SPLIT_SCALES } ?: fallback.splitScale,
                 region = json.optString("region", fallback.region),
+                companion = json.optString("companion", fallback.companion).ifBlank { fallback.companion },
             )
         }
     }

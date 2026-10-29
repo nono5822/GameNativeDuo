@@ -14,6 +14,10 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import app.gamenative.R
 import app.gamenative.duo.DualScreenHost
+import app.gamenative.duo.companion.CompanionHost
+import app.gamenative.duo.companion.CompanionPickers
+import app.gamenative.duo.companion.CompanionSession
+import app.gamenative.duo.companion.CompanionView
 import app.gamenative.duo.display.DeviceProfile
 import app.gamenative.duo.display.realSize
 import app.gamenative.duo.settings.DuoContainerSettings
@@ -33,6 +37,8 @@ class BottomPanelController(
     private val container: Container,
     private val profile: DeviceProfile,
     private val settings: DuoContainerSettings,
+    /** The game's companion: it is the bottom screen when there is one (else the devkit panel). */
+    private val companion: CompanionSession? = null,
 ) {
     private var presentation: BottomPanelPresentation? = null
 
@@ -53,7 +59,7 @@ class BottomPanelController(
             }
             if (current != null && current.display.displayId == target.displayId) return
             dismiss()
-            presentation = BottomPanelPresentation(context, target, container).also { it.show() }
+            presentation = BottomPanelPresentation(context, target, container, companion).also { it.show() }
             Timber.tag(DualScreenHost.TAG).i("Bottom panel shown on display %d", target.displayId)
         } catch (t: Throwable) {
             Timber.tag(DualScreenHost.TAG).e(t, "Failed to update bottom panel")
@@ -74,17 +80,39 @@ class BottomPanelController(
 }
 
 private class BottomPanelPresentation(
-    outerContext: Context,
+    private val outerContext: Context,
     display: Display,
     private val container: Container,
-) : Presentation(outerContext, display) {
+    private val companion: CompanionSession?,
+) : Presentation(outerContext, display),
+    CompanionHost {
     private var taps = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window?.addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL)
-        setContentView(buildContent())
+        val view = companion?.let {
+            try {
+                CompanionView(context, it, this)
+            } catch (t: Throwable) {
+                Timber.tag(DualScreenHost.TAG).e(t, "Failed to show the companion; showing the panel")
+                null
+            }
+        }
+        if (view != null) {
+            preferLowRefreshRate(display, window)
+            setContentView(view)
+        } else {
+            setContentView(buildContent())
+        }
     }
+
+    override fun pickImage(done: (ByteArray?) -> Unit) = CompanionPickers.image(outerContext, done)
+
+    override fun pickText(done: (ByteArray?) -> Unit) = CompanionPickers.text(outerContext, done)
+
+    override fun editText(title: String, initial: String, multiLine: Boolean, done: (String) -> Unit) =
+        CompanionPickers.editText(outerContext, title, initial, multiLine, done)
 
     private fun buildContent(): LinearLayout {
         val pad = dp(24)
@@ -135,4 +163,19 @@ private class BottomPanelPresentation(
     }
 
     private fun dp(value: Int): Int = (value * context.resources.displayMetrics.density).toInt()
+}
+
+/** A companion is a still UI: 60 Hz is plenty and saves power on a 120 Hz screen. */
+internal fun preferLowRefreshRate(display: Display, window: android.view.Window?) {
+    try {
+        val w = window ?: return
+        val current = display.mode
+        val mode = display.supportedModes
+            .filter { it.physicalWidth == current.physicalWidth && it.physicalHeight == current.physicalHeight }
+            .minByOrNull { kotlin.math.abs(it.refreshRate - 60f) } ?: return
+        w.attributes = w.attributes.apply { preferredDisplayModeId = mode.modeId }
+        Timber.tag(DualScreenHost.TAG).i("Companion: bottom screen at %.0f Hz", mode.refreshRate)
+    } catch (t: Throwable) {
+        Timber.tag(DualScreenHost.TAG).w(t, "Failed to lower the bottom screen's refresh rate")
+    }
 }

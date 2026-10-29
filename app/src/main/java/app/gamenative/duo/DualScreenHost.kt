@@ -6,6 +6,7 @@ import android.os.Handler
 import android.os.Looper
 import android.view.View
 import app.gamenative.duo.bridge.DuoBridge
+import app.gamenative.duo.companion.CompanionSession
 import app.gamenative.duo.display.DeviceProfile
 import app.gamenative.duo.display.DisplayInventory
 import app.gamenative.duo.display.DisplaySnapshot
@@ -87,12 +88,16 @@ class DualScreenSession internal constructor(
     val profile: DeviceProfile = DeviceProfile.detect()
     val settings = DuoSettingsStore.load(context, container.id)
 
+    /** The game's companion (duo/docs/companions.md), or null when it is off or there is none. */
+    val companion: CompanionSession? = CompanionSession.open(context, container.id, settings.companion)
+
     // The screen split owns the bottom screen when it is on, so the panel steps aside.
     private val bottomPanel = BottomPanelController(
         context,
         container,
         profile,
         settings.copy(bottomPanelEnabled = settings.bottomPanelEnabled && !(settings.screenSplit && xServer != null)),
+        companion,
     )
     private val gamescope = !Container.isX11Display(container.containerVariant, container.displayServer)
 
@@ -129,6 +134,7 @@ class DualScreenSession internal constructor(
             },
             modExpected = sessionStatus.modExpected,
             onOutputAttached = { updateStatus { it.copy(secondScreen = true) } },
+            companion = companion,
         )
     } else {
         null
@@ -213,6 +219,7 @@ class DualScreenSession internal constructor(
         }
         bottomPanel.stop()
         screenSplit?.stop()
+        companion?.stop()
         try {
             gamescopeStatus?.dismiss()
         } catch (t: Throwable) {

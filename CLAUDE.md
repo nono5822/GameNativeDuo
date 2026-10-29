@@ -160,6 +160,14 @@ no CPU frame copies, data over pixels, idle at 0 fps when nothing changes.
   a card while the mod starts, when it does not, and under Gamescope or a wrong window size (`split/StatusCard.kt`).
   Saves are zipped before every mod install (`SaveBackup`, `files/duo/saves/<appId>/`, newest 5, logs left out);
   restore backs up the current saves first. Reset keeps a user-changed file as `<name>.duo-user`.
+- **Companions** (`duo/companion/`, design `duo/docs/companions.md`): per-game bottom-screen apps from a JSON manifest
+  (pages of cards: text, checklist, notes, timer, image/map, value, progress, list), native views, no code. Bundled in
+  `assets/duo/companions/<id>/` (`general` = every game: notes, checklist, map picture, guide file, timers), dev copies
+  in `Android/data/app.gamenative.duo/files/duo/companions/dev/<id>/` (reloaded live, preferred by "Automatic"), user
+  state in `files/duo/companions/state/<containerId>/`. No split: the companion is the bottom screen (60 Hz); split or
+  region view: "Companion" in the two-finger menu (the bottom render output is detached while it shows). Text input
+  is a dialog on the main screen: the keyboard never serves the bottom display while a game runs (tested on the Thor).
+  Setting "Companion" in the GameNative Duo tab. Bridge state/commands (HK, Stardew, Balatro companions) are 04c.
 - `layout.json` (`%AppData%\GameNativeDuo\` in the prefix) is the contract with in-game mods: `screen`, `top`,
   `bottom` (window px, origin top-left), plus `gap`, `bottomScale`, `bottomShift`, `bridge.port`. Mods act only when
   the window matches `screen`. `ui.json` (UI layout) and `elements.json` (for the editor) sit next to it.

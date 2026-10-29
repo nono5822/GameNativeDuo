@@ -26,6 +26,8 @@ internal class DuoMenuPanel(
     /** Opens the PC editor (null where it is unavailable); [pcRunning] when it is already on. */
     onEditOnPc: (() -> Unit)? = null,
     pcRunning: Boolean = false,
+    /** Opens the game's companion (null when it has none). */
+    onCompanion: (() -> Unit)? = null,
 ) : FrameLayout(context) {
     init {
         setBackgroundColor(Color.argb(120, 0, 0, 0))
@@ -46,6 +48,7 @@ internal class DuoMenuPanel(
                 },
             )
         }
+        onCompanion?.let { item("Companion") { it() } }
         if (onChooseRegion != null) {
             item("Choose bottom view") { onChooseRegion() }
         } else {

@@ -14,6 +14,10 @@
     <string name="duo_settings_tab">GameNative Duo</string>
     <string name="duo_settings_bottom_panel">Bottom-screen panel</string>
     <string name="duo_settings_bottom_panel_description">Show the GameNative Duo panel on the second screen while the game runs. Hidden anyway when External display mode or swap is on.</string>
+    <string name="duo_settings_companion">Companion: %1$s</string>
+    <string name="duo_settings_companion_auto">Automatic</string>
+    <string name="duo_settings_companion_off">Off</string>
+    <string name="duo_settings_companion_description">Notes, checklists, a map picture, a timer and the game\'s own companion cards on the bottom screen. Automatic picks the game\'s companion, else the general one. With screen split on, open it with a two-finger hold on the bottom screen. Tap to change.</string>
     <string name="duo_settings_screen_split">Screen split</string>
     <string name="duo_settings_screen_split_description">Show one tall game screen across both screens: the upper part on top, the lower part below (tap it to click). Set the screen size to %1$d×%2$d and use a game or mod that puts its UI in the lower part. Replaces the bottom-screen panel.</string>
     <string name="duo_settings_native_touch">Native touch on the bottom screen</string>
