@@ -173,6 +173,8 @@
     <string name="duo_status_never">Not played with Dual screen yet. Launch the game: this shows whether the mod started.</string>
     <string name="duo_status_worked">Last session (%3$s): the mod started (%1$s) and connected after %2$d s.</string>
     <string name="duo_status_no_bridge">Last session (%1$s): screen split on. This mod does not report back, so there is nothing more to check.</string>
+    <string name="duo_status_last_gamescope">Last session (%1$s) ran under Gamescope, so the bottom screen could not be used.</string>
+    <string name="duo_status_last_no_split">Last session (%1$s): the screen split did not run.</string>
     <string name="duo_status_too_short">The last session was too short to tell whether the mod starts.</string>
     <string name="duo_status_files">Mod files</string>
     <string name="duo_status_files_check">Check mod files</string>

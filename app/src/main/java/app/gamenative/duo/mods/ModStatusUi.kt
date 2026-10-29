@@ -168,6 +168,8 @@ private fun LastSession(report: ModStatusReport) {
                 stringResource(R.string.duo_status_worked, engine, ((last.connectedAfterMs + 500) / 1000).toInt(), ago(last.startedAt)),
             )
         }
+        last.gamescope -> Line(Icons.Outlined.Info, null, stringResource(R.string.duo_status_last_gamescope, ago(last.startedAt)))
+        !last.splitOn -> Line(Icons.Outlined.Info, null, stringResource(R.string.duo_status_last_no_split, ago(last.startedAt)))
         !last.modExpected -> Line(Icons.Outlined.Info, null, stringResource(R.string.duo_status_no_bridge, ago(last.startedAt)))
         last.durationMs < ModStatusReport.MIN_SESSION_MS -> Line(Icons.Outlined.Info, null, stringResource(R.string.duo_status_too_short))
         else -> Unit // MOD_NOT_LOADED says it

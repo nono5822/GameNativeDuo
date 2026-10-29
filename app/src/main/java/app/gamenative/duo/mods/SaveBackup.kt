@@ -158,7 +158,8 @@ object SaveBackup {
             val o = roots.getJSONObject(i)
             val dir = rootOf(o.getString("key")) ?: continue
             val excludes = o.optJSONArray("excludes")?.let { a -> (0 until a.length()).map { a.getString(it) }.toSet() }.orEmpty()
-            dir.listFiles()?.filter { it.name !in excludes }?.forEach { it.deleteRecursively() }
+            dir.listFiles()?.filter { it.name !in excludes && !(it.isFile && it.name.endsWith(".log", ignoreCase = true)) }
+                ?.forEach { it.deleteRecursively() }
         }
         ZipInputStream(backup.file.inputStream().buffered()).use { zip ->
             while (true) {
@@ -173,10 +174,11 @@ object SaveBackup {
         Timber.tag(DualScreenHost.TAG).i("Saves of %s restored from %s", appId, backup.file.name)
     }
 
+    // Logs are not saves, and Unity rewrites Player.log on every launch (no backup would ever match the last one).
     private fun walk(loc: Location): List<File> = loc.dir.listFiles().orEmpty()
         .filter { it.name !in loc.excludes }
         .flatMap { top -> if (top.isDirectory) top.walkTopDown().filter { it.isFile }.toList() else listOf(top) }
-        .filter { it.isFile }
+        .filter { it.isFile && !it.name.endsWith(".log", ignoreCase = true) }
 
     /** [rel] under [root], refusing anything that would land outside it. */
     private fun inside(root: File, rel: String): File? {
