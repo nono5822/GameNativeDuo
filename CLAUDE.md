@@ -154,6 +154,12 @@ no CPU frame copies, data over pixels, idle at 0 fps when nothing changes.
   from the bundled catalog, `CommunityIndex.OFFICIAL_PACKAGES` or the signed index's top-level `official` list.
   Design: `duo/docs/community-packages.md`, ratings: `duo/docs/community-ratings.md`. Index signing key: repo
   secret + `~/.config/gamenative-duo/` (maintainer).
+- **Status and save backups**: each session records what it saw in `files/duo/status/<appId>.json` (mod hello,
+  X screen, Gamescope); the Dual screen control shows the first problem and a status segment that opens "Dual screen
+  status" (`mods/ModStatus*.kt`: Use X11, Set WxH, Reset mod files, file check, save backups). The bottom screen shows
+  a card while the mod starts, when it does not, and under Gamescope or a wrong window size (`split/StatusCard.kt`).
+  Saves are zipped before every mod install (`SaveBackup`, `files/duo/saves/<appId>/`, newest 5, logs left out);
+  restore backs up the current saves first. Reset keeps a user-changed file as `<name>.duo-user`.
 - `layout.json` (`%AppData%\GameNativeDuo\` in the prefix) is the contract with in-game mods: `screen`, `top`,
   `bottom` (window px, origin top-left), plus `gap`, `bottomScale`, `bottomShift`, `bridge.port`. Mods act only when
   the window matches `screen`. `ui.json` (UI layout) and `elements.json` (for the editor) sit next to it.
@@ -259,9 +265,10 @@ It is there to keep bulk text out of your context. It is a 3-bit model: treat ev
 - Work in progress and its full history: `duo/notes/` (start with the newest file). Ranked list of games to support:
   `duo/futuregames.md` (from GameNative's Thor play data).
 - `cp`/`mv` are aliased to interactive mode in this shell: use `\cp -f` / `\mv -f` in scripts.
-- Unity games remember their last resolution: after turning Dual screen on, set the in-game resolution to the tall
-  window (1920x2160) once, or the game renders centred and unsplit. Could be automated (Unity's `-screen-width`/
-  `-screen-height` arguments or its registry keys).
+- Unity games remember their last resolution: Dual screen therefore adds `-screen-width W -screen-height H` to the
+  container's launch arguments (`UnityScreenArgs`, undo fields `previousExecArgs`/`execArgs`), kept in step with the
+  split resolution. Upstream's `LaunchArgFix` game fixes only apply to empty arguments: a Unity game that needs one
+  would lose it while Dual screen is on (none of ours does).
 - Unity split, untested: aiming may be off if a game aims at the window centre (the hinge) instead of the camera's.
 - A plain `View` measured "wrap content" takes all the height it is offered: give spacers a fixed size
   (`DuoUi.add` does).
@@ -269,8 +276,9 @@ It is there to keep bulk text out of your context. It is a 3-bit model: treat ev
   sees them null.
 - `formatKotlinMain` rewrites the whole module (upstream too): restore every non-duo file it touched with `git checkout`.
 - Harmony does not write `__args` changes back to value arguments: change arguments with `ref` parameters.
-- Stardew died at "Waiting for game to launch" on the first launch after each APK install (2/2, later launches fine;
-  before SMAPI reads mods, so not our mod). Retry. See `duo/notes/2026-10-20-device-testing.md`.
+- Stardew dies on the first launch after each APK install (3/3, later launches fine): SMAPI gets through its mod
+  checks, our mod says hello, then `wine: Unhandled exception 0xc0000409` (a .NET fail-fast) about 10 s later, both
+  screens black. Retry. No auto-retry yet (needs an upstream relaunch hook). See `duo/notes/2026-10-28-agent-run.md`.
 - Bridge sockets must bind IPv4 127.0.0.1 explicitly: `InetAddress.getLoopbackAddress()` is `::1` on the Thor.
 
 - AGP 8.8's bundled D8 turns upstream's giant `XServerScreen` composable (on full, non-incremental compiles: CLI, CI)
