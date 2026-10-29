@@ -1,0 +1,10 @@
+{
+  "format": "gamenative-duo/ui-layout",
+  "version": 1,
+  "game": "STEAM_367520",
+  "engine": "unity-ugui",
+  "elements": {
+    "_GameCameras/HudCamera/Anchor TL/Hud Canvas Offset/Hud Canvas": {"screen": "bottom", "scale": 1.2},
+    "GameNativeDuo/LiveMap": {"screen": "bottom", "scale": 0.96, "y": 0.019}
+  }
+}

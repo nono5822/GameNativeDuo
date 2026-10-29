@@ -32,6 +32,9 @@ internal sealed class Layout
     /// <summary>Horizontal offset of the bottom screen's centre from the top screen's, in window pixels. Optional, 0 by default.</summary>
     public int BottomShift;
 
+    /// <summary>GameNative Duo's bridge port for this session (native touch, live UI layout), 0 without one.</summary>
+    public int BridgePort;
+
     public static string FilePath =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "GameNativeDuo", "layout.json");
 
@@ -56,6 +59,7 @@ internal sealed class Layout
                 Gap = root.TryGetProperty("gap", out JsonElement gap) ? Math.Max(0, gap.GetInt32()) : 0,
                 BottomScale = root.TryGetProperty("bottomScale", out JsonElement scale) ? Math.Clamp(scale.GetSingle(), 0.5f, 2f) : 1f,
                 BottomShift = root.TryGetProperty("bottomShift", out JsonElement shift) ? shift.GetInt32() : 0,
+                BridgePort = root.TryGetProperty("bridge", out JsonElement bridge) && bridge.TryGetProperty("port", out JsonElement port) ? port.GetInt32() : 0,
             };
         }
         catch (Exception ex)

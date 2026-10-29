@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "qwen": {
+      "type": "stdio",
+      "command": "python3",
+      "args": ["${CLAUDE_PROJECT_DIR:-.}/duo/agents/qwen_mcp.py"],
+      "env": {
+        "QWEN_URL": "http://127.0.0.1:9931",
+        "QWEN_CTX": "24576"
+      },
+      "timeout": 3600000
+    }
+  }
+}

@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    GameNativeDuo screen split for Unity (uGUI) games, as a BepInEx 5 plugin.
+    Build: dotnet build -c Release -p:ManagedPath=<game's *_Data/Managed folder> -p:BepInExPath=<BepInEx/core folder>
+    The built DLL goes to app/src/main/assets/duo/mods/<game>/plugin/ (copied to BepInEx/plugins/GameNativeDuo-split/).
+  -->
+  <PropertyGroup>
+    <AssemblyName>GameNativeDuo.UnitySplit</AssemblyName>
+    <RootNamespace>GameNativeDuo.UnitySplit</RootNamespace>
+    <Version>0.4.2</Version>
+    <TargetFramework>net46</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!-- Defaults: the bundled DLL is built against Slime Rancher (oldest Unity we ship; Linux Steam copy) and the BepInEx bundled with the app. -->
+    <ManagedPath Condition="'$(ManagedPath)' == ''">$(HOME)/.local/share/Steam/steamapps/common/Slime Rancher/SlimeRancher_Data/Managed</ManagedPath>
+    <BepInExPath Condition="'$(BepInExPath)' == ''">$(MSBuildThisFileDirectory)../../../../app/src/main/assets/duo/mods/shared/bepinex/BepInEx/core</BepInExPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="BepInEx"><HintPath>$(BepInExPath)/BepInEx.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="0Harmony"><HintPath>$(BepInExPath)/0Harmony.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine"><HintPath>$(ManagedPath)/UnityEngine.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.CoreModule" Condition="Exists('$(ManagedPath)/UnityEngine.CoreModule.dll')"><HintPath>$(ManagedPath)/UnityEngine.CoreModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.UI"><HintPath>$(ManagedPath)/UnityEngine.UI.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.UIModule" Condition="Exists('$(ManagedPath)/UnityEngine.UIModule.dll')"><HintPath>$(ManagedPath)/UnityEngine.UIModule.dll</HintPath><Private>false</Private></Reference>
+    <!-- Unity 2021+ assemblies are built against .NET Standard 2.1: needed to compile against them (the plugin itself still targets net46). -->
+    <Reference Include="netstandard" Condition="Exists('$(ManagedPath)/netstandard.dll')"><HintPath>$(ManagedPath)/netstandard.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+</Project>

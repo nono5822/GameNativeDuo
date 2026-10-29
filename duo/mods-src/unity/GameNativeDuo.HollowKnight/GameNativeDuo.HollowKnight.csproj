@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    GameNative Duo for Hollow Knight: the map on the bottom screen while you play, on top of the generic Unity split
+    (../GameNativeDuo.UnitySplit, built first). Compiled against the game's own assemblies.
+    Build: dotnet build -c Release -p:ManagedPath=<Hollow Knight/hollow_knight_Data/Managed> -p:BepInExPath=<BepInEx/core>
+    The built DLL goes to app/src/main/assets/duo/mods/hollow-knight/plugin/.
+  -->
+  <PropertyGroup>
+    <AssemblyName>GameNativeDuo.HollowKnight</AssemblyName>
+    <RootNamespace>GameNativeDuo.HollowKnight</RootNamespace>
+    <Version>0.1.0</Version>
+    <TargetFramework>net46</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!-- Defaults: the Linux Steam copy of the game and the BepInEx bundled with the app, so a plain build works. -->
+    <ManagedPath Condition="'$(ManagedPath)' == ''">$(HOME)/.local/share/Steam/steamapps/common/Hollow Knight/hollow_knight_Data/Managed</ManagedPath>
+    <BepInExPath Condition="'$(BepInExPath)' == ''">$(MSBuildThisFileDirectory)../../../../app/src/main/assets/duo/mods/shared/bepinex/BepInEx/core</BepInExPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../GameNativeDuo.UnitySplit/GameNativeDuo.UnitySplit.csproj"><Private>false</Private><AdditionalProperties>ManagedPath=$(ManagedPath);BepInExPath=$(BepInExPath)</AdditionalProperties></ProjectReference>
+    <Reference Include="BepInEx"><HintPath>$(BepInExPath)/BepInEx.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="0Harmony"><HintPath>$(BepInExPath)/0Harmony.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Assembly-CSharp"><HintPath>$(ManagedPath)/Assembly-CSharp.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="PlayMaker"><HintPath>$(ManagedPath)/PlayMaker.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="TeamCherry.TK2D"><HintPath>$(ManagedPath)/TeamCherry.TK2D.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine"><HintPath>$(ManagedPath)/UnityEngine.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.CoreModule"><HintPath>$(ManagedPath)/UnityEngine.CoreModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.UI"><HintPath>$(ManagedPath)/UnityEngine.UI.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.UIModule"><HintPath>$(ManagedPath)/UnityEngine.UIModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.InputLegacyModule"><HintPath>$(ManagedPath)/UnityEngine.InputLegacyModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="netstandard"><HintPath>$(ManagedPath)/netstandard.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+</Project>

@@ -32,10 +32,16 @@ data class DuoGameMod(
     val launchExecutable: String? = null,
     /** How the screen split cuts the tall X screen for this game's mod. */
     val splitLayout: SplitLayout = SplitLayout.FILL,
+    /**
+     * Split resolution the mod is tuned for (DuoContainerSettings.splitScale), set when Dual screen is turned on and
+     * restored when it is turned off; null keeps the container's own. The user can still change it afterwards.
+     */
+    val splitScale: Float? = null,
 )
 
 object DuoModCatalog {
     private const val BALATRO_APPDATA = "users/xuser/AppData/Roaming/Balatro"
+    private const val SHARED = "duo/mods/shared"
 
     val mods: List<DuoGameMod> = listOf(
         DuoGameMod(
@@ -46,12 +52,17 @@ object DuoModCatalog {
             gameFiles = mapOf(
                 "duo/mods/balatro/lovely/winmm.dll" to "winmm.dll",
             ),
+            // Our Lua mod (hand, shop, packs and menus on the bottom screen, the table on top), one file per part.
             prefixFiles = mapOf(
-                "duo/mods/balatro/GameNativeDuo-split/lovely.toml" to "$BALATRO_APPDATA/Mods/GameNativeDuo-split/lovely.toml",
-                "duo/mods/balatro/GameNativeDuo-split/duo_split.lua" to "$BALATRO_APPDATA/Mods/GameNativeDuo-split/duo_split.lua",
+                "duo/mods/balatro/GameNativeDuo-split" to "$BALATRO_APPDATA/Mods/GameNativeDuo-split",
                 "duo/mods/balatro/lovely/LICENSE.md" to "$BALATRO_APPDATA/Mods/GameNativeDuo-split/LICENSE-lovely.md",
             ),
             dllOverrides = listOf("winmm=n,b"),
+            // Each part at its screen's shape, so the bottom screen holds a vanilla-sized hand and shop at the top
+            // screen's tile size. 75%: on the Thor the frame's present cost grows with its size (12.8 ms at 1920x2160,
+            // 7.8 ms at 75%), which kept a late-game table at 43 fps; 75% holds about 57-60.
+            splitLayout = SplitLayout.NATIVE,
+            splitScale = 0.75f,
         ),
         DuoGameMod(
             id = "stardew",
@@ -70,6 +81,38 @@ object DuoModCatalog {
             launchExecutable = "StardewModdingAPI.exe",
             splitLayout = SplitLayout.NATIVE,
         ),
+        unityGame(id = "slime-rancher", appId = "STEAM_433340", title = "Slime Rancher"),
+        unityGame(id = "subnautica", appId = "STEAM_264710", title = "Subnautica"),
+        // Plus a plugin of its own (source: duo/mods-src/unity/GameNativeDuo.HollowKnight): the map on the bottom
+        // screen while you play.
+        unityGame(
+            id = "hollow-knight",
+            appId = "STEAM_367520",
+            title = "Hollow Knight",
+            extraGameFiles = mapOf("duo/mods/hollow-knight/plugin" to "BepInEx/plugins/GameNativeDuo-hollowknight"),
+        ),
+        // Silksong and Risk of Rain 2 use the same plugin but are installed from the community list
+        // (experimental mod packages reusing these shared assets).
+    )
+
+    /**
+     * A Unity game with the Mono backend and uGUI: BepInEx 5.4.23.5 (https://github.com/BepInEx/BepInEx, MIT,
+     * unmodified; licence and notice alongside) loads through winhttp.dll, plus our generic plugin (source:
+     * duo/mods-src/unity). Both are shared by every Unity game (`assets/duo/mods/shared/`); a game's own folder only
+     * holds its optional UI layout preset (`ui-layout.json`).
+     */
+    private fun unityGame(id: String, appId: String, title: String, extraGameFiles: Map<String, String> = emptyMap()) = DuoGameMod(
+        id = id,
+        appId = appId,
+        title = title,
+        gameFiles = mapOf(
+            "$SHARED/bepinex" to "",
+            "$SHARED/BepInEx-LICENSE.txt" to "BepInEx/LICENSE-BepInEx.txt",
+            "$SHARED/BepInEx-NOTICE.txt" to "BepInEx/NOTICE-GameNativeDuo.txt",
+            "$SHARED/unity-split" to "BepInEx/plugins/GameNativeDuo-split",
+        ) + extraGameFiles,
+        dllOverrides = listOf("winhttp=n,b"),
+        splitLayout = SplitLayout.NATIVE,
     )
 
     private val byAppId = mods.associateBy { it.appId }

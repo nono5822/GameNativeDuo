@@ -5,14 +5,17 @@ import android.hardware.display.DisplayManager
 import android.os.Handler
 import android.os.Looper
 import android.view.View
+import app.gamenative.duo.bridge.DuoBridge
 import app.gamenative.duo.display.DeviceProfile
 import app.gamenative.duo.display.DisplayInventory
 import app.gamenative.duo.display.DisplaySnapshot
+import app.gamenative.duo.mods.DuoModInstaller
 import app.gamenative.duo.panel.BottomPanelController
 import app.gamenative.duo.settings.DuoSettingsStore
 import app.gamenative.duo.split.LayoutFile
 import app.gamenative.duo.split.SplitLayout
 import app.gamenative.duo.split.SplitScreenController
+import app.gamenative.duo.ui.UiLayoutController
 import com.winlator.container.Container
 import com.winlator.xserver.XServer
 import java.io.File
@@ -30,20 +33,31 @@ import timber.log.Timber
 object DualScreenHost {
     internal const val TAG = "GNDuo"
 
+    /** The running game's session (GameNative's in-game menu shows its GameNative Duo section from it). */
+    @Volatile
+    var current: DualScreenSession? = null
+        private set
+
     /**
      * Starts a dual-screen session for the game that is launching. The session ends by itself when
      * [lifecycleView] (the game screen's root view) is detached from its window.
      */
     @JvmStatic
     fun attach(context: Context, lifecycleView: View, container: Container, xServer: XServer?): DualScreenSession? = try {
+        DuoModInstaller.refreshIfUpdated(context, container.id)
+        if (!Container.isX11Display(container.containerVariant, container.displayServer)) {
+            Timber.tag(TAG).w("Gamescope display server: screen split and bottom-screen views need X11 (Graphics tab)")
+        }
         DualScreenSession(context, container, xServer).also { session ->
             session.start()
+            current = session
             lifecycleView.addOnAttachStateChangeListener(
                 object : View.OnAttachStateChangeListener {
                     override fun onViewAttachedToWindow(v: View) {}
 
                     override fun onViewDetachedFromWindow(v: View) {
                         v.removeOnAttachStateChangeListener(this)
+                        if (current === session) current = null
                         session.detach()
                     }
                 },
@@ -77,12 +91,33 @@ class DualScreenSession internal constructor(
         profile,
         settings.copy(bottomPanelEnabled = settings.bottomPanelEnabled && !(settings.screenSplit && xServer != null)),
     )
-    private val screenSplit = if (settings.screenSplit && xServer != null) {
-        SplitScreenController(context, xServer, profile, container, SplitLayout.fromId(settings.splitLayout))
+    private val splitOn = settings.screenSplit && xServer != null
+
+    // Talks to the game's mod (native touch, UI layout); only worth a socket when the game is split.
+    private val bridge = if (splitOn) DuoBridge.open() else null
+    private val uiLayout = if (splitOn) UiLayoutController(context, container, bridge) else null
+    private val screenSplit = if (splitOn) {
+        SplitScreenController(
+            context, xServer!!, profile, container, SplitLayout.fromId(settings.splitLayout),
+            bridge = bridge,
+            uiLayout = uiLayout,
+            nativeTouch = settings.nativeTouch,
+            scale = settings.splitScale,
+            region = settings.region,
+            onRegionSaved = { region ->
+                DuoSettingsStore.save(context, container.id, DuoSettingsStore.load(context, container.id).copy(region = region))
+            },
+        )
     } else {
         null
     }
     private var running = false
+
+    /** The game's UI layout while the screen split runs with a mod-aware layout (else null). */
+    val layout: UiLayoutController? get() = uiLayout
+
+    /** The screen split, for the in-game menu's actions (null when the split is off). */
+    val screens: SplitScreenController? get() = screenSplit
 
     private val displayListener = object : DisplayManager.DisplayListener {
         override fun onDisplayAdded(displayId: Int) = report("display $displayId added")
@@ -102,6 +137,11 @@ class DualScreenSession internal constructor(
         displayManager?.registerDisplayListener(displayListener, Handler(Looper.getMainLooper()))
         report("session start (container ${container.id}, profile ${profile.id}, $settings)")
         if (screenSplit == null) LayoutFile.delete(container)
+        try {
+            uiLayout?.start()
+        } catch (t: Throwable) {
+            Timber.tag(DualScreenHost.TAG).e(t, "Failed to hand the UI layout to the game")
+        }
     }
 
     fun detach() {
@@ -114,6 +154,7 @@ class DualScreenSession internal constructor(
         }
         bottomPanel.stop()
         screenSplit?.stop()
+        bridge?.close()
         Timber.tag(DualScreenHost.TAG).i("Session ended")
     }
 

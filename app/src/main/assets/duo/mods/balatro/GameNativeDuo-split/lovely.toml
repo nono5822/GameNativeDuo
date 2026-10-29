@@ -1,18 +1,20 @@
-# GameNativeDuo screen split for Balatro (Lovely mod). See duo_split.lua.
-# Install: copy this folder to %AppData%/Balatro/Mods/, with Lovely's winmm.dll next to Balatro.exe
-# and WINEDLLOVERRIDES=winmm=n,b in the container's environment.
+# GameNativeDuo for Balatro (Lovely mod): the table on the top screen, your hand, the shop, packs and menus on the
+# bottom screen, in one window that GameNative Duo splits across both screens. See duo_core.lua.
+# Installed by GameNative Duo's "Dual screen" switch: this folder in %AppData%/Balatro/Mods/, Lovely's winmm.dll next to
+# Balatro.exe, WINEDLLOVERRIDES=winmm=n,b. Written for Balatro 1.0.1; every hook below is a no-op with a normal window.
 [manifest]
-version = "0.1.0"
+version = "0.2.0"
 dump_lua = false
 priority = 0
 
+# Our code, after main.lua's requires and definitions (so it can wrap them) and before anything runs.
 [[patches]]
 [patches.copy]
 target = "main.lua"
-position = "prepend"
-sources = ["duo_split.lua"]
+position = "append"
+sources = ["duo_util.lua", "duo_core.lua", "duo_layout.lua", "duo_render.lua", "duo_preview.lua", "duo_bridge.lua"]
 
-# Lay the room out in the upper part of a tall window (Balatro would otherwise refuse tall windows).
+# Lay the room out in the top part of the tall window (Balatro would otherwise centre it in the whole window).
 [[patches]]
 [patches.pattern]
 target = "main.lua"
@@ -21,7 +23,7 @@ position = "after"
 payload = "h = GNDuo.layout_height(w, h)"
 match_indent = true
 
-# Keep the anchor for the lower part in step with the room.
+# Keep the bottom-screen anchor in step with the room.
 [[patches]]
 [patches.pattern]
 target = "main.lua"
@@ -39,20 +41,160 @@ position = "before"
 payload = "h = GNDuo.canvas_height(h)"
 match_indent = true
 
-# Move the run HUD into the lower part as soon as it exists.
+# Screen-aware copies of the background, splash, flash and CRT shaders.
 [[patches]]
 [patches.pattern]
 target = "game.lua"
-pattern = "self.HUD_blind = UIBox{"
+pattern = "boot_timer('shaders', 'controllers',0.7)"
 position = "before"
-payload = "GNDuo.move_hud(self.HUD)"
+payload = "GNDuo.safe('patch shaders', GNDuo.patch_shaders, self.SHADERS)"
 match_indent = true
 
-# Stretch the animated background over the lower part as well.
+# The backdrop per screen (and the bottom screen's background choice).
+[[patches]]
+[patches.pattern]
+target = "game.lua"
+pattern = "G.SPLASH_BACK:draw()"
+position = "at"
+payload = "GNDuo.draw_backdrop(G.SPLASH_BACK, true)"
+match_indent = true
+
+[[patches]]
+[patches.pattern]
+target = "game.lua"
+pattern = "G.SPLASH_FRONT:draw()"
+position = "at"
+payload = "GNDuo.draw_backdrop(G.SPLASH_FRONT, false)"
+match_indent = true
+
+# The final composite, one quad per screen (each with its own CRT curve).
+[[patches]]
+[patches.pattern]
+target = "game.lua"
+pattern = "love.graphics.draw(self.CANVAS, 0, 0)"
+position = "at"
+payload = "GNDuo.composite(self.CANVAS)"
+match_indent = true
+
+# The backdrop sprites reach only a little below the room: stretch them over the bottom part as well.
 [[patches]]
 [patches.pattern]
 target = "game.lua"
 pattern = "G.SPLASH_BACK:translate_container()"
 position = "before"
 payload = "GNDuo.cover_bottom(G.SPLASH_BACK)"
+match_indent = true
+
+# The hand rests on the bottom screen (and with it the shop, packs and cash out, which vanilla hangs from the hand).
+[[patches]]
+[patches.pattern]
+target = "cardarea.lua"
+pattern = "local desired_y = G.TILE_H - G.hand.T.h - 1.9*((not G.deck_preview and (G.STATE == G.STATES.SELECTING_HAND or G.STATE == G.STATES.DRAW_TO_HAND)) and 1 or 0)"
+position = "after"
+payload = "desired_y = GNDuo.hand_y(desired_y)"
+match_indent = true
+
+# The blind select is placed from the joker row in vanilla: centre it on the bottom screen.
+[[patches]]
+[patches.pattern]
+target = "game.lua"
+pattern = "G.blind_select.alignment.offset.y = 0.8-(G.hand.T.y - G.jokers.T.y) + G.blind_select.T.h"
+position = "after"
+payload = "GNDuo.place_blind_select()"
+match_indent = true
+
+# Booster pack sparkles and stars fill the bottom screen, where the pack opens.
+[[patches]]
+[patches.pattern]
+target = "game.lua"
+pattern = "attach = G.ROOM_ATTACH,"
+position = "at"
+payload = "attach = GNDuo.pack_attach(),"
+match_indent = true
+
+# Main menu: the buttons and the profile button on the bottom screen, the title on top.
+[[patches]]
+[patches.pattern]
+target = "functions/common_events.lua"
+pattern = "G.MAIN_MENU_UI:align_to_major()"
+position = "after"
+payload = "GNDuo.to_bottom(G.MAIN_MENU_UI, 'cm', {x = 0, y = 0})"
+match_indent = true
+
+[[patches]]
+[patches.pattern]
+target = "functions/common_events.lua"
+pattern = "G.PROFILE_BUTTON:align_to_major()"
+position = "after"
+payload = "GNDuo.to_bottom(G.PROFILE_BUTTON, 'bli', {x = 0.35, y = -0.35})"
+match_indent = true
+
+# Vanilla's "is it on screen" checks stop at the room's bottom: extend them to the bottom screen (cursor collision,
+# gamepad focus, gamepad button shortcuts, the pop-in sound of texts).
+[[patches]]
+[patches.pattern]
+target = "engine/controller.lua"
+pattern = "cursor_trans.y-G.ROOM.T.y < -G.DRAW_HASH_BUFF or cursor_trans.y-G.ROOM.T.y > G.TILE_H + G.DRAW_HASH_BUFF then"
+position = "at"
+payload = "cursor_trans.y-G.ROOM.T.y < -G.DRAW_HASH_BUFF or cursor_trans.y-G.ROOM.T.y > GNDuo.room_h() + G.DRAW_HASH_BUFF then"
+match_indent = true
+
+[[patches]]
+[patches.pattern]
+target = "engine/controller.lua"
+pattern = "if node.T.y > G.ROOM.T.h + 3 then return false end"
+position = "at"
+payload = "if node.T.y > GNDuo.room_h() + 3 then return false end"
+match_indent = true
+
+[[patches]]
+[patches.pattern]
+target = "engine/controller.lua"
+pattern = "registry?i?.node.T.y > -2 and registry?i?.node.T.y < G.ROOM.T.h + 2 then"
+position = "at"
+payload = "registry[i].node.T.y > -2 and registry[i].node.T.y < GNDuo.room_h() + 2 then"
+match_indent = true
+
+[[patches]]
+[patches.pattern]
+target = "engine/text.lua"
+pattern = "self.T.y > G.ROOM.T.h+2 or"
+position = "at"
+payload = "self.T.y > GNDuo.room_h()+2 or"
+match_indent = true
+
+# Panels that vanilla waits on to slide in, compared at the height they would have on vanilla's screen: the booster
+# pack's cards are dealt into it, the blind choices get their Select buttons, the tutorial's shop step starts.
+[[patches]]
+[patches.pattern]
+target = "card.lua"
+pattern = "if G.pack_cards and G.pack_cards.VT.y < G.ROOM.T.h then*"
+position = "at"
+payload = "if G.pack_cards and GNDuo.vanilla_y(G.pack_cards.VT.y) < G.ROOM.T.h then"
+match_indent = true
+
+[[patches]]
+[patches.pattern]
+target = "functions/button_callbacks.lua"
+pattern = "if not e.config.ref_table.run_info and G.blind_select and G.blind_select.VT.y < 10 and e.config.id and G.blind_select_opts?string.lower(e.config.id)? then*"
+position = "at"
+payload = "if not e.config.ref_table.run_info and G.blind_select and GNDuo.vanilla_y(G.blind_select.VT.y) < 10 and e.config.id and G.blind_select_opts[string.lower(e.config.id)] then"
+match_indent = true
+
+[[patches]]
+[patches.pattern]
+target = "functions/state_events.lua"
+pattern = "if G.STATE == G.STATES.SHOP and G.shop and G.shop.VT.y < 5 and not G.SETTINGS.tutorial_progress.completed_parts?'shop_1'? then*"
+position = "at"
+payload = "if G.STATE == G.STATES.SHOP and G.shop and GNDuo.vanilla_y(G.shop.VT.y) < 5 and not G.SETTINGS.tutorial_progress.completed_parts['shop_1'] then"
+match_indent = true
+
+# The table's slight parallax follows the cursor; a finger on the bottom screen counts at its height on that screen
+# (vanilla would tilt the whole table towards the bottom of the window).
+[[patches]]
+[patches.pattern]
+target = "functions/common_events.lua"
+pattern = "G.ARGS.eased_cursor_pos.y = G.ARGS.eased_cursor_pos.y*(1-3*dt) + 3*dt*(shake_amt*G.CURSOR.T.y + (1-shake_amt)*G.ROOM.T.h/2)"
+position = "at"
+payload = "G.ARGS.eased_cursor_pos.y = G.ARGS.eased_cursor_pos.y*(1-3*dt) + 3*dt*(shake_amt*GNDuo.vanilla_y(G.CURSOR.T.y) + (1-shake_amt)*G.ROOM.T.h/2)"
 match_indent = true
