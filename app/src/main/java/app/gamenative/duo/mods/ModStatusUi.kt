@@ -177,7 +177,8 @@ private fun LastSession(report: ModStatusReport) {
 @Composable
 private fun Files(state: ModHubState, busy: Boolean, onReset: () -> Unit) {
     val scope = rememberCoroutineScope()
-    var files by remember { mutableStateOf<List<DuoModInstaller.ModFile>?>(null) }
+    // A fix or reset reloads the status: an older check no longer holds.
+    var files by remember(state.status) { mutableStateOf<List<DuoModInstaller.ModFile>?>(null) }
     var checking by remember { mutableStateOf(false) }
     Text(stringResource(R.string.duo_status_files), style = MaterialTheme.typography.titleSmall)
     val list = files

@@ -241,7 +241,7 @@ fun DuoQuickMenuSection(onDismiss: () -> Unit, modifier: Modifier = Modifier) {
             OutlinedButton(
                 onClick = { if (screens.openMenu()) onDismiss() },
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text("Open the bottom screen menu", color = Color.White) }
+            ) { Text("Bottom screen menu", color = Color.White) }
             Text("The same menu as holding two fingers on the bottom screen.", color = Muted, fontSize = 13.sp)
             OutlinedButton(
                 onClick = { if (screens.openCalibration()) onDismiss() },

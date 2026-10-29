@@ -382,6 +382,8 @@ private class SplitBottomPresentation(
         // Status card above the widgets, below the panels (those are added later); only the card itself takes touches.
         val card = StatusCard(context)
         status = card
+        // Nothing on the bottom screen overlaps: widgets step aside while a card shows.
+        card.onShownChanged = { shown -> layer.alpha = if (shown) 0f else 1f }
         root = FrameLayout(context).apply {
             setBackgroundColor(Color.BLACK)
             addView(surfaceView)
@@ -561,7 +563,8 @@ private class SplitBottomPresentation(
             showOverlay(
                 DuoMenuPanel(
                     context,
-                    canEditUi = uiLayout?.canEdit == true,
+                    // Seen this session, not "lately": GameNative's menu pauses the game (and the mod's hellos).
+                    canEditUi = uiLayout?.modSeen == true,
                     onEditUi = ::showEditor,
                     onCalibrate = ::showCalibration,
                     onClose = ::hideOverlay,

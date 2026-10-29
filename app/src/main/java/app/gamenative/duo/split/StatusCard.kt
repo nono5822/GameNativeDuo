@@ -35,6 +35,9 @@ internal class StatusCard(context: Context) : FrameLayout(context) {
     var showing: String? = null
         private set
 
+    /** Told when the card appears (true) or goes (false), so what it would cover can step aside. */
+    var onShownChanged: ((Boolean) -> Unit)? = null
+
     init {
         card.addView(title)
         card.addView(body, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
@@ -57,11 +60,13 @@ internal class StatusCard(context: Context) : FrameLayout(context) {
         hide.visibility = if (dismissible) VISIBLE else GONE
         visibility = VISIBLE
         if (showing != titleText) Timber.tag(DualScreenHost.TAG).i("Bottom screen status: %s", titleText)
+        if (showing == null) onShownChanged?.invoke(true)
         showing = titleText
     }
 
     fun dismiss() {
         visibility = GONE
+        if (showing != null) onShownChanged?.invoke(false)
         showing = null
     }
 
