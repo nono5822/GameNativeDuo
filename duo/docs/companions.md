@@ -40,8 +40,11 @@ the bottom part of the game costs nothing. The top screen (overlay cards above t
 for v2; the manifest already says where a card wants to go (`screen`) so v1 packages keep working.
 
 The companion window is a non-focusable `Presentation`, like every bottom-screen panel: the game keeps the controller
-and keyboard. Touch drives the companion. Text input (notes) temporarily makes the window focusable while the user
-types and gives focus back on Done. A controller chord to drive the companion with the D-pad is task 05 (hotkeys).
+and keyboard. Touch drives the companion. Text input (notes, checklist items) is a dialog on the main screen: with
+the game running on display 0, Android binds the keyboard to that display's focused window, never to a bottom-screen
+window, even a focusable one (tested on the Thor). The Thor then opens the keyboard itself on the bottom screen, in
+full-screen mode, which suits a handheld. A controller chord to drive the companion with the D-pad is task 05
+(hotkeys).
 
 ## Package layout
 
@@ -56,7 +59,8 @@ types and gives focus back on Done. A controller chord to drive the companion wi
 
 Bundled companions live in `assets/duo/companions/<id>/`; community ones in `files/duo/companions/<id>/`; companions
 being written in `Android/data/app.gamenative.duo/files/duo/companions/dev/<id>/` (adb can push there without
-`run-as`; the app reloads them live). User state (ticks, notes, timers) lives apart from the package, in
+`run-as`, but cannot create folders with `adb push`: `adb shell mkdir -p` first; the app reloads them live, and
+"Automatic" prefers a dev companion, so restart the game once after the first push). User state (ticks, notes, timers) lives apart from the package, in
 `files/duo/companions/state/<containerId>/<id>.json`, so updating or reinstalling a companion never loses it.
 
 ## Manifest (`companion.json`)
