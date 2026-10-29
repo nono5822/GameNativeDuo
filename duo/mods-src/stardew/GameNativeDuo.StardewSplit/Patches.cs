@@ -273,7 +273,8 @@ internal static class Patches
 
     /// <summary>
     /// Title and loading screens (no save loaded, so no world render target): the game drew straight to the window;
-    /// put the UI layer on the bottom screen over it, as the game would at the window's top-left.
+    /// put the UI layer on the bottom screen over it, as the game would at the window's top-left, and the title
+    /// screen's top half (<see cref="TitleScreen"/>) on the top screen, fading with the game's fades.
     /// </summary>
     private static bool DrawUiOnly(Game1 game)
     {
@@ -282,8 +283,17 @@ internal static class Patches
         try
         {
             var batch = Game1.spriteBatch;
+            RenderTarget2D? top = TitleScreen.DrawTop(L);
             Game1.graphics.GraphicsDevice.SetRenderTarget(null);
+            if (top != null)
+                Game1.graphics.GraphicsDevice.Clear(Color.Black);
             batch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.LinearClamp, DepthStencilState.Default, RasterizerState.CullNone);
+            if (top != null)
+            {
+                batch.Draw(top, new Vector2(L.Top.X, L.Top.Y), top.Bounds, Color.White, 0f, Vector2.Zero, Game1.options.uiScale, SpriteEffects.None, 1f);
+                if ((Game1.fadeToBlack || Game1.globalFade) && Game1.fadeToBlackAlpha > 0f)
+                    batch.Draw(Game1.fadeToBlackRect, L.Top, Color.Black * (Game1.gameMode == 0 ? 1f - Game1.fadeToBlackAlpha : Game1.fadeToBlackAlpha));
+            }
             batch.Draw(game.uiScreen, new Vector2(L.Bottom.X, L.Bottom.Y), game.uiScreen.Bounds, Color.White, 0f, Vector2.Zero, Game1.options.uiScale, SpriteEffects.None, 1f);
             batch.End();
             return false;
@@ -306,7 +316,7 @@ internal static class Patches
     };
 
     /// <summary>No menu cursor while a finger drives the game (held items are drawn separately and stay).</summary>
-    private static bool MenuDrawMouse_Prefix() => !(ModEntry.Active && TouchInput.Driving);
+    private static bool MenuDrawMouse_Prefix() => !(ModEntry.Active && (TouchInput.Driving || TitleScreen.DrawingTop));
 
     /// <summary>No mouse cursor while the pointer is on the bottom (touch) screen or a finger drives it.</summary>
     private static bool DrawMouseCursor_Prefix()

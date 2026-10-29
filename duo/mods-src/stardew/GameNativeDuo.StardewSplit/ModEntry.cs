@@ -43,6 +43,8 @@ public sealed class ModEntry : Mod
         Patches.Apply(harmony);
         Guard("touch input", () => TouchInput.Apply(harmony));
         Guard("UI layout", () => HudLayout.Apply(harmony));
+        Guard("title screen", () => TitleScreen.Apply(harmony));
+        helper.Events.GameLoop.SaveLoaded += (_, _) => TitleScreen.Release();
         ReloadRules();
         StartBridge();
         helper.Events.Input.ButtonPressed += OnButtonPressed;

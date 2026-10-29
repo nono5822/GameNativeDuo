@@ -49,3 +49,21 @@ game; drive tests with bottom-screen taps/swipes and this file.
 - Real-finger check by the user. Mouse users: the first real mouse move/click hands the cursor back (unchanged).
 - Shops, the shipping bin, tool upgrades and the museum use other menus: drags there fall back to the generic
   "click where the finger lifts" (inside the menu); check them.
+
+# Title screen over both screens (mod 0.5.0)
+
+`TitleScreen.cs`: the title is one scene across both screens, like a dual-screen handheld's own title.
+- Top screen: a second draw of `TitleMenu` at the top screen's size into its own render target (title only, freed
+  when a save loads): sky, the sign with birds and leaves, the opening logos (centred on the top screen). Buttons,
+  submenus, the cursor, the mute and windowed buttons are hidden in that pass; the sign stays while the load list or
+  character creation is open below (vanilla slides it away). Fades to black are drawn on it too.
+- Bottom screen: the game's own draw, scrolled 720 UI px further into the scene (never past its lower end, where the
+  opening pan starts) so the sign is not repeated; buttons, the load list and every submenu unchanged, so taps are
+  too. During the opening logos it shows the matching white, and a tap anywhere skips them.
+- One sky: the top of the bottom screen starts with the gradient colour the top screen ends with (read from the
+  game's own 264 px sky gradient, row computed from the live scroll), fading into the scene over 380 px; only once
+  the top screen's edge is sky (not during the opening pan) and never over submenus.
+- Verified on the Thor: intro, pan, logo drop, settled title, load list, character creation
+  (`duo/agents/runs/2026-10-28-stardew-dnd/title-sheet.png`). No GPU hang (the title once hung when forcing
+  `ShouldDrawOnBuffer`; this adds one render target and does not force it). Saves unchanged.
+- Known: during the 3 s opening pan both screens show the hills (the scene has nothing further down).
