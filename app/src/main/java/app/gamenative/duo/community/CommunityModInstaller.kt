@@ -80,6 +80,8 @@ object CommunityModInstaller {
             dllOverrides = plan.dllOverrides,
             launchExecutable = plan.launchExecutable,
             splitLayout = SplitLayout.fromId(pkg.install?.splitLayout ?: SplitLayout.NATIVE.id),
+            // Our shared BepInEx only loads in Unity games.
+            unity = "bepinex" in plan.sharedAssets,
         )
         val ok = DuoModInstaller.enableDownloaded(
             context,

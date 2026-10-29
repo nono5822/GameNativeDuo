@@ -1,6 +1,7 @@
 package app.gamenative.duo.mods
 
 import android.content.Context
+import app.gamenative.R
 import app.gamenative.duo.DualScreenHost
 import app.gamenative.duo.display.DeviceProfile
 import app.gamenative.duo.display.ScreenCalibrationStore
@@ -29,6 +30,7 @@ import timber.log.Timber
 object DuoModInstaller {
     private const val ENV_DLL_OVERRIDES = "WINEDLLOVERRIDES"
     private const val BACKUP_SUFFIX = ".duo-backup"
+    private const val USER_SUFFIX = ".duo-user"
     private const val SHARED_ASSETS = "duo/mods/shared"
 
     fun isEnabled(context: Context, appId: String): Boolean = stateFile(context, appId).isFile
@@ -38,6 +40,13 @@ object DuoModInstaller {
         stateFile(context, appId).takeIf { it.isFile }?.let { JSONObject(it.readText()).optString("mod").ifEmpty { null } }
     } catch (t: Throwable) {
         null
+    }
+
+    /** The screen size the installed mod set for [appId] (empty when none is installed or none was set). */
+    fun recordedScreenSize(context: Context, appId: String): String = try {
+        stateFile(context, appId).takeIf { it.isFile }?.let { JSONObject(it.readText()).optString("screenSize") }.orEmpty()
+    } catch (t: Throwable) {
+        ""
     }
 
     /** Applies [mod] to its container; [gameDir] is the game's install folder. Returns false (and logs) on failure. */
@@ -78,6 +87,7 @@ object DuoModInstaller {
             val size = ScreenSplit.recommendedFor(context, layout, scale)?.let { "${it.first}x${it.second}" } ?: return
             val container = ContainerUtils.getContainer(context, appId)
             container.screenSize = size
+            if (state.optBoolean("unityArgs")) setUnityArgs(container, state)
             container.saveData()
             state.put("screenSize", size)
             file.writeText(state.toString(2))
@@ -109,10 +119,13 @@ object DuoModInstaller {
     ): Boolean = try {
         val container = ContainerUtils.getOrCreateContainer(context, mod.appId)
         val driveC = File(container.rootDir, ".wine/drive_c")
+        // The mod is code that runs inside the game: its saves are copied first (restored from the mod explorer).
+        val saves = SaveBackup.backup(context, mod.appId, gameDir, driveC, context.getString(R.string.duo_saves_reason_install, mod.title))
         val state = JSONObject()
             .put("gameDir", gameDir.absolutePath)
             .put("driveC", driveC.absolutePath)
             .put("splitLayout", mod.splitLayout.id)
+        saves?.let { state.put("saveBackup", it.file.name) }
         origin?.let { state.put("origin", it) }
         mod.launchExecutable?.let { state.put("launchExecutable", it) }
 
@@ -172,6 +185,10 @@ object DuoModInstaller {
             container.executablePath = it
         }
 
+        // Unity remembers its last resolution: start it at the split window instead of asking the user to pick it once.
+        if (mod.unity) setUnityArgs(container, state)
+        state.put("gameFingerprint", gameFingerprint(gameDir, files))
+
         // Under Gamescope the X server's renderer never presents, so neither screen split nor the bottom screen works.
         if (!Container.isX11Display(container.containerVariant, container.displayServer)) {
             state.put("previousDisplayServer", container.displayServer)
@@ -228,6 +245,16 @@ object DuoModInstaller {
             sources.forEach { (asset, target) -> updated += refreshAssetTree(context, asset, target, ours, files) }
             state.put("files", files).put("apkStamp", stamp)
             DuoModCatalog.mods.firstOrNull { it.id == state.optString("mod") }?.let { migrateSplitLayout(context, appId, state, it) }
+            // Installed before Unity games got their launch size: add it now (undone like a new install's).
+            val unity = DuoModCatalog.mods.firstOrNull { it.id == state.optString("mod") }?.unity
+                ?: (state.optJSONObject("origin")?.optJSONObject("sharedAssets")?.has("bepinex") == true)
+            if (unity && !state.has("unityArgs")) {
+                val container = ContainerUtils.getContainer(context, appId)
+                if (state.optString("screenSize").let { it.isEmpty() || it == container.screenSize }) {
+                    setUnityArgs(container, state)
+                    container.saveData()
+                }
+            }
             file.writeText(state.toString(2))
             Timber.tag(DualScreenHost.TAG).i("Mod files for %s checked after an app update: %d updated", appId, updated)
         } catch (t: Throwable) {
@@ -262,24 +289,50 @@ object DuoModInstaller {
         )
     }
 
-    private fun refreshAssetTree(context: Context, asset: String, target: File, ours: Map<String, JSONObject>, records: JSONArray): Int {
+    /**
+     * Brings one APK asset (or folder) up to date at [target]. A file of ours the user changed is left alone, unless
+     * [force] (Reset mod files): then the user's copy is kept as `<name>.duo-user` and ours written. A file that already
+     * holds the APK's current bytes (pushed by hand, or updated elsewhere) is adopted: the record takes its hash.
+     */
+    private fun refreshAssetTree(
+        context: Context,
+        asset: String,
+        target: File,
+        ours: Map<String, JSONObject>,
+        records: JSONArray,
+        force: Boolean = false,
+    ): Int {
         val children = context.assets.list(asset).orEmpty()
-        if (children.isNotEmpty()) return children.sumOf { refreshAssetTree(context, "$asset/$it", File(target, it), ours, records) }
+        if (children.isNotEmpty()) return children.sumOf { refreshAssetTree(context, "$asset/$it", File(target, it), ours, records, force) }
         val entry = ours[target.absolutePath]
         if (entry == null) {
             val before = records.length()
             context.assets.open(asset).use { install(it, target, records) }
             return records.length() - before
         }
-        // Ours: replace it only if it is still what we installed (or gone), never a file the user changed.
-        if (target.isFile && sha256(target) != entry.getString("sha256")) return 0
         target.parentFile?.mkdirs()
         val temp = File(target.path + ".duo-tmp")
         context.assets.open(asset).use { input -> temp.outputStream().use { input.copyTo(it) } }
         val hash = sha256(temp)
-        if (hash == entry.getString("sha256") && target.isFile) {
+        val current = if (target.isFile) sha256(target) else null
+        if (current == hash) {
             temp.delete()
+            entry.put("sha256", hash)
             return 0
+        }
+        // Ours: replace it only if it is still what we installed (or gone), never a file the user changed.
+        if (current != null && current != entry.getString("sha256")) {
+            if (!force) {
+                temp.delete()
+                return 0
+            }
+            File(target.path + USER_SUFFIX).let { kept ->
+                kept.delete()
+                if (!target.renameTo(kept)) {
+                    temp.delete()
+                    error("Could not keep the changed $target")
+                }
+            }
         }
         if (!temp.renameTo(target)) {
             temp.delete()
@@ -341,6 +394,14 @@ object DuoModInstaller {
         if (state.has("previousExecutablePath") && container.executablePath == launchExecutable) {
             container.executablePath = state.optString("previousExecutablePath", "")
         }
+        if (state.optBoolean("unityArgs")) {
+            container.execArgs = if (container.execArgs == state.optString("execArgs")) {
+                state.optString("previousExecArgs")
+            } else {
+                // Changed since: take out only our size pair.
+                UnityScreenArgs.remove(container.execArgs)
+            }
+        }
         // Back to Gamescope unless the user picked another display server since.
         if (state.has("previousDisplayServer") && container.displayServer == Container.DISPLAY_SERVER_X11) {
             container.displayServer = state.optString("previousDisplayServer", Container.DISPLAY_SERVER_X11)
@@ -368,6 +429,175 @@ object DuoModInstaller {
     } catch (t: Throwable) {
         Timber.tag(DualScreenHost.TAG).e(t, "Failed to disable the dual-screen mod for %s", appId)
         false
+    }
+
+    // ---- status and repairs (the Dual screen control's status dialog) ----------------------------------------------
+
+    /** Quick status for the Dual screen control: settings, missing files, the last session. No hashing. */
+    fun status(context: Context, appId: String): ModStatusReport {
+        val last = SessionStatusStore.load(context, appId)
+        val file = stateFile(context, appId)
+        if (!file.isFile) return ModStatusReport(false, emptyList(), last)
+        val state = JSONObject(file.readText())
+        val container = ContainerUtils.getContainer(context, appId)
+        val files = state.optJSONArray("files") ?: JSONArray()
+        val missing = (0 until files.length()).count { !File(files.getJSONObject(it).getString("path")).isFile }
+        val fingerprint = state.optString("gameFingerprint")
+        val gameDir = File(state.optString("gameDir"))
+        return ModStatusReport.evaluate(
+            on = true,
+            gamescope = !Container.isX11Display(container.containerVariant, container.displayServer),
+            expectedScreen = state.optString("screenSize"),
+            screen = container.screenSize.orEmpty(),
+            missingFiles = missing,
+            modId = state.optString("mod").ifEmpty { null },
+            last = last,
+            gameUpdated = fingerprint.isNotEmpty() && gameDir.isDirectory && fingerprint != gameFingerprint(gameDir, files),
+        )
+    }
+
+    enum class FileState { OURS, CHANGED, MISSING }
+
+    /** One file the mod installed; [path] is relative to the game folder or `drive_c`. */
+    data class ModFile(val path: String, val state: FileState)
+
+    /** Every file the mod installed and whether it is still ours (hashes every file: background thread). */
+    fun fileReport(context: Context, appId: String): List<ModFile> {
+        val file = stateFile(context, appId)
+        if (!file.isFile) return emptyList()
+        val state = JSONObject(file.readText())
+        val roots = listOf(state.optString("gameDir"), state.optString("driveC")).filter { it.isNotEmpty() }
+        val files = state.optJSONArray("files") ?: JSONArray()
+        return (0 until files.length()).map { i ->
+            val entry = files.getJSONObject(i)
+            val f = File(entry.getString("path"))
+            val s = when {
+                !f.isFile -> FileState.MISSING
+                sha256(f) == entry.getString("sha256") -> FileState.OURS
+                else -> FileState.CHANGED
+            }
+            val root = roots.firstOrNull { f.path.startsWith(it + File.separator) }
+            ModFile(root?.let { f.path.removePrefix(it + File.separator) } ?: f.path, s)
+        }
+    }
+
+    /**
+     * Reset mod files: every file the mod installed is put back as the app (or the package) ships it, including missing
+     * ones; a file the user changed is kept next to it as `<name>.duo-user`. Settings are untouched. [download] fetches
+     * a community package's own file by its sha256 (null for bundled mods). Returns how many files were written.
+     */
+    fun resetFiles(context: Context, appId: String, download: ((String) -> ByteArray)?): Int {
+        val file = stateFile(context, appId)
+        val state = JSONObject(file.readText())
+        val gameDir = File(state.getString("gameDir"))
+        val driveC = File(state.getString("driveC"))
+        val files = state.optJSONArray("files") ?: JSONArray()
+        val ours = (0 until files.length()).map { files.getJSONObject(it) }.associateBy { it.getString("path") }
+        val bundled = DuoModCatalog.mods.firstOrNull { it.id == state.optString("mod") }
+        val sources = mutableListOf<Pair<String, File>>()
+        bundled?.let { mod ->
+            mod.gameFiles.forEach { (asset, rel) -> sources += asset to File(gameDir, rel) }
+            mod.prefixFiles.forEach { (asset, rel) -> sources += asset to File(driveC, rel) }
+        }
+        state.optJSONObject("origin")?.optJSONObject("sharedAssets")?.let { shared ->
+            shared.keys().forEach { asset -> sources += "$SHARED_ASSETS/$asset" to inside(gameDir, shared.getString(asset)) }
+        }
+        var written = 0
+        val fromApk = HashSet<String>()
+        sources.forEach { (asset, target) ->
+            assetLeaves(context, asset, target).forEach { fromApk += it.absolutePath }
+            written += refreshAssetTree(context, asset, target, ours, files, force = true)
+        }
+        // The rest: copies of game files (SMAPI's deps.json) and a community package's own files.
+        val copies = bundled?.gameFileCopies.orEmpty().entries.associate { (src, dst) ->
+            File(gameDir, dst).absolutePath to File(gameDir, src)
+        }
+        ours.values.filter { it.getString("path") !in fromApk }.forEach { entry ->
+            val target = File(entry.getString("path"))
+            val expected = entry.getString("sha256")
+            val copyOf = copies[target.absolutePath]
+            if (copyOf == null && target.isFile && sha256(target) == expected) return@forEach
+            val bytes = when {
+                copyOf != null -> copyOf.readBytes()
+                download != null -> download(expected)
+                else -> error("No source for ${target.name}")
+            }
+            if (target.isFile && sha256(target) == sha256(bytes)) {
+                entry.put("sha256", sha256(bytes))
+                return@forEach
+            }
+            if (target.isFile && sha256(target) != expected) {
+                File(target.path + USER_SUFFIX).also { it.delete() }.let { target.renameTo(it) }
+            }
+            target.parentFile?.mkdirs()
+            val temp = File(target.path + ".duo-tmp")
+            temp.writeBytes(bytes)
+            if (!temp.renameTo(target)) {
+                temp.delete()
+                error("Could not write $target")
+            }
+            entry.put("sha256", sha256(bytes))
+            written++
+        }
+        state.put("files", files).put("gameFingerprint", gameFingerprint(gameDir, files))
+        file.writeText(state.toString(2))
+        SessionStatusStore.clear(context, appId)
+        Timber.tag(DualScreenHost.TAG).i("Mod files for %s reset: %d written", appId, written)
+        return written
+    }
+
+    /** Fix for [ModProblem.GAMESCOPE]: X11, restored to Gamescope when Dual screen turns off. */
+    fun useX11(context: Context, appId: String) {
+        val file = stateFile(context, appId)
+        val state = JSONObject(file.readText())
+        val container = ContainerUtils.getContainer(context, appId)
+        if (Container.isX11Display(container.containerVariant, container.displayServer)) return
+        if (!state.has("previousDisplayServer")) state.put("previousDisplayServer", container.displayServer)
+        container.displayServer = Container.DISPLAY_SERVER_X11
+        container.saveData()
+        file.writeText(state.toString(2))
+        SessionStatusStore.clear(context, appId)
+    }
+
+    /** Fix for [ModProblem.WRONG_SIZE]: the screen size the split needs (and Unity's launch size with it). */
+    fun useSplitSize(context: Context, appId: String) {
+        val file = stateFile(context, appId)
+        val state = JSONObject(file.readText())
+        val size = state.optString("screenSize").ifEmpty { return }
+        val container = ContainerUtils.getContainer(context, appId)
+        container.screenSize = size
+        if (state.optBoolean("unityArgs")) setUnityArgs(container, state)
+        container.saveData()
+        file.writeText(state.toString(2))
+        SessionStatusStore.clear(context, appId)
+    }
+
+    /** Sets Unity's launch size to the container's screen size; the first call records the arguments to restore. */
+    private fun setUnityArgs(container: Container, state: JSONObject) {
+        val (w, h) = UnityScreenArgs.size(container.screenSize) ?: return
+        if (!state.has("previousExecArgs")) state.put("previousExecArgs", container.execArgs.orEmpty())
+        container.execArgs = UnityScreenArgs.add(container.execArgs.orEmpty(), w, h)
+        state.put("unityArgs", true).put("execArgs", container.execArgs)
+    }
+
+    /**
+     * Names and sizes of the game's own top-level files (and a Unity game's Assembly-CSharp.dll): changes when the
+     * game is updated. Files the mod installed and our backups are left out.
+     */
+    private fun gameFingerprint(gameDir: File, records: JSONArray): String {
+        val ours = (0 until records.length()).map { records.getJSONObject(it).getString("path") }.toSet()
+        val files = gameDir.listFiles().orEmpty().filter {
+            it.isFile && it.absolutePath !in ours && !it.name.endsWith(BACKUP_SUFFIX) && !it.name.endsWith(USER_SUFFIX)
+        }
+        val managed = gameDir.listFiles { f -> f.isDirectory && f.name.endsWith("_Data") }.orEmpty()
+            .map { File(it, "Managed/Assembly-CSharp.dll") }.filter { it.isFile }
+        val text = (files + managed).map { "${it.relativeTo(gameDir).path}:${it.length()}" }.sorted().joinToString("\n")
+        return sha256(text.toByteArray()).take(16)
+    }
+
+    private fun assetLeaves(context: Context, asset: String, target: File): List<File> {
+        val children = context.assets.list(asset).orEmpty()
+        return if (children.isEmpty()) listOf(target) else children.flatMap { assetLeaves(context, "$asset/$it", File(target, it)) }
     }
 
     /** Copies an asset file, or an asset folder with everything in it, to [target]. */
@@ -425,6 +655,9 @@ object DuoModInstaller {
         }
         return digest.digest().joinToString("") { "%02x".format(it) }
     }
+
+    private fun sha256(bytes: ByteArray): String =
+        MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
 
     private fun stateFile(context: Context, appId: String) =
         File(context.filesDir, "duo/mods/" + appId.replace(Regex("[^A-Za-z0-9_.-]"), "_") + ".json")

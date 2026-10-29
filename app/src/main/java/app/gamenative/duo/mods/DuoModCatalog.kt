@@ -37,6 +37,8 @@ data class DuoGameMod(
      * restored when it is turned off; null keeps the container's own. The user can still change it afterwards.
      */
     val splitScale: Float? = null,
+    /** A Unity game: launched with `-screen-width/-screen-height` set to the split window (see [UnityScreenArgs]). */
+    val unity: Boolean = false,
 )
 
 object DuoModCatalog {
@@ -113,6 +115,7 @@ object DuoModCatalog {
         ) + extraGameFiles,
         dllOverrides = listOf("winhttp=n,b"),
         splitLayout = SplitLayout.NATIVE,
+        unity = true,
     )
 
     private val byAppId = mods.associateBy { it.appId }
