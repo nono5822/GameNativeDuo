@@ -10,11 +10,14 @@ import app.gamenative.duo.display.DeviceProfile
 import app.gamenative.duo.display.DisplayInventory
 import app.gamenative.duo.display.DisplaySnapshot
 import app.gamenative.duo.mods.DuoModInstaller
+import app.gamenative.duo.mods.SessionStatus
+import app.gamenative.duo.mods.SessionStatusStore
 import app.gamenative.duo.panel.BottomPanelController
 import app.gamenative.duo.settings.DuoSettingsStore
 import app.gamenative.duo.split.LayoutFile
 import app.gamenative.duo.split.SplitLayout
 import app.gamenative.duo.split.SplitScreenController
+import app.gamenative.duo.split.StatusPresentation
 import app.gamenative.duo.ui.UiLayoutController
 import com.winlator.container.Container
 import com.winlator.xserver.XServer
@@ -91,7 +94,24 @@ class DualScreenSession internal constructor(
         profile,
         settings.copy(bottomPanelEnabled = settings.bottomPanelEnabled && !(settings.screenSplit && xServer != null)),
     )
-    private val splitOn = settings.screenSplit && xServer != null
+    private val gamescope = !Container.isX11Display(container.containerVariant, container.displayServer)
+
+    // Under Gamescope the X renderer never presents: no split (the bottom screen says why instead).
+    private val splitOn = settings.screenSplit && xServer != null && !gamescope
+
+    /** The installed dual-screen mod (bundled id or community package id), from its undo record. */
+    private val modId = DuoModInstaller.enabledModId(context, container.id)
+
+    /** What this session saw, for the Dual screen control's status (see [SessionStatus]). */
+    private var sessionStatus = SessionStatus(
+        startedAt = System.currentTimeMillis(),
+        modId = modId,
+        splitOn = splitOn,
+        modExpected = splitOn && modId != null && SplitLayout.fromId(settings.splitLayout) != SplitLayout.REGION,
+        gamescope = gamescope,
+        xScreen = xServer?.screenInfo?.let { "${it.width}x${it.height}" }.orEmpty(),
+        expectedScreen = DuoModInstaller.recordedScreenSize(context, container.id),
+    )
 
     // Talks to the game's mod (native touch, UI layout); only worth a socket when the game is split.
     private val bridge = if (splitOn) DuoBridge.open() else null
@@ -107,6 +127,8 @@ class DualScreenSession internal constructor(
             onRegionSaved = { region ->
                 DuoSettingsStore.save(context, container.id, DuoSettingsStore.load(context, container.id).copy(region = region))
             },
+            modExpected = sessionStatus.modExpected,
+            onOutputAttached = { updateStatus { it.copy(secondScreen = true) } },
         )
     } else {
         null
@@ -142,6 +164,43 @@ class DualScreenSession internal constructor(
         } catch (t: Throwable) {
             Timber.tag(DualScreenHost.TAG).e(t, "Failed to hand the UI layout to the game")
         }
+        bridge?.connectListeners?.add { caps, engine ->
+            if (!sessionStatus.connected) {
+                updateStatus {
+                    it.copy(
+                        connected = true,
+                        connectedAfterMs = System.currentTimeMillis() - it.startedAt,
+                        engine = engine,
+                        capabilities = caps,
+                    )
+                }
+            }
+        }
+        updateStatus { it }
+        if (settings.screenSplit && gamescope) showGamescopeStatus()
+    }
+
+    private fun updateStatus(change: (SessionStatus) -> SessionStatus) {
+        try {
+            sessionStatus = change(sessionStatus)
+            SessionStatusStore.save(context, container.id, sessionStatus)
+        } catch (t: Throwable) {
+            Timber.tag(DualScreenHost.TAG).w(t, "Failed to record the session status")
+        }
+    }
+
+    /** Screen split is on but this session runs under Gamescope: the bottom screen says so instead of staying dark. */
+    private var gamescopeStatus: StatusPresentation? = null
+
+    private fun showGamescopeStatus() {
+        val display = profile.findBottomDisplay(context) ?: return
+        gamescopeStatus = StatusPresentation.show(
+            context,
+            display,
+            "Dual screen needs the X11 display server",
+            "This game runs under Gamescope, which the bottom screen cannot show. Quit, then tap ⚠ next to Dual screen in " +
+                "the library and choose \"Use X11\".",
+        )
     }
 
     fun detach() {
@@ -154,7 +213,14 @@ class DualScreenSession internal constructor(
         }
         bottomPanel.stop()
         screenSplit?.stop()
+        try {
+            gamescopeStatus?.dismiss()
+        } catch (t: Throwable) {
+            Timber.tag(DualScreenHost.TAG).w(t, "Failed to dismiss the bottom screen status")
+        }
+        gamescopeStatus = null
         bridge?.close()
+        updateStatus { it.copy(endedAt = System.currentTimeMillis()) }
         Timber.tag(DualScreenHost.TAG).i("Session ended")
     }
 

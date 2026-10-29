@@ -111,6 +111,7 @@ fun ModExplorerSheet(state: ModHubState, gameTitle: String, onDismiss: () -> Uni
     var sort by rememberSaveable { mutableStateOf(HubSort.COMPAT) }
     var detailId by rememberSaveable { mutableStateOf<String?>(null) }
     var sharing by remember { mutableStateOf(false) }
+    var statusOpen by remember { mutableStateOf(false) }
     var rating by remember { mutableStateOf<CommunityPackage?>(null) }
     LaunchedEffect(Unit) { state.refresh(force = true) }
 
@@ -135,10 +136,12 @@ fun ModExplorerSheet(state: ModHubState, gameTitle: String, onDismiss: () -> Uni
                         SnackbarManager.show(context.getString(R.string.duo_share_layout_none))
                     }
                 },
+                onStatus = { statusOpen = true },
             )
         }
     }
 
+    if (statusOpen) ModStatusDialog(state, onDismiss = { statusOpen = false })
     if (sharing) ShareLayoutDialog(state.containerId, gameTitle, onDismiss = { sharing = false })
     rating?.let { pkg -> RateDialog(pkg, state, onDismiss = { rating = null }) }
     state.consent?.let { c ->
@@ -178,6 +181,7 @@ private fun ExplorerList(
     onSort: (HubSort) -> Unit,
     onOpen: (HubEntry) -> Unit,
     onShare: () -> Unit,
+    onStatus: () -> Unit,
 ) {
     val context = LocalContext.current
     Column(modifier = Modifier.padding(horizontal = 20.dp)) {
@@ -234,6 +238,7 @@ private fun ExplorerList(
     }
     Row(modifier = Modifier.padding(start = 8.dp, bottom = 16.dp)) {
         val ring = Modifier.heightIn(min = 48.dp).focusRing(RoundedCornerShape(24.dp))
+        TextButton(onClick = onStatus, modifier = ring.gamepadClick(onStatus)) { Text(stringResource(R.string.duo_status_and_saves)) }
         TextButton(onClick = onShare, modifier = ring) { Text(stringResource(R.string.duo_community_share)) }
         TextButton(onClick = { open(context, CONTRIBUTING_URL) }, modifier = ring) {
             Text(stringResource(R.string.duo_community_contribute))

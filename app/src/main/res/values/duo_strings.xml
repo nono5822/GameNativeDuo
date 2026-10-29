@@ -150,4 +150,50 @@
     <string name="duo_hub_rate_qr">Show a QR code to open it on another device</string>
     <string name="duo_hub_rate_qr_hint">Scan it with a phone or tablet signed in to GitHub.</string>
     <string name="duo_hub_close">Close</string>
+
+    <!-- Dual screen status (the control next to Play, its status dialog, the explorer) -->
+    <string name="duo_status_title">Dual screen status</string>
+    <string name="duo_status_and_saves">Status and saves</string>
+    <string name="duo_status_close">Close</string>
+    <string name="duo_status_off">Dual screen is off for this game. Save backups are still listed below.</string>
+    <string name="duo_status_short_gamescope">Needs X11 · tap ⚠</string>
+    <string name="duo_status_short_size">Wrong screen size · tap ⚠</string>
+    <string name="duo_status_short_missing">Mod files missing · tap ⚠</string>
+    <string name="duo_status_short_not_loaded">Mod did not start · tap ⚠</string>
+    <string name="duo_status_gamescope">This game uses the Gamescope display server. The bottom screen only works with X11.</string>
+    <string name="duo_status_fix_x11">Use X11</string>
+    <string name="duo_status_size">The game\'s screen size is %1$s, but the split needs %2$s.</string>
+    <string name="duo_status_fix_size">Set %1$s</string>
+    <plurals name="duo_status_missing">
+        <item quantity="one">%1$d mod file is missing. A game update or a Steam file check removes them.</item>
+        <item quantity="other">%1$d mod files are missing. A game update or a Steam file check removes them.</item>
+    </plurals>
+    <string name="duo_status_not_loaded">Last time, the game ran but its dual-screen mod never started.</string>
+    <string name="duo_status_game_updated">The game was updated since the mod was installed.</string>
+    <string name="duo_status_never">Not played with Dual screen yet. Launch the game: this shows whether the mod started.</string>
+    <string name="duo_status_worked">Last session (%3$s): the mod started (%1$s) and connected after %2$d s.</string>
+    <string name="duo_status_no_bridge">Last session (%1$s): screen split on. This mod does not report back, so there is nothing more to check.</string>
+    <string name="duo_status_too_short">The last session was too short to tell whether the mod starts.</string>
+    <string name="duo_status_files">Mod files</string>
+    <string name="duo_status_files_check">Check mod files</string>
+    <string name="duo_status_files_checking">Checking…</string>
+    <string name="duo_status_files_summary">%1$d files: %2$d as installed, %3$d changed, %4$d missing.</string>
+    <string name="duo_status_files_changed">Changed (by you, or pushed by hand): %1$s</string>
+    <string name="duo_status_files_missing">Missing: %1$s</string>
+    <string name="duo_status_reset">Reset mod files</string>
+    <string name="duo_status_reset_note">Reset puts every mod file back as the app ships it. A file you changed is kept next to it as \"name.duo-user\".</string>
+    <string name="duo_status_reset_confirm">Put every file of the dual-screen mod back as shipped? Files you changed are kept as \"name.duo-user\" next to them. Settings and saves are not touched.</string>
+    <string name="duo_status_reset_done">Mod files reset.</string>
+    <string name="duo_status_reset_no_source">this version of the package is no longer listed: update the mod in the explorer</string>
+    <string name="duo_status_fixed">Fixed. Launch the game to check.</string>
+    <string name="duo_status_game_running">Close the game first.</string>
+    <string name="duo_saves_title">Save backups</string>
+    <string name="duo_saves_none">No backup yet. The game\'s saves are copied before a dual-screen mod is installed.</string>
+    <string name="duo_saves_restore">Restore</string>
+    <string name="duo_saves_restore_title">Restore saves?</string>
+    <string name="duo_saves_restore_confirm">Put back the saves from %1$s? Your current saves are backed up first, so you can undo this here.</string>
+    <string name="duo_saves_restored">Saves restored. The previous ones are in the list.</string>
+    <string name="duo_saves_reason_install">Before turning on %1$s</string>
+    <string name="duo_saves_undo_reason">Before restoring an older backup</string>
+    <string name="duo_saves_cloud_note">With Steam Cloud on, GameNative may sync newer saves back at the next launch.</string>
 </resources>

@@ -26,6 +26,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -46,7 +47,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import app.gamenative.R
+import kotlinx.coroutines.launch
 
 /**
  * "Dual screen" control next to a game's Play button: a switch that turns the selected dual-screen mod on and off,
@@ -61,7 +66,17 @@ fun DualScreenToggle(appId: String, installLocation: String?, isInstalled: Boole
     val scope = rememberCoroutineScope()
     val state = remember(appId, installLocation) { ModHubState(context.applicationContext, appId, installLocation, scope) }
     var explorer by remember(appId) { mutableStateOf(false) }
+    var statusDialog by remember(appId) { mutableStateOf(false) }
     LaunchedEffect(state) { state.load() }
+    // Back from a game session: what it saw (mod loaded or not) shows at once.
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(state, lifecycle) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && state.loaded) scope.launch { state.reloadStatus() }
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
     if (!state.visible) return
 
     val hasSwitch = state.switchable.isNotEmpty() || state.bundled != null || state.on
@@ -84,10 +99,15 @@ fun DualScreenToggle(appId: String, installLocation: String?, isInstalled: Boole
                     Icon(Icons.Outlined.Splitscreen, contentDescription = null, modifier = Modifier.size(20.dp))
                     Column(modifier = Modifier.widthIn(max = 160.dp)) {
                         Text(stringResource(R.string.duo_mod_toggle_label), style = MaterialTheme.typography.labelLarge)
+                        val problem = state.status?.problems?.firstOrNull()?.takeIf { state.on }
                         Text(
-                            selected?.let { shortTitle(it) } ?: stringResource(R.string.duo_hub_choose),
+                            when {
+                                problem != null -> problemShort(problem)
+                                selected != null -> shortTitle(selected)
+                                else -> stringResource(R.string.duo_hub_choose)
+                            },
                             style = MaterialTheme.typography.labelSmall,
-                            color = Color.White.copy(alpha = 0.75f),
+                            color = if (problem != null) StatusWarn else Color.White.copy(alpha = 0.75f),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
@@ -100,6 +120,23 @@ fun DualScreenToggle(appId: String, installLocation: String?, isInstalled: Boole
                             Switch(checked = state.on, onCheckedChange = null)
                         }
                     }
+                }
+                VerticalDivider(modifier = Modifier.fillMaxHeight().padding(vertical = 8.dp), color = Color.White.copy(alpha = 0.25f))
+            }
+            if (state.on) {
+                // Status: worked last time, needs a fix (one tap to it), or not played yet.
+                val (icon, tint) = statusIcon(state.status)
+                val openStatus = { statusDialog = true }
+                Box(
+                    modifier = Modifier
+                        .heightIn(min = 48.dp)
+                        .widthIn(min = 48.dp)
+                        .focusOutline(RoundedCornerShape(0.dp))
+                        .gamepadA(openStatus)
+                        .clickable(role = Role.Button, onClick = openStatus),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(icon, contentDescription = stringResource(R.string.duo_status_title), tint = tint, modifier = Modifier.size(24.dp))
                 }
                 VerticalDivider(modifier = Modifier.fillMaxHeight().padding(vertical = 8.dp), color = Color.White.copy(alpha = 0.25f))
             }
@@ -129,6 +166,7 @@ fun DualScreenToggle(appId: String, installLocation: String?, isInstalled: Boole
         val title = state.game?.title?.takeIf { it.isNotBlank() } ?: state.bundled?.title.orEmpty()
         ModExplorerSheet(state, title, onDismiss = { explorer = false })
     }
+    if (statusDialog) ModStatusDialog(state, onDismiss = { statusDialog = false })
 }
 
 /** The bundled mod's title is the game's own name; under the switch it reads as who made it. */

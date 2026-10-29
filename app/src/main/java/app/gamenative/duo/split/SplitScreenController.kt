@@ -7,6 +7,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.Display
+import android.view.Gravity
 import android.view.MotionEvent
 import android.view.SurfaceHolder
 import android.view.SurfaceView
@@ -63,11 +64,24 @@ class SplitScreenController(
     /** Region view: the bottom screen's part of the game (fractions, see [RegionView]); saved with [onRegionSaved]. */
     private var region: String = "",
     private val onRegionSaved: (String) -> Unit = {},
+    /** A dual-screen mod is installed and should say hello on the bridge (the bottom screen says so until it does). */
+    private val modExpected: Boolean = false,
+    /** The bottom screen output is running (for the session's status record). */
+    private val onOutputAttached: () -> Unit = {},
 ) {
     private val topRenderer: VulkanRenderer? get() = xServer.renderer as? VulkanRenderer
     private var presentation: SplitBottomPresentation? = null
+    private var statusPresentation: StatusPresentation? = null
     private var split: ScreenSplit? = null
     private var calibration = ScreenCalibrationStore.load(context, profile)
+    private var modConnected = false
+
+    init {
+        bridge?.connectListeners?.add { _, _ ->
+            modConnected = true
+            presentation?.onModConnected()
+        }
+    }
 
     /** Applies or removes the split to match the current displays. Safe to call on every display change. */
     fun update() {
@@ -96,12 +110,13 @@ class SplitScreenController(
                 }
             }
             if (bottomDisplay == null || newSplit == null) {
-                if (bottomDisplay != null) logSizeHint(bottomDisplay)
                 stop()
+                if (bottomDisplay != null) logSizeHint(bottomDisplay)
                 return
             }
             if (presentation?.display?.displayId == bottomDisplay.displayId && split == newSplit) return
             dismissPresentation()
+            dismissStatus()
             split = newSplit
             if (layout == SplitLayout.REGION) {
                 // The game is untouched: upstream's own view on top, no layout.json (mods must not split anything).
@@ -119,6 +134,9 @@ class SplitScreenController(
                 onRegionDone = ::onRegionDone,
                 onCalibrationChange = ::onCalibrationChange,
                 onCalibrationDone = { ScreenCalibrationStore.save(context, profile, it) },
+                modExpected = modExpected && layout != SplitLayout.REGION,
+                modConnected = modConnected,
+                onOutputAttached = onOutputAttached,
             ).also { it.show() }
             Timber.tag(DualScreenHost.TAG).i(
                 "Screen split on: X screen %dx%d, top %s, bottom %s on display %d",
@@ -157,6 +175,9 @@ class SplitScreenController(
     /** Opens the screen alignment panel on the bottom screen. */
     fun openCalibration(): Boolean = presentation?.openCalibration() == true
 
+    /** Opens the bottom screen's own menu (the one a two-finger long press opens). */
+    fun openMenu(): Boolean = presentation?.openMenu() == true
+
     /** Starts the PC editor (if needed); its address and code, or null when it cannot run. */
     fun startPcEditor(showCard: Boolean): Pair<String?, String>? = presentation?.startPc(showCard)
 
@@ -169,6 +190,7 @@ class SplitScreenController(
 
     fun stop() {
         dismissPresentation()
+        dismissStatus()
         if (split != null) Timber.tag(DualScreenHost.TAG).i("Screen split off")
         split = null
         try {
@@ -185,6 +207,15 @@ class SplitScreenController(
             Timber.tag(DualScreenHost.TAG).w(t, "Failed to dismiss bottom split view")
         }
         presentation = null
+    }
+
+    private fun dismissStatus() {
+        try {
+            statusPresentation?.dismiss()
+        } catch (t: Throwable) {
+            Timber.tag(DualScreenHost.TAG).w(t, "Failed to dismiss the bottom screen status")
+        }
+        statusPresentation = null
     }
 
     /** Shape of the top screen as the game sees it (landscape on the Thor). */
@@ -204,6 +235,24 @@ class SplitScreenController(
             "Screen split is on but the X screen %dx%d has no room for a bottom part; set the container's screen size to %dx%d",
             xServer.screenInfo.width, xServer.screenInfo.height, w, h,
         )
+        // Never a silent bottom screen: say why and where the fix is.
+        if (statusPresentation?.display?.displayId != bottomDisplay.displayId) {
+            dismissStatus()
+            statusPresentation = StatusPresentation.show(
+                context,
+                bottomDisplay,
+                "Dual screen needs a ${w}x$h game window",
+                "This game runs at ${xServer.screenInfo.width}x${xServer.screenInfo.height}, so there is nothing to show here. " +
+                    "Quit, then tap ⚠ next to Dual screen in the library to set ${w}x$h.",
+            )
+        }
+    }
+
+    /** The bottom screen when the split cannot run at all this session (Gamescope). */
+    fun showUnavailable(title: String, body: String) {
+        val display = profile.findBottomDisplay(context) ?: return
+        dismissStatus()
+        statusPresentation = StatusPresentation.show(context, display, title, body)
     }
 }
 
@@ -224,6 +273,9 @@ private class SplitBottomPresentation(
     private val onRegionDone: (FloatArray?) -> Unit,
     private val onCalibrationChange: (ScreenCalibration) -> Unit,
     private val onCalibrationDone: (ScreenCalibration) -> Unit,
+    private val modExpected: Boolean,
+    private var modConnected: Boolean,
+    private val onOutputAttached: () -> Unit,
 ) : Presentation(outerContext, display),
     SurfaceHolder.Callback,
     PcEditorHost {
@@ -258,6 +310,35 @@ private class SplitBottomPresentation(
     private val point = FloatArray(2)
     private var slop = 0f
 
+    /** What Dual screen is doing, at the top of the bottom screen (starting, mod did not start, a hint). */
+    private var status: StatusCard? = null
+    private val modTimeout = Runnable {
+        if (!modConnected) {
+            status?.show(
+                NOT_STARTED,
+                "The game runs, but its GameNative Duo mod has not answered. Quit, then tap ⚠ next to Dual screen in the " +
+                    "library: it shows why, and fixes it.",
+            )
+        }
+    }
+    private val hideHint = Runnable { if (status?.showing == HINT) status?.dismiss() }
+
+    /** The game's mod said hello: the "starting" card goes, and the menu hint shows once. */
+    fun onModConnected() {
+        modConnected = true
+        handler.removeCallbacks(modTimeout)
+        val shown = status?.showing.orEmpty()
+        if (shown.startsWith(STARTING_PREFIX) || shown == NOT_STARTED) status?.dismiss()
+        showHintOnce()
+    }
+
+    private fun showHintOnce() {
+        if (overlay != null || DuoHints.shown(context, DuoHints.TWO_FINGER_MENU)) return
+        DuoHints.markShown(context, DuoHints.TWO_FINGER_MENU)
+        status?.show(HINT, "Hold two fingers still on this screen for a second: edit the UI layout, line up the screens.")
+        handler.postDelayed(hideHint, HINT_MS)
+    }
+
     /** The top renderer initialises asynchronously; retry until it accepts the second screen. */
     private val attach = object : Runnable {
         override fun run() {
@@ -267,6 +348,9 @@ private class SplitBottomPresentation(
                 val t = DuoViewport.transform(rect, width, height, xServer.screenInfo.width.toInt(), xServer.screenInfo.height.toInt())
                 if (topRenderer.duoSetSecondary(h.surface, t)) {
                     Timber.tag(DualScreenHost.TAG).i("Second screen output attached (%dx%d)", width, height)
+                    onOutputAttached()
+                    // No mod to wait for: the hint can show now.
+                    if (!modExpected) showHintOnce()
                     return
                 }
             } catch (t: Throwable) {
@@ -277,6 +361,7 @@ private class SplitBottomPresentation(
                 handler.postDelayed(this, 500)
             } else {
                 Timber.tag(DualScreenHost.TAG).w("Second screen output could not be created")
+                status?.show("The bottom screen could not start", "Restart the game. If it keeps happening, report it with the GNDuo log.")
             }
         }
     }
@@ -294,12 +379,22 @@ private class SplitBottomPresentation(
         // Widgets sit above the game and below our panels; touches go through them to the game.
         val layer = WidgetLayer(context)
         widgets = layer
+        // Status card above the widgets, below the panels (those are added later); only the card itself takes touches.
+        val card = StatusCard(context)
+        status = card
         root = FrameLayout(context).apply {
             setBackgroundColor(Color.BLACK)
             addView(surfaceView)
             addView(layer, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+            val wide = FrameLayout.LayoutParams.MATCH_PARENT
+            addView(card, FrameLayout.LayoutParams(wide, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.TOP))
         }
         setContentView(root!!)
+        if (modExpected && !modConnected) {
+            val game = uiLayout?.gameName?.let { " $it" }.orEmpty()
+            card.show("$STARTING_PREFIX$game…", "This screen fills in once the game's dual-screen mod has loaded.")
+            handler.postDelayed(modTimeout, MOD_TIMEOUT_MS)
+        }
         uiLayout?.let {
             it.listeners += layoutListener
             layer.show(it.layout.widgets)
@@ -417,6 +512,11 @@ private class SplitBottomPresentation(
         return true
     }
 
+    fun openMenu(): Boolean {
+        handler.postDelayed({ showMenu() }, 400)
+        return true
+    }
+
     val pcInfo: Pair<String?, String>? get() = pc?.let { it.url to it.code }
 
     fun startPc(showCard: Boolean): Pair<String?, String>? {
@@ -455,6 +555,8 @@ private class SplitBottomPresentation(
         // The fingers that opened the menu must not finish as a tap or drag in the game.
         endGesture(cancel = true)
         gesture = Gesture.IGNORED
+        DuoHints.markShown(context, DuoHints.TWO_FINGER_MENU)
+        if (status?.showing == HINT) status?.dismiss()
         try {
             showOverlay(
                 DuoMenuPanel(
@@ -550,6 +652,8 @@ private class SplitBottomPresentation(
 
     override fun onStop() {
         handler.removeCallbacks(openMenu)
+        handler.removeCallbacks(modTimeout)
+        handler.removeCallbacks(hideHint)
         endGesture(cancel = true)
         uiLayout?.listeners?.remove(layoutListener)
         pc?.stop()
@@ -671,5 +775,12 @@ private class SplitBottomPresentation(
     private companion object {
         const val MENU_HOLD_MS = 900L
         const val MAX_FINGERS = 16
+
+        /** Unity and SMAPI load their mods before the first scene; on the Thor that is well under a minute. */
+        const val MOD_TIMEOUT_MS = 120_000L
+        const val HINT_MS = 12_000L
+        const val STARTING_PREFIX = "Starting"
+        const val HINT = "Tip: the GameNative Duo menu"
+        const val NOT_STARTED = "The dual-screen mod has not started"
     }
 }

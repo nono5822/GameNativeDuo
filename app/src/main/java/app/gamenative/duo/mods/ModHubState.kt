@@ -84,6 +84,14 @@ class ModHubState(
 
     class Consent(val pkg: CommunityPackage, val plan: CommunityModInstaller.Plan, val replacesMod: Boolean, val then: () -> Unit)
 
+    /** Whether Dual screen will work for this game, and what to fix (see [ModStatusReport]). */
+    var status by mutableStateOf<ModStatusReport?>(null)
+        private set
+
+    /** Copies of the game's saves, newest first (taken before every mod install). */
+    var saves by mutableStateOf<List<SaveBackup.Backup>>(emptyList())
+        private set
+
     private class Snapshot(
         val game: CommunityGame?,
         val entries: List<HubEntry>,
@@ -92,6 +100,8 @@ class ModHubState(
         val selected: HubEntry?,
         val applied: Map<CommunityKind, CommunityPackages.Applied>,
         val checkedAt: Long?,
+        val status: ModStatusReport?,
+        val saves: List<SaveBackup.Backup>,
     )
 
     val switchable: List<HubEntry> get() = ModHub.switchable(entries)
@@ -114,6 +124,8 @@ class ModHubState(
     /** First read: the cached list (never the network), then a background refresh if the list is old. */
     suspend fun load() {
         val (snapshot, inCatalog) = withContext(Dispatchers.IO) {
+            // After an app update: bring the mod's files up to date now, not at the next launch's session start.
+            DuoModInstaller.refreshIfUpdated(context, containerId)
             val cached = CommunityPackages.cached(context, containerId)
             read(cached) to (CommunityCatalog.known(context)?.contains(gameKey) == true)
         }
@@ -287,7 +299,99 @@ class ModHubState(
             selected = ModHub.selected(context, containerId, list, device.id),
             applied = applied,
             checkedAt = CommunityPackages.checkedAt(context, containerId),
+            status = try {
+                DuoModInstaller.status(context, containerId)
+            } catch (t: Throwable) {
+                Timber.tag(DualScreenHost.TAG).w(t, "Mod hub: no status for %s", containerId)
+                null
+            },
+            saves = try {
+                SaveBackup.list(context, containerId)
+            } catch (t: Throwable) {
+                emptyList()
+            },
         )
+    }
+
+    /** Re-reads the status and save backups (back from a game session). */
+    suspend fun reloadStatus() {
+        if (busy != null) return
+        val (s, b) = withContext(Dispatchers.IO) {
+            val report = try {
+                DuoModInstaller.status(context, containerId)
+            } catch (t: Throwable) {
+                null
+            }
+            report to runCatching { SaveBackup.list(context, containerId) }.getOrDefault(emptyList())
+        }
+        status = s
+        saves = b
+    }
+
+    /** One tap fix for [problem] from the status dialog. */
+    fun fix(problem: ModProblem) {
+        if (busy != null || gameRunning()) return
+        run(FIX, {
+            when (problem) {
+                ModProblem.GAMESCOPE -> DuoModInstaller.useX11(context, containerId)
+                ModProblem.WRONG_SIZE -> DuoModInstaller.useSplitSize(context, containerId)
+                ModProblem.FILES_MISSING, ModProblem.MOD_NOT_LOADED -> resetFilesNow()
+            }
+        }) { context.getString(R.string.duo_status_fixed) }
+    }
+
+    /** Puts every file the mod installed back as shipped (the user's changed copies are kept as `.duo-user`). */
+    fun resetFiles() {
+        if (busy != null || gameRunning()) return
+        run(FIX, { resetFilesNow() }) { context.getString(R.string.duo_status_reset_done) }
+    }
+
+    private fun resetFilesNow() {
+        val pkg = (active as? HubEntry.Community)?.pkg
+        DuoModInstaller.resetFiles(
+            context,
+            containerId,
+            download = pkg?.let { p ->
+                { sha ->
+                    val f = p.files.firstOrNull { it.sha256 == sha }
+                        ?: throw java.io.IOException(context.getString(R.string.duo_status_reset_no_source))
+                    CommunityPackages.download(context, f)
+                }
+            },
+        )
+    }
+
+    /** Every file the mod installed and whether it is still ours (hashes them all). */
+    suspend fun fileReport(): List<DuoModInstaller.ModFile> = withContext(Dispatchers.IO) {
+        try {
+            DuoModInstaller.fileReport(context, containerId)
+        } catch (t: Throwable) {
+            Timber.tag(DualScreenHost.TAG).w(t, "Mod hub: no file report for %s", containerId)
+            emptyList()
+        }
+    }
+
+    /** Puts [backup] back; the current saves are backed up first, so this is undone by restoring that one. */
+    fun restoreSave(backup: SaveBackup.Backup) {
+        if (busy != null || gameRunning()) return
+        run(FIX, {
+            val container = app.gamenative.utils.ContainerUtils.getContainer(context, containerId)
+            SaveBackup.restore(
+                context,
+                containerId,
+                File(installLocation),
+                File(container.rootDir, ".wine/drive_c"),
+                backup,
+                context.getString(R.string.duo_saves_undo_reason),
+            )
+        }) { context.getString(R.string.duo_saves_restored) }
+    }
+
+    /** Files and saves are not touched while the game runs. */
+    private fun gameRunning(): Boolean {
+        val running = DualScreenHost.current?.container?.id == containerId
+        if (running) SnackbarManager.show(context.getString(R.string.duo_status_game_running))
+        return running
     }
 
     private fun publish(s: Snapshot) {
@@ -298,10 +402,13 @@ class ModHubState(
         selected = s.selected
         applied = s.applied
         checkedAt = s.checkedAt
+        status = s.status
+        saves = s.saves
     }
 
     companion object {
         const val SWITCH = "\u0000switch"
+        const val FIX = "\u0000fix"
         private val MAX_AGE_MS = TimeUnit.HOURS.toMillis(6)
 
         /** A device profile id from compatibility reports, as a name when the app knows the device. */

@@ -12,6 +12,7 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.concurrent.CopyOnWriteArrayList
 import timber.log.Timber
 
 /**
@@ -36,6 +37,9 @@ class DuoBridge private constructor(private val socket: DatagramSocket) {
     }
 
     @Volatile var listener: Listener? = null
+
+    /** Also told when a mod connects (main thread): the session's status record, the bottom screen's status card. */
+    val connectListeners = CopyOnWriteArrayList<(capabilities: Int, engine: String) -> Unit>()
 
     val port: Int get() = socket.localPort
 
@@ -165,7 +169,10 @@ class DuoBridge private constructor(private val socket: DatagramSocket) {
         lastHelloAt = SystemClock.elapsedRealtime()
         if (isNew) {
             Timber.tag(DualScreenHost.TAG).i("Bridge: %s mod connected from port %d (capabilities 0x%x)", name, port, caps)
-            main.post { listener?.onModConnected(caps, name) }
+            main.post {
+                listener?.onModConnected(caps, name)
+                connectListeners.forEach { it(caps, name) }
+            }
         }
     }
 
