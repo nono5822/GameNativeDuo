@@ -117,14 +117,36 @@ object DuoModInstaller {
         mod.launchExecutable?.let { state.put("launchExecutable", it) }
 
         val files = JSONArray()
-        // Recorded as files land, so a failure halfway still leaves an undo record (written in the catch below).
+        // Recorded as files and settings change, so a failure anywhere is undone at once from what was recorded.
         try {
-            copyFiles(driveC, files)
+            enableSteps(context, mod, gameDir, container, driveC, state, files, copyFiles)
         } catch (t: Throwable) {
             state.put("files", files).put("mod", mod.id)
             stateFile(context, mod.appId).apply { parentFile?.mkdirs() }.writeText(state.toString(2))
+            if (!disable(context, mod.appId)) Timber.tag(DualScreenHost.TAG).w("Could not undo the partial install of %s", mod.id)
             throw t
         }
+        Timber.tag(DualScreenHost.TAG).i(
+            "Enabled dual-screen mod %s for %s (%d files, screen %s)",
+            mod.id, container.id, files.length(), container.screenSize,
+        )
+        true
+    } catch (t: Throwable) {
+        Timber.tag(DualScreenHost.TAG).e(t, "Failed to enable dual-screen mod %s", mod.id)
+        false
+    }
+
+    private fun enableSteps(
+        context: Context,
+        mod: DuoGameMod,
+        gameDir: File,
+        container: Container,
+        driveC: File,
+        state: JSONObject,
+        files: JSONArray,
+        copyFiles: (driveC: File, files: JSONArray) -> Unit,
+    ) {
+        copyFiles(driveC, files)
         mod.gameFileCopies.forEach { (src, dst) ->
             File(gameDir, src).inputStream().use { install(it, File(gameDir, dst), files) }
         }
@@ -174,14 +196,6 @@ object DuoModInstaller {
 
         state.put("mod", mod.id).put("apkStamp", apkStamp(context))
         stateFile(context, mod.appId).apply { parentFile?.mkdirs() }.writeText(state.toString(2))
-        Timber.tag(DualScreenHost.TAG).i(
-            "Enabled dual-screen mod %s for %s (%d files, screen %s)",
-            mod.id, container.id, files.length(), container.screenSize,
-        )
-        true
-    } catch (t: Throwable) {
-        Timber.tag(DualScreenHost.TAG).e(t, "Failed to enable dual-screen mod %s", mod.id)
-        false
     }
 
     /**
@@ -333,17 +347,20 @@ object DuoModInstaller {
         }
         container.saveData()
 
-        val settings = DuoSettingsStore.load(context, container.id)
-        DuoSettingsStore.save(
-            context,
-            container.id,
-            settings.copy(
-                screenSplit = state.optBoolean("previousScreenSplit", false),
-                splitLayout = state.optString("previousSplitLayout", settings.splitLayout),
-                splitScale = state.optDouble("previousSplitScale", settings.splitScale.toDouble()).toFloat(),
-            ),
-        )
-        LayoutFile.delete(container)
+        // A record of an install that failed before the settings step has none: the user's settings were not touched.
+        if (state.has("previousScreenSplit")) {
+            val settings = DuoSettingsStore.load(context, container.id)
+            DuoSettingsStore.save(
+                context,
+                container.id,
+                settings.copy(
+                    screenSplit = state.optBoolean("previousScreenSplit", false),
+                    splitLayout = state.optString("previousSplitLayout", settings.splitLayout),
+                    splitScale = state.optDouble("previousSplitScale", settings.splitScale.toDouble()).toFloat(),
+                ),
+            )
+            LayoutFile.delete(container)
+        }
 
         stateFile.delete()
         Timber.tag(DualScreenHost.TAG).i("Disabled dual-screen mod %s for %s", modId, container.id)

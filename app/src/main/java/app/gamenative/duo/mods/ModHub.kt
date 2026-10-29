@@ -219,7 +219,8 @@ object ModHub {
         try {
             turnOn(context, containerId, gameDir, next)
             Timber.tag(DualScreenHost.TAG).i("Mod hub: %s -> %s for %s", previous?.id, next.id, containerId)
-        } catch (e: IOException) {
+        } catch (e: Exception) {
+            // Any failure, not just IO: the previous mod is already off and must come back.
             Timber.tag(DualScreenHost.TAG).w(e, "Mod hub: %s failed for %s, restoring %s", next.id, containerId, previous?.id)
             val restored = previous != null &&
                 try {

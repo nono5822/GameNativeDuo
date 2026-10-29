@@ -259,8 +259,14 @@ class ModHubState(
                     t.message ?: t.javaClass.simpleName
                 }
             }
-            reload()
-            busy = null
+            // A failed reload must not leave every button disabled (busy) or crash the app from this coroutine.
+            try {
+                reload()
+            } catch (t: Throwable) {
+                Timber.tag(DualScreenHost.TAG).w(t, "Mod hub: reload failed for %s", containerId)
+            } finally {
+                busy = null
+            }
             SnackbarManager.show(failure?.let { context.getString(R.string.duo_hub_failed, it) } ?: done())
         }
     }
