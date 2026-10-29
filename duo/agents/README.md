@@ -17,6 +17,7 @@ claude -p (Opus) ── MCP ──> qwen_mcp.py ──> llama serve (Qwen, 127.0
 | `triage.py` | Deterministic log scanner: GPU hangs, crashes, dex verify, BepInEx/SMAPI/Harmony errors, `Frames` table |
 | `qwen_mcp.py` | MCP server: `triage_log`, `qwen_summarize_log`, `qwen_draft`, `qwen_fix_build` |
 | `overnight.sh` | Unattended run: fresh branch, Qwen and Thor checks, `claude -p`, cost and Qwen usage summary |
+| `start-queue.sh` | Starts `overnight.sh` detached, PC kept awake; the run waits through usage limits and resumes each task's session every 5 h window (`tail -f duo/agents/runs/queue.log`) |
 | `thor-wifi.sh` | adb to the Thor over Wi-Fi: `tcpip` while plugged in, remembered IP, or Wireless debugging (mDNS) |
 | `tasks/regression-pass.md` | Example task: regression pass across the bundled games |
 

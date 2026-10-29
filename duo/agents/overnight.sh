@@ -9,7 +9,9 @@
 #   2. makes sure Qwen is up (starts start-qwen.sh if not, waits up to 5 minutes)
 #   3. checks the Thor is on adb and keeps it awake while plugged in
 #   4. runs `claude -p` once per task file (fresh context each, so long queues stay cheap), edits auto-approved, a fixed allow-list of commands,
-#      and no permission prompts (anything not allowed is denied instead of waiting for you)
+#      and no permission prompts (anything not allowed is denied instead of waiting for you).
+#      On a usage limit it sleeps until the reset time in the message and resumes the same session (every 5 h
+#      window until the queue is done, at most MAX_LIMIT_WAITS times); API errors are retried with a back-off
 #      commits anything a task left uncommitted as WIP so the next task starts clean
 #   5. saves each task's JSON (result, session id, cost estimate) under duo/agents/runs/
 #
@@ -18,6 +20,9 @@
 #   PERMISSION_MODE=auto  let Claude Code's classifier review actions instead of the allow-list
 #   NO_DEVICE=1           run without the Thor (build, unit tests and code work only)
 #   THOR_WIFI=1           reach the Thor over Wi-Fi (thor-wifi.sh) instead of the USB cable
+#   MIN_BATTERY=10        stop before a task or a resume when the Thor is below this
+#   MAX_LIMIT_WAITS=12    usage-limit resets to wait through in one run
+# Detached and keeping the PC awake: duo/agents/start-queue.sh <task.md>...
 
 set -euo pipefail
 
@@ -81,28 +86,98 @@ ALLOWED+=",Bash(python3 duo/tools/*),Bash(python3 ../GameNativeDuo-community/too
 ALLOWED+=",Bash(python3 -I ../GameNativeDuo-community/tools/*),Bash(python3 -I $(dirname "$REPO")/GameNativeDuo-community/tools/*)"
 ALLOWED+=",Bash(curl -s https://api.gamenative.app/*)"
 
+MIN_BATTERY="${MIN_BATTERY:-10}"
+MAX_LIMIT_WAITS="${MAX_LIMIT_WAITS:-12}"   # usage-limit windows to wait through in one run (5 h each: 2.5 days)
+LIMIT_WAITS=0
+battery() { adb shell dumpsys battery 2>/dev/null | awk '/^ *level:/ { print $2; exit }'; }
+
+# True (0) when the Thor is fine to work on (or no device is used).
+device_ok() {
+  [ -n "${NO_DEVICE:-}" ] && return 0
+  local level
+  level="$(battery)"
+  if [ -z "$level" ] || [ "$level" -lt "$MIN_BATTERY" ]; then
+    echo "[$(date +%T)] Thor battery ${level:-unreachable}% (< $MIN_BATTERY%): stopping the queue." >&2
+    return 1
+  fi
+}
+
+# "You've hit your 5-hour limit · resets 2:10pm (America/Halifax)": sleeps until 2 min after the reset.
+# Returns 1 after MAX_LIMIT_WAITS waits; an unreadable reset time means looking again in an hour.
+wait_for_reset() {
+  local msg="$1" when tz target now
+  LIMIT_WAITS=$((LIMIT_WAITS + 1))
+  if [ "$LIMIT_WAITS" -gt "$MAX_LIMIT_WAITS" ]; then
+    echo "[$(date +%T)] usage limit hit $LIMIT_WAITS times: stopping (MAX_LIMIT_WAITS=$MAX_LIMIT_WAITS)." >&2
+    return 1
+  fi
+  when="$(sed -n 's/.*resets \(.*\)$/\1/p' <<<"$msg")"
+  tz="$(sed -n 's/.*(\([A-Za-z_]*\/[A-Za-z_/]*\)).*/\1/p' <<<"$when")"
+  when="$(sed 's/ *([^)]*)//; s/,//g' <<<"$when")" # "Oct 30, 9am" -> "Oct 30 9am" (GNU date reads that)
+  now="$(date +%s)"
+  target=""
+  [ -n "$when" ] && target="$(TZ="${tz:-$(date +%Z)}" date -d "$when" +%s 2>/dev/null || true)"
+  if [ -z "$target" ]; then
+    target=$((now + 3600)) # unreadable reset time: look again in an hour
+  elif [ "$target" -le "$now" ]; then
+    target=$((target + 86400)) # "6:10am" when it is already past 6:10 today
+  fi
+  target=$((target + 120))
+  echo "[$(date +%T)] usage limit; waiting until $(date -d "@$target" +'%a %H:%M') (reset: ${when:-unknown}${tz:+ $tz})."
+  sleep $((target - now))
+}
+
 run_task() {
-  local task="$1" name out
+  local task="$1" name out session="" attempt=0 errors=0 result
   name="$(basename "$task" .md)"
-  out="$RUN_DIR/$name.json"
-  local args=(-p "$(cat "$task")
+  mkdir -p "$RUN_DIR/$name"
+  local common=(--output-format json --permission-prompts none --allowedTools "$ALLOWED"
+    --add-dir "$(dirname "$REPO")/GameNativeDuo-community")   # edits there are auto-accepted too
+  if [ -n "${PERMISSION_MODE:-}" ]; then
+    common+=(--permission-mode "$PERMISSION_MODE")
+  else
+    common+=(--permission-mode acceptEdits)
+  fi
+  [ -n "${MAX_BUDGET_USD:-}" ] && common+=(--max-budget-usd "$MAX_BUDGET_USD")
+  while :; do
+    attempt=$((attempt + 1))
+    out="$RUN_DIR/$name.$attempt.json"
+    local args
+    if [ -z "$session" ]; then
+      args=(-p "$(cat "$task")
 
 Run folder for logs and screenshots: duo/agents/runs/$STAMP/$name/
 Device available: $([ -z "${NO_DEVICE:-}" ] && echo yes || echo no).
-Branch: agent/$STAMP (earlier tasks of this queue may have committed to it: see git log)."
-    --output-format json
-    --permission-prompts none
-    --allowedTools "$ALLOWED"
-    --add-dir "$(dirname "$REPO")/GameNativeDuo-community")   # edits there are auto-accepted too
-  if [ -n "${PERMISSION_MODE:-}" ]; then
-    args+=(--permission-mode "$PERMISSION_MODE")
-  else
-    args+=(--permission-mode acceptEdits)
-  fi
-  [ -n "${MAX_BUDGET_USD:-}" ] && args+=(--max-budget-usd "$MAX_BUDGET_USD")
-  mkdir -p "$RUN_DIR/$name"
-  echo "[$(date +%T)] $name..."
-  claude "${args[@]}" >"$out" || echo "claude exited with $? on $name" >&2
+Branch: agent/$STAMP (earlier tasks of this queue may have committed to it: see git log).")
+    else
+      # Same session, so the task keeps its context; the device may have changed while waiting.
+      args=(-p "Continue this task from where you stopped: a usage limit (or an API error) interrupted you, possibly
+hours ago. First check git status/log and the device state (game still running? test mode files?), then carry on." --resume "$session")
+    fi
+    echo "[$(date +%T)] $name (attempt $attempt${session:+, resuming $session})..."
+    claude "${args[@]}" "${common[@]}" >"$out" || true
+    result="$(jq -r '.result // ""' "$out" 2>/dev/null || true)"
+    local sid
+    sid="$(jq -r '.session_id // empty' "$out" 2>/dev/null || true)"
+    [ -n "$sid" ] && session="$sid"
+    jq -r --arg n "$name" '"== \($n): $\(.total_cost_usd // "n/a")\n\(.result // "no result")\n"' "$out" 2>/dev/null || cat "$out"
+    if grep -qi "hit your .*limit\|usage limit\|limit · resets" <<<"$result"; then
+      wait_for_reset "$result" || return 1
+      device_ok || return 1
+      continue
+    fi
+    if [ "$(jq -r '.is_error // false' "$out" 2>/dev/null)" = "true" ] || [ ! -s "$out" ]; then
+      errors=$((errors + 1))
+      if [ "$errors" -le 3 ]; then
+        echo "[$(date +%T)] $name: error ($result); retrying in $((errors * 5)) min." >&2
+        sleep $((errors * 300))
+        device_ok || return 1
+        continue
+      fi
+      echo "[$(date +%T)] $name: giving up after $errors errors." >&2
+    fi
+    break
+  done
   if [ -f "$(git rev-parse --git-dir)/MERGE_HEAD" ]; then
     echo "$name left a merge unfinished: aborted it" >&2
     git merge --abort || true
@@ -110,23 +185,12 @@ Branch: agent/$STAMP (earlier tasks of this queue may have committed to it: see 
   if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
     git commit -qam "WIP left uncommitted by agent task $name (review before keeping)" || true
   fi
-  if command -v jq >/dev/null; then
-    jq -r --arg n "$name" '"== \($n): $\(.total_cost_usd // "n/a")\n\(.result // "no result")\n"' "$out" || true
-  fi
 }
 
-MIN_BATTERY="${MIN_BATTERY:-10}"
-battery() { adb shell dumpsys battery 2>/dev/null | awk '/^ *level:/ { print $2; exit }'; }
 
 for task in "${TASK_FILES[@]}"; do
-  if [ -z "${NO_DEVICE:-}" ]; then
-    level="$(battery)"
-    if [ -z "$level" ] || [ "$level" -lt "$MIN_BATTERY" ]; then
-      echo "Thor battery ${level:-unreachable}% (< $MIN_BATTERY%): stopping the queue before $(basename "$task")." >&2
-      break
-    fi
-  fi
-  run_task "$task"
+  device_ok || break
+  run_task "$task" || break
 done
 
 # 5. Summary
