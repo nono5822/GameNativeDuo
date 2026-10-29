@@ -105,6 +105,16 @@ data class CommunityRating(
 ) {
     val votes get() = up + down
 
+    /**
+     * What the detail page says about how the votes were counted: the enforced rules once the index says the bot
+     * applied them, a warning for older raw counts that have votes, nothing otherwise.
+     */
+    val rulesNote: RulesNote? get() = when {
+        verified -> RulesNote.ENFORCED
+        votes > 0 -> RulesNote.UNVERIFIED
+        else -> null
+    }
+
     /** Share of 👍, 0..100, or null with no votes. */
     val percentUp: Int? get() = if (votes == 0) null else Math.round(up * 100.0 / votes).toInt()
 
@@ -142,6 +152,8 @@ data class CommunityRating(
         }
     }
 }
+
+enum class RulesNote { ENFORCED, UNVERIFIED }
 
 /** One release of a package, newest first in [CommunityPackage.changelog]. */
 data class ChangelogEntry(val version: String, val date: String, val notes: String)

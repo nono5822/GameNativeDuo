@@ -1,8 +1,8 @@
 # Community ratings and compatibility reports
 
 How the mod explorer's ratings work, end to end. App: `duo/mods/ModExplorer.kt`, `community/CommunityIndex.kt`
-(`CommunityRating`, `CompatReports`). Community repo: `tools/ratings.py` (+ `tools/rating_rules.py`, proposed in
-`duo/community-repo-patches/`, not applied yet).
+(`CommunityRating`, `CompatReports`). Community repo: `tools/ratings.py` + `tools/rating_rules.py` (unit-tested by
+`tools/test_rating_rules.py` in its validate CI), the `compat-report.yml` form and the maintainer `OFFICIAL` file.
 
 ## Votes
 
@@ -10,8 +10,10 @@ How the mod explorer's ratings work, end to end. App: `duo/mods/ModExplorer.kt`,
   The app never calls GitHub: the nightly publish folds the counts into the signed index.
 - Rules (`rating_rules.aggregate_votes`, index field `"rules": 2`): one vote per account (both reactions from one
   account count as neither), the package's authors (`githubLogins`) and bots are not counted.
-- Until the index says `rules >= 2`, the app shows the counts without claiming those rules, and warns "counted
-  before the one-vote rules" once there are votes.
+- With `rules >= 2` the detail page states those rules under the counts (`CommunityRating.rulesNote`). An older
+  index's raw counts are shown without claiming them, with the warning "counted before the one-vote rules" once
+  there are votes.
+- The share bot writes the sharing account into `githubLogins` and refuses updates from another account.
 - Shown as "👍 92% of 25 votes · 3 comments"; sorted by the Wilson lower bound (`CommunityRating.score`), so one 👍
   does not beat forty 👍 and two 👎.
 
@@ -30,7 +32,8 @@ How the mod explorer's ratings work, end to end. App: `duo/mods/ModExplorer.kt`,
 
 Bundled mods, `CommunityIndex.OFFICIAL_PACKAGES` (pinned in the app), or the game file's top-level `official`
 list (written by the index builder from the maintainer's `OFFICIAL` file, covered by the signature). Never from a
-package's own fields.
+package's own fields. Ids starting with `gamenative-duo.` are reserved: the community repo's validation fails unless
+they are listed in `OFFICIAL` (CODEOWNERS-protected).
 
 ## Voting from the app
 

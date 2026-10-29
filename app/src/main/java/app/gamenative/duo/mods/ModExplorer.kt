@@ -82,6 +82,7 @@ import app.gamenative.duo.community.CommunityModInstaller
 import app.gamenative.duo.community.CommunityPackage
 import app.gamenative.duo.community.CommunityRating
 import app.gamenative.duo.community.CompatVerdict
+import app.gamenative.duo.community.RulesNote
 import app.gamenative.duo.community.ShareLayout
 import app.gamenative.duo.community.ShareLayoutDialog
 import app.gamenative.ui.util.SnackbarManager
@@ -582,7 +583,11 @@ private fun EntryDetail(state: ModHubState, entry: HubEntry, gameTitle: String, 
                 entry.rating?.compat?.filterKeys { it != state.device.id }?.forEach { (device, r) ->
                     Note(stringResource(R.string.duo_hub_compat_other, ModHubState.deviceName(device), r.works, r.total))
                 }
-                entry.rating?.takeIf { !it.verified && it.votes > 0 }?.let { Note(stringResource(R.string.duo_hub_rate_unverified)) }
+                when (entry.rating?.rulesNote) {
+                    RulesNote.ENFORCED -> Note(stringResource(R.string.duo_hub_rate_rules))
+                    RulesNote.UNVERIFIED -> Note(stringResource(R.string.duo_hub_rate_unverified))
+                    null -> Unit
+                }
                 if (pkg?.rating != null) {
                     OutlinedButton(onClick = {
                         onRate(pkg)

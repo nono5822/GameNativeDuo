@@ -40,6 +40,19 @@ class RatingAggregationTest {
     }
 
     @Test
+    fun rulesNoteClaimsTheRulesOnlyWhenTheIndexAppliedThem() {
+        // What tools/ratings.py writes since the community repo applies rating_rules.py (rules: 2).
+        val enforced = rating(
+            """{"up":0,"down":0,"comments":0,"url":"https://github.com/o/r/discussions/1","rules":2,
+               "reportUrl":"https://github.com/o/r/issues/new?template=compat-report.yml","compat":{}}""",
+        )!!
+        assertEquals(RulesNote.ENFORCED, enforced.rulesNote)
+        // Older indexes: raw reaction counts, warned about only once someone voted.
+        assertEquals(RulesNote.UNVERIFIED, rating("""{"up":3,"down":1,"comments":0,"url":"https://github.com/x"}""")!!.rulesNote)
+        assertNull(rating("""{"up":0,"down":0,"comments":0,"url":"https://github.com/x","rules":1}""")!!.rulesNote)
+    }
+
+    @Test
     fun compatVerdictLeansToTheWorseOutcome() {
         assertEquals(CompatVerdict.WORKS, CompatReports(3, 1, 1).verdict)
         assertEquals(CompatVerdict.ISSUES, CompatReports(1, 0, 1).verdict)
