@@ -15,7 +15,7 @@ Commit after every box (code + this file together). Device: Thor `d615ac15` (USB
 - [x] Menus (`DuoMenuPanel`, `DuoQuickMenu`, `SplitScreenController`) read it instead of `canEdit`/`modSeen`
 - [x] PC editor: server sends capabilities, `index.html` gates the same way
 - [x] Balatro: declare features, list all four elements always (`present`), `features.json`
-- [ ] Stardew: list absent menus with `present: false`, declare features (rebuild DLL, needs the game's folder)
+- [x] Stardew: list absent menus with `present: false`, declare features (rebuild DLL, needs the game's folder)
 - [ ] Unity: crosshair screens, plugin elements declare features (rebuild shared DLL)
 - [ ] `engine-adapter-contract.md` updated
 - [ ] Thor test: Balatro title screen + run, Stardew, a Unity game
@@ -46,3 +46,4 @@ Commit after every box (code + this file together). Device: Thor `d615ac15` (USB
 - Editor, menus, PC editor gated (compiles, lint clean; not yet run on the Thor). PC editor had the same root-element
   click bug (`e.depth === 0`); fixed the same way. `canEdit`/`modSeen` are gone: everything reads
   `UiLayoutController.capabilities`.
+- Stardew references: pulled the game folder (no Content) from the Thor into the session scratchpad; build with `-p:GamePath=<that> -p:EnableModDeploy=false -p:EnableModZip=false`. Pull again with `adb exec-out run-as app.gamenative.duo sh -c 'cd ".../common/Stardew Valley" && tar cf - --exclude=Content --exclude=Mods .'`.

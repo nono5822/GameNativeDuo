@@ -30,7 +30,7 @@ internal static class HudLayout
 {
     private sealed class Element
     {
-        public string Id = "", Name = "";
+        public string Id = "", Name = "", When = "";
         public Type? MenuType;
         public UiRule? Rule;
         public Matrix Transform = Matrix.Identity, Inverse = Matrix.Identity;
@@ -38,10 +38,10 @@ internal static class HudLayout
 
     private static readonly Element[] Elements =
     {
-        new() { Id = "hud/toolbar", Name = "Toolbar", MenuType = typeof(Toolbar) },
-        new() { Id = "hud/clock", Name = "Clock and money", MenuType = typeof(DayTimeMoneyBox) },
-        new() { Id = "hud/buffs", Name = "Buffs", MenuType = typeof(BuffsDisplay) },
-        new() { Id = "hud/chat", Name = "Chat", MenuType = typeof(ChatBox) },
+        new() { Id = "hud/toolbar", Name = "Toolbar", MenuType = typeof(Toolbar), When = "While playing" },
+        new() { Id = "hud/clock", Name = "Clock and money", MenuType = typeof(DayTimeMoneyBox), When = "While playing" },
+        new() { Id = "hud/buffs", Name = "Buffs", MenuType = typeof(BuffsDisplay), When = "While playing" },
+        new() { Id = "hud/chat", Name = "Chat", MenuType = typeof(ChatBox), When = "In multiplayer" },
         new() { Id = "hud/bars", Name = "Health and energy", MenuType = null }, // drawn by Game1.drawHUD
     };
 
@@ -296,9 +296,13 @@ internal static class HudLayout
         foreach (Element e in Elements)
         {
             IClickableMenu? menu = e.MenuType == null ? null : Game1.onScreenMenus.FirstOrDefault(m => m.GetType() == e.MenuType);
-            if (e.MenuType != null && menu == null)
-                continue;
             DuoScreen screen = e.Rule?.Screen is DuoScreen.Top or DuoScreen.Hidden ? e.Rule.Screen : DuoScreen.Bottom;
+            // Not on screen now (title screen, a cutscene, chat outside multiplayer): listed so its screen can be chosen ahead.
+            if (e.MenuType != null && menu == null)
+            {
+                Append(sb, e.Id, e.Name, 0, screen, Rectangle.Empty, true, first: false, present: false, when: e.When);
+                continue;
+            }
             Rectangle ui = menu != null ? Bounds(menu) : BarsBounds();
             UpdateTransform(e, ui);
             Append(sb, e.Id, e.Name, 0, screen, ToWindow(ui, e.Transform, screen), true, first: false);
@@ -319,14 +323,20 @@ internal static class HudLayout
         return new Rectangle(x, y, (int)Math.Round(Math.Abs(c.X - a.X) * scale), (int)Math.Round(Math.Abs(c.Y - a.Y) * scale));
     }
 
-    private static void Append(StringBuilder sb, string id, string name, int parent, DuoScreen screen, Rectangle r, bool graphic, bool first)
+    private static void Append(StringBuilder sb, string id, string name, int parent, DuoScreen screen, Rectangle r, bool graphic, bool first,
+        bool present = true, string when = "")
     {
         if (!first)
             sb.Append(',');
         sb.Append("{\"id\":\"").Append(id).Append("\",\"name\":\"").Append(name.Replace("\"", "'")).Append("\",\"parent\":").Append(parent)
             .Append(",\"screen\":\"").Append(UiRule.ScreenId(screen)).Append('"')
             .Append(",\"x\":").Append(r.X).Append(",\"y\":").Append(r.Y).Append(",\"w\":").Append(r.Width).Append(",\"h\":").Append(r.Height)
-            .Append(",\"graphic\":").Append(graphic ? "true" : "false").Append('}');
+            .Append(",\"graphic\":").Append(graphic ? "true" : "false");
+        if (!present)
+            sb.Append(",\"present\":false");
+        if (when.Length > 0)
+            sb.Append(",\"when\":\"").Append(when.Replace("\"", "'")).Append('"');
+        sb.Append('}');
     }
 }
 
