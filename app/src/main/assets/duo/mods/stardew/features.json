@@ -1,0 +1,40 @@
+{
+  "format": "gamenative-duo/features",
+  "version": 1,
+  "engine": "stardew-smapi",
+  "touch": true,
+  "background": [
+    "game",
+    "blur",
+    "color",
+    "image"
+  ],
+  "elements": [
+    {
+      "id": "hud/toolbar",
+      "name": "Toolbar",
+      "when": "While playing"
+    },
+    {
+      "id": "hud/clock",
+      "name": "Clock and money",
+      "when": "While playing"
+    },
+    {
+      "id": "hud/buffs",
+      "name": "Buffs",
+      "when": "While playing"
+    },
+    {
+      "id": "hud/chat",
+      "name": "Chat",
+      "when": "In multiplayer"
+    },
+    {
+      "id": "hud/bars",
+      "name": "Health and energy",
+      "when": "While playing"
+    }
+  ],
+  "dynamic": false
+}

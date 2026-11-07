@@ -92,12 +92,12 @@ class UiElementList(val windowW: Int, val windowH: Int, val elements: List<UiEle
             return UiElementList(screen?.optInt("w") ?: 0, screen?.optInt("h") ?: 0, list)
         }
 
-        private fun parseScreens(a: org.json.JSONArray?): Set<UiScreen>? = a?.let {
+        internal fun parseScreens(a: org.json.JSONArray?): Set<UiScreen>? = a?.let {
             (0 until a.length()).map { UiScreen.fromId(a.optString(it)) }.filter { it != UiScreen.DEFAULT }.toSet()
         }?.takeIf { it.isNotEmpty() }
 
         /** `scale`: absent or true = the full range, false = ignored, `{"min":..,"max":..}` = a narrower range. */
-        private fun parseScale(v: Any?): ClosedFloatingPointRange<Float>? {
+        internal fun parseScale(v: Any?): ClosedFloatingPointRange<Float>? {
             val full = UiRule.SCALE_MIN..UiRule.SCALE_MAX
             return when (v) {
                 null, true -> full

@@ -1,0 +1,69 @@
+{
+  "format": "gamenative-duo/features",
+  "version": 1,
+  "engine": "balatro-love",
+  "touch": true,
+  "background": [
+    "game",
+    "color",
+    "image"
+  ],
+  "elements": [
+    {
+      "id": "Hand",
+      "name": "Hand",
+      "when": "During a run",
+      "features": {
+        "screens": [
+          "bottom",
+          "top"
+        ],
+        "move": true,
+        "scale": {
+          "min": 0.8,
+          "max": 1.4
+        }
+      }
+    },
+    {
+      "id": "Consumables",
+      "name": "Consumables",
+      "when": "During a run",
+      "features": {
+        "screens": [
+          "bottom",
+          "top"
+        ],
+        "move": true,
+        "scale": false
+      }
+    },
+    {
+      "id": "Hand info",
+      "name": "Hand info",
+      "when": "During a run",
+      "features": {
+        "screens": [
+          "bottom",
+          "hidden"
+        ],
+        "move": true,
+        "scale": false
+      }
+    },
+    {
+      "id": "Menus",
+      "name": "Menus",
+      "when": "While a menu is open",
+      "features": {
+        "screens": [
+          "bottom",
+          "top"
+        ],
+        "move": false,
+        "scale": false
+      }
+    }
+  ],
+  "dynamic": false
+}

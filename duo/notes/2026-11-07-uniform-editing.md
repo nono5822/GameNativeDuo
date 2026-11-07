@@ -22,7 +22,7 @@ Commit after every box (code + this file together). Device: Thor `d615ac15` (USB
 
 ## U2 Known before launch + tags
 
-- [ ] `features.json` bundled per mod in assets; catalog reads it; editing level computed (Full/Partial/Regions)
+- [x] `features.json` bundled per mod (`assets/duo/mods/<id>/features.json`, Unity fallback `shared/unity-features.json`), `ModFeatures` + `EditingLevel` (Full/Partial; Regions comes with U3), tests read the bundled files
 - [ ] Mod explorer tag on cards + details table; Dual screen control status text
 - [ ] Editor uses the static list while the game is paused (GameNative menu)
 - [ ] Thor test
