@@ -26,8 +26,22 @@ class UiElement(
     val screens: Set<UiScreen>? = null,
     /** Settings the mod declares for this element (its own elements only). */
     val options: List<UiElementOption> = emptyList(),
+    /** The mod honours the rule's `x`/`y` for this element. */
+    val canMove: Boolean = true,
+    /** The rule's `scale` range the mod honours; null: it ignores `scale`. */
+    val scaleRange: ClosedFloatingPointRange<Float>? = UiRule.SCALE_MIN..UiRule.SCALE_MAX,
+    /** On screen now; an absent element (not in this scene) has no valid [rect]. */
+    val present: Boolean = true,
+    /** When an absent element appears, in the mod's words ("During a run"). */
+    val whenText: String = "",
+    /** Other elements have this one as their parent. */
+    val hasChildren: Boolean = false,
 ) {
     val area: Float get() = rect.width() * rect.height()
+    val canScale: Boolean get() = scaleRange != null
+
+    /** The editor can change something about it (move, resize, screen or settings). */
+    val editable: Boolean get() = canMove || canScale || options.isNotEmpty() || (screens?.size ?: 3) > 1
 
     fun allows(screen: UiScreen): Boolean = screens == null || screen in screens
 }
@@ -39,16 +53,22 @@ class UiElementList(val windowW: Int, val windowH: Int, val elements: List<UiEle
     fun parentOf(e: UiElement): UiElement? = elements.getOrNull(e.parent)
 
     companion object {
-        fun parse(file: File): UiElementList {
-            val json = JSONObject(file.readText())
+        fun parse(file: File): UiElementList = parse(file.readText())
+
+        fun parse(text: String): UiElementList {
+            val json = JSONObject(text)
             val screen = json.optJSONObject("screen")
             val array = json.optJSONArray("elements")
             val list = ArrayList<UiElement>(array?.length() ?: 0)
+            val parents = HashSet<Int>()
+            for (i in 0 until (array?.length() ?: 0)) parents += array!!.getJSONObject(i).optInt("parent", -1)
             for (i in 0 until (array?.length() ?: 0)) {
                 val o = array!!.getJSONObject(i)
                 val parent = o.optInt("parent", -1)
                 val x = o.optDouble("x").toFloat()
                 val y = o.optDouble("y").toFloat()
+                // `features` (contract "Element features"); `screens` at the top level is the older plugin-element form.
+                val features = o.optJSONObject("features")
                 list += UiElement(
                     index = i,
                     id = o.getString("id"),
@@ -58,15 +78,37 @@ class UiElementList(val windowW: Int, val windowH: Int, val elements: List<UiEle
                     screen = UiScreen.fromId(o.optString("screen")),
                     rect = RectF(x, y, x + o.optDouble("w").toFloat(), y + o.optDouble("h").toFloat()),
                     graphic = o.optBoolean("graphic"),
-                    screens = o.optJSONArray("screens")?.let { a ->
-                        (0 until a.length()).map { UiScreen.fromId(a.optString(it)) }.filter { it != UiScreen.DEFAULT }.toSet()
-                    }?.takeIf { it.isNotEmpty() },
+                    screens = parseScreens(features?.optJSONArray("screens") ?: o.optJSONArray("screens")),
                     options = o.optJSONArray("options")?.let { a ->
                         (0 until a.length()).mapNotNull { a.optJSONObject(it)?.let(UiElementOption::fromJson) }
                     } ?: emptyList(),
+                    canMove = features?.optBoolean("move", true) ?: true,
+                    scaleRange = parseScale(features?.opt("scale")),
+                    present = o.optBoolean("present", true),
+                    whenText = o.optString("when"),
+                    hasChildren = i in parents,
                 )
             }
             return UiElementList(screen?.optInt("w") ?: 0, screen?.optInt("h") ?: 0, list)
+        }
+
+        private fun parseScreens(a: org.json.JSONArray?): Set<UiScreen>? = a?.let {
+            (0 until a.length()).map { UiScreen.fromId(a.optString(it)) }.filter { it != UiScreen.DEFAULT }.toSet()
+        }?.takeIf { it.isNotEmpty() }
+
+        /** `scale`: absent or true = the full range, false = ignored, `{"min":..,"max":..}` = a narrower range. */
+        private fun parseScale(v: Any?): ClosedFloatingPointRange<Float>? {
+            val full = UiRule.SCALE_MIN..UiRule.SCALE_MAX
+            return when (v) {
+                null, true -> full
+                false -> null
+                is JSONObject -> {
+                    val min = v.optDouble("min", full.start.toDouble()).toFloat().coerceIn(full.start, full.endInclusive)
+                    val max = v.optDouble("max", full.endInclusive.toDouble()).toFloat().coerceIn(min, full.endInclusive)
+                    if (min.isFinite() && max.isFinite()) min..max else full
+                }
+                else -> full
+            }
         }
     }
 }

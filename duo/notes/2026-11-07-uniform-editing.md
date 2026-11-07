@@ -9,8 +9,8 @@ Commit after every box (code + this file together). Device: Thor `d615ac15` (USB
 
 ## U1 Declare and gate
 
-- [ ] Parser: `features` (screens/move/scale range), `present`, `when` in `UiElement`; old top-level `screens` kept; unit tests
-- [ ] `EditCapabilities` model (source, reasonOff, elements, background, widgets) + unit tests
+- [x] Parser: `features` (screens/move/scale range), `present`, `when` in `UiElement`; old top-level `screens` kept; unit tests
+- [x] `EditCapabilities` model (source, reasonOff, elements, background, widgets) + unit tests
 - [ ] On-device editor gated by it (drag/pinch/+-/screen chips, reasons in the toolbar, absent elements in the list)
 - [ ] Menus (`DuoMenuPanel`, `DuoQuickMenu`, `SplitScreenController`) read it instead of `canEdit`/`modSeen`
 - [ ] PC editor: server sends capabilities, `index.html` gates the same way
@@ -40,3 +40,6 @@ Commit after every box (code + this file together). Device: Thor `d615ac15` (USB
 ## Log
 
 - 2026-11-07: branch and worktree created, docs committed.
+- Found: the editor's tap hit-test skipped every top-level element (`depth == 0`, meant for Unity's whole-screen
+  canvases), so Balatro's four elements (all `parent: -1`) could only be picked from the List. Fix in the editor
+  step: skip only top-level elements that have children (`UiElement.hasChildren`).
