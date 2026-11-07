@@ -97,7 +97,7 @@ fun DualScreenToggle(appId: String, installLocation: String?, isInstalled: Boole
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Icon(Icons.Outlined.Splitscreen, contentDescription = null, modifier = Modifier.size(20.dp))
-                    Column(modifier = Modifier.widthIn(max = 160.dp)) {
+                    Column(modifier = Modifier.widthIn(max = 240.dp)) {
                         Text(stringResource(R.string.duo_mod_toggle_label), style = MaterialTheme.typography.labelLarge)
                         val problem = state.status?.problems?.firstOrNull()?.takeIf { state.on }
                         Text(

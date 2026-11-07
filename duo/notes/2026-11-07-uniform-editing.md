@@ -25,7 +25,7 @@ Commit after every box (code + this file together). Device: Thor `d615ac15` (USB
 - [x] `features.json` bundled per mod (`assets/duo/mods/<id>/features.json`, Unity fallback `shared/unity-features.json`), `ModFeatures` + `EditingLevel` (Full/Partial; Regions comes with U3), tests read the bundled files
 - [x] Mod explorer tag on cards + "UI editing" section in details; Dual screen control shows "Official · Partial editing"
 - [x] Editor uses the static list (bundled features.json, all absent) until the mod answers; capabilities editable from the installed mod's features before its hello
-- [ ] Thor test
+- [x] Thor test: tag on the Balatro card, "UI editing" details, control text (widened to 240 dp: it was cut at 160). Static fallback compiles; not provoked on the device (needs the editor open before the mod's first hello).
 
 ## U3 Regions as elements
 
