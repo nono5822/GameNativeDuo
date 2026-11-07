@@ -15,6 +15,9 @@ enum class EditingLevel {
 
     /** Anything less: the details list each element's limits. */
     PARTIAL,
+
+    /** No mod: region view, the user picks parts of the game's frame for the bottom screen. */
+    REGIONS,
 }
 
 /** One element a mod declares in `features.json`. [own]: drawn by the mod itself (a live map), not the game's UI. */

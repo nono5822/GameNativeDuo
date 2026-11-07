@@ -376,6 +376,7 @@ private fun Badges(entry: HubEntry) {
         when (rememberFeatures(entry)?.level) {
             EditingLevel.FULL -> Badge(stringResource(R.string.duo_hub_level_full), colors.primaryContainer, colors.onPrimaryContainer)
             EditingLevel.PARTIAL -> Badge(stringResource(R.string.duo_hub_level_partial), colors.surfaceVariant, colors.onSurfaceVariant)
+            EditingLevel.REGIONS -> Badge(stringResource(R.string.duo_hub_level_regions), colors.surfaceVariant, colors.onSurfaceVariant)
             null -> Unit
         }
     }

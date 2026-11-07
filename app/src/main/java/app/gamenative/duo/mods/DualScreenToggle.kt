@@ -103,7 +103,9 @@ fun DualScreenToggle(appId: String, installLocation: String?, isInstalled: Boole
                         Text(
                             when {
                                 problem != null -> problemShort(problem)
-                                selected != null -> shortTitle(selected) + levelSuffix(selected)
+                                selected != null -> shortTitle(selected) + levelSuffix(selected, state.regionView)
+                                state.regionView -> stringResource(R.string.duo_hub_region_view) + " · " +
+                                    stringResource(R.string.duo_hub_level_regions)
                                 else -> stringResource(R.string.duo_hub_choose)
                             },
                             style = MaterialTheme.typography.labelSmall,
@@ -171,9 +173,12 @@ fun DualScreenToggle(appId: String, installLocation: String?, isInstalled: Boole
 
 /** How much of the UI layout editor works with the mod, after its name (uniform-editing.md). */
 @Composable
-private fun levelSuffix(entry: HubEntry): String = when (rememberFeatures(entry)?.level) {
+private fun levelSuffix(entry: HubEntry, regionView: Boolean): String = when (
+    rememberFeatures(entry)?.level ?: EditingLevel.REGIONS.takeIf { regionView }
+) {
     EditingLevel.FULL -> " · " + stringResource(R.string.duo_hub_level_full)
     EditingLevel.PARTIAL -> " · " + stringResource(R.string.duo_hub_level_partial)
+    EditingLevel.REGIONS -> " · " + stringResource(R.string.duo_hub_level_regions)
     null -> ""
 }
 

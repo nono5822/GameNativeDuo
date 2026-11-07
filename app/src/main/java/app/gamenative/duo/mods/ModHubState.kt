@@ -15,6 +15,8 @@ import app.gamenative.duo.community.CommunityModInstaller
 import app.gamenative.duo.community.CommunityPackage
 import app.gamenative.duo.community.CommunityPackages
 import app.gamenative.duo.display.DeviceProfile
+import app.gamenative.duo.settings.DuoSettingsStore
+import app.gamenative.duo.split.SplitLayout
 import app.gamenative.duo.ui.UiLayoutStore
 import app.gamenative.ui.util.SnackbarManager
 import java.io.File
@@ -48,7 +50,11 @@ class ModHubState(
     var loaded by mutableStateOf(false)
         private set
 
-    /** The game has something to show: a bundled mod, or community packages (cached list or catalog). */
+    /** Region view is on for this game (no mod: the user's regions on the bottom screen). */
+    var regionView by mutableStateOf(false)
+        private set
+
+    /** The game has something to show: a bundled mod, community packages (cached list or catalog), or region view. */
     var visible by mutableStateOf(bundled != null)
         private set
     var game by mutableStateOf<CommunityGame?>(null)
@@ -127,10 +133,12 @@ class ModHubState(
             // After an app update: bring the mod's files up to date now, not at the next launch's session start.
             DuoModInstaller.refreshIfUpdated(context, containerId)
             val cached = CommunityPackages.cached(context, containerId)
+            val settings = DuoSettingsStore.load(context, containerId)
+            regionView = settings.screenSplit && SplitLayout.fromId(settings.splitLayout) == SplitLayout.REGION
             read(cached) to (CommunityCatalog.known(context)?.contains(gameKey) == true)
         }
         publish(snapshot)
-        visible = bundled != null || inCatalog || snapshot.entries.isNotEmpty()
+        visible = bundled != null || inCatalog || snapshot.entries.isNotEmpty() || regionView
         loaded = true
         withContext(Dispatchers.IO) { CommunityCatalog.refreshOnce(context) }
         if (!visible && CommunityCatalog.known(context)?.contains(gameKey) == true) visible = true

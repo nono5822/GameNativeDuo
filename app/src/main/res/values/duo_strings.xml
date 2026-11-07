@@ -111,6 +111,8 @@
     <string name="duo_hub_badge_code">Code mod</string>
     <string name="duo_hub_level_full">Full editing</string>
     <string name="duo_hub_level_partial">Partial editing</string>
+    <string name="duo_hub_level_regions">Regions</string>
+    <string name="duo_hub_region_view">Region view</string>
     <string name="duo_hub_detail_editing">UI editing</string>
     <string name="duo_hub_level_full_detail">Every element can go on the top or bottom screen or be hidden, moved and resized.</string>
     <string name="duo_hub_level_partial_detail">What the UI layout editor can change in this game:</string>

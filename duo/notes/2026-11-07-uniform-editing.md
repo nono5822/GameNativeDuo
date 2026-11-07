@@ -45,8 +45,8 @@ Commit after every box (code + this file together). Device: Thor `d615ac15` (USB
   (image/blur greyed with the reason)
 - [x] U3d PC editor: Add/Remove regions (`/api/regions/add|remove`, buttons shown when `caps.source == "regions"`); tested over Wi-Fi with curl (state, add, remove), page JS syntax-checked, not opened in a browser
 
-- [ ] U3e `EditingLevel.REGIONS` tag for games without a mod (mod explorer and Dual screen control)
-- [ ] U3 Thor test: a game without a mod (Isaac / Dead Cells), two regions, one hidden (masked on top)
+- [x] U3e `EditingLevel.REGIONS`: the Dual screen control shows for games in region view and reads "<title> · Regions" (badge in the explorer for entries that declare it; community settings packages do not carry features yet)
+- [x] U3 Thor test: Dead Cells, two regions, one moved here (masked on top), source drag, remove, relaunch, PC API, library control
 
 ## U4 Conformance
 
