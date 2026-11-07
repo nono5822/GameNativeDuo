@@ -32,6 +32,7 @@ import app.gamenative.duo.display.realSize
 import app.gamenative.duo.pc.PcEditorHost
 import app.gamenative.duo.pc.PcEditorPanel
 import app.gamenative.duo.pc.PcEditorServer
+import app.gamenative.duo.ui.EditCapabilities
 import app.gamenative.duo.ui.Snapshots
 import app.gamenative.duo.ui.UiLayout
 import app.gamenative.duo.ui.UiLayoutController
@@ -548,7 +549,7 @@ private class SplitBottomPresentation(
 
     /** From GameNative's menu: the game is paused until the menu closes, so the editor opens a moment later. */
     fun openEditor(): Boolean {
-        if (uiLayout?.modSeen != true) return false
+        if (uiLayout?.capabilities?.editable != true) return false
         handler.postDelayed({ showEditor() }, 400)
         return true
     }
@@ -608,8 +609,7 @@ private class SplitBottomPresentation(
             showOverlay(
                 DuoMenuPanel(
                     context,
-                    // Seen this session, not "lately": GameNative's menu pauses the game (and the mod's hellos).
-                    canEditUi = uiLayout?.modSeen == true,
+                    editUiOff = uiLayout?.capabilities?.reasonOff ?: if (uiLayout == null) EditCapabilities.NO_MOD else null,
                     onEditUi = ::showEditor,
                     onCalibrate = ::showCalibration,
                     onClose = ::hideOverlay,

@@ -129,11 +129,12 @@ fun DuoQuickMenuSection(onDismiss: () -> Unit, modifier: Modifier = Modifier) {
             Column {
                 Text("GameNative Duo", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = Color.White)
                 val engine = controller?.engine.orEmpty()
+                val caps = controller?.capabilities
                 Text(
                     when {
                         screens == null -> "Turn on the screen split for this game to use these options"
-                        controller?.modSeen == true -> "Dual-screen mod connected" + if (engine.isNotEmpty()) " ($engine)" else ""
-                        else -> "No dual-screen mod running in this game"
+                        caps?.source == EditSource.MOD -> "Dual-screen mod connected" + if (engine.isNotEmpty()) " ($engine)" else ""
+                        else -> caps?.reasonOff ?: "No dual-screen mod running in this game"
                     },
                     color = Muted,
                     fontSize = 13.sp,
@@ -149,7 +150,7 @@ fun DuoQuickMenuSection(onDismiss: () -> Unit, modifier: Modifier = Modifier) {
                 onClick = {
                     if (screens.openEditor()) onDismiss()
                 },
-                enabled = controller.modSeen,
+                enabled = controller.capabilities.editable,
                 colors = ButtonDefaults.buttonColors(containerColor = Accent),
                 modifier = Modifier.fillMaxWidth().focusRequester(firstFocus),
             ) { Text("Edit on the bottom screen") }
@@ -158,7 +159,7 @@ fun DuoQuickMenuSection(onDismiss: () -> Unit, modifier: Modifier = Modifier) {
             if (info == null) {
                 OutlinedButton(
                     onClick = { pc = screens.startPcEditor(showCard = false) },
-                    enabled = controller.modSeen,
+                    enabled = controller.capabilities.editable,
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text("Edit on a PC", color = Color.White) }
             } else {

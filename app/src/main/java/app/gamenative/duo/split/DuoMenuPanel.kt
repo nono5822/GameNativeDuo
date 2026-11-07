@@ -17,7 +17,8 @@ import kotlin.math.roundToInt
 @SuppressLint("ViewConstructor")
 internal class DuoMenuPanel(
     context: Context,
-    canEditUi: Boolean,
+    /** Why the UI layout editor is unavailable, or null when it can open ([app.gamenative.duo.ui.EditCapabilities]). */
+    editUiOff: String?,
     onEditUi: () -> Unit,
     onCalibrate: () -> Unit,
     onClose: () -> Unit,
@@ -52,9 +53,9 @@ internal class DuoMenuPanel(
         if (onChooseRegion != null) {
             item("Choose bottom view") { onChooseRegion() }
         } else {
-            item("Edit UI layout", canEditUi) { onEditUi() }
-            onEditOnPc?.let { item(if (pcRunning) "PC editor (on)" else "Edit on PC", canEditUi) { it() } }
-            if (!canEditUi) card.addView(DuoUi.label(context, "Needs this game's GameNative Duo mod, running.", 12f, DuoUi.MUTED))
+            item("Edit UI layout", editUiOff == null) { onEditUi() }
+            onEditOnPc?.let { item(if (pcRunning) "PC editor (on)" else "Edit on PC", editUiOff == null) { it() } }
+            if (editUiOff != null) card.addView(DuoUi.label(context, editUiOff, 12f, DuoUi.MUTED))
             // Lining the screens up only matters when the game continues across both (not in region view).
             item("Line up screens") { onCalibrate() }
         }

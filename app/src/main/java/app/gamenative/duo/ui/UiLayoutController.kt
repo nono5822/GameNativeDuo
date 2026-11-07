@@ -134,11 +134,15 @@ class UiLayoutController(
         bridge?.listener = this
     }
 
-    /** True when the game's mod can list its UI (the layout editor needs it). */
-    val canEdit: Boolean get() = bridge?.hasMod(DuoBridge.CAP_ELEMENTS) == true
-
-    /** True when the game's mod can list its UI, even while the game is paused (GameNative's in-game menu). */
-    val modSeen: Boolean get() = bridge?.seenMod(DuoBridge.CAP_ELEMENTS) == true
+    /**
+     * What the layout editor may offer, for every editor surface (`uniform-editing.md`). Built from the mod seen this
+     * session, not "lately": GameNative's in-game menu pauses the game, and with it the mod's hellos.
+     */
+    val capabilities: EditCapabilities
+        get() {
+            val b = bridge ?: return EditCapabilities.off(EditCapabilities.NO_MOD)
+            return EditCapabilities.forMod(if (b.seenMod(ANY_CAPABILITY)) b.capabilities else 0, gameName)
+        }
 
     /** The game's name for display (the container's), and the engine its mod reported. */
     val gameName: String by lazy {
@@ -151,12 +155,7 @@ class UiLayoutController(
     val engine: String get() = bridge?.engine.orEmpty()
 
     /** True when the running mod can draw [mode] behind the bottom screen's UI. */
-    fun supports(mode: UiBackgroundMode): Boolean = when (mode) {
-        // What a mod can draw does not change during a session: no need for a recent hello.
-        UiBackgroundMode.GAME -> bridge?.seenMod(DuoBridge.CAP_BG_GAME) == true
-        UiBackgroundMode.BLUR -> bridge?.seenMod(DuoBridge.CAP_BG_BLUR) == true
-        UiBackgroundMode.COLOR, UiBackgroundMode.IMAGE -> bridge?.seenMod(DuoBridge.CAP_BG_BASIC) == true
-    }
+    fun supports(mode: UiBackgroundMode): Boolean = capabilities.supports(mode)
 
     /** Called on the main thread after every change (widgets on the bottom screen, the PC editor). */
     val listeners = mutableListOf<(UiLayout) -> Unit>()
@@ -234,6 +233,10 @@ class UiLayoutController(
             }
             main.post { callback(list) }
         }, "GNDuo-elements").start()
+    }
+
+    private companion object {
+        const val ANY_CAPABILITY = -1
     }
 
     private fun push() {

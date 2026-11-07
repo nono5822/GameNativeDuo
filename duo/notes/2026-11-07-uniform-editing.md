@@ -11,9 +11,9 @@ Commit after every box (code + this file together). Device: Thor `d615ac15` (USB
 
 - [x] Parser: `features` (screens/move/scale range), `present`, `when` in `UiElement`; old top-level `screens` kept; unit tests
 - [x] `EditCapabilities` model (source, reasonOff, elements, background, widgets) + unit tests
-- [ ] On-device editor gated by it (drag/pinch/+-/screen chips, reasons in the toolbar, absent elements in the list)
-- [ ] Menus (`DuoMenuPanel`, `DuoQuickMenu`, `SplitScreenController`) read it instead of `canEdit`/`modSeen`
-- [ ] PC editor: server sends capabilities, `index.html` gates the same way
+- [x] On-device editor gated by it (drag/pinch/+-/screen chips, reasons in the toolbar, absent elements in the list)
+- [x] Menus (`DuoMenuPanel`, `DuoQuickMenu`, `SplitScreenController`) read it instead of `canEdit`/`modSeen`
+- [x] PC editor: server sends capabilities, `index.html` gates the same way
 - [ ] Balatro: declare features, list all four elements always (`present`), `features.json`
 - [ ] Stardew: list absent menus with `present: false`, declare features (rebuild DLL, needs the game's folder)
 - [ ] Unity: crosshair screens, plugin elements declare features (rebuild shared DLL)
@@ -43,3 +43,6 @@ Commit after every box (code + this file together). Device: Thor `d615ac15` (USB
 - Found: the editor's tap hit-test skipped every top-level element (`depth == 0`, meant for Unity's whole-screen
   canvases), so Balatro's four elements (all `parent: -1`) could only be picked from the List. Fix in the editor
   step: skip only top-level elements that have children (`UiElement.hasChildren`).
+- Editor, menus, PC editor gated (compiles, lint clean; not yet run on the Thor). PC editor had the same root-element
+  click bug (`e.depth === 0`); fixed the same way. `canEdit`/`modSeen` are gone: everything reads
+  `UiLayoutController.capabilities`.

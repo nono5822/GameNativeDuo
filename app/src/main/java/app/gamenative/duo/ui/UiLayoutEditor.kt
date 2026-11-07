@@ -30,6 +30,10 @@ import kotlin.math.roundToInt
  * "Top screen" map. Every change reaches the game within a frame (throttled while a finger moves) and is saved
  * per game when the finger lifts.
  *
+ * Offers only what the game's mod supports for each element (`uniform-editing.md`): screen buttons, drag and
+ * resize follow the element's declared features, and a hint line says what is not possible and why
+ * ([EditCapabilities.limits]). Elements not on screen right now are in the list, where their screen can be chosen.
+ *
  * Draws only when something changes; costs nothing while idle. Swallows all touches while open.
  *
  * [topRect] and [bottomRect] are the game-window rectangles shown on each screen (`{x, y, w, h}`).
@@ -58,6 +62,9 @@ internal class UiLayoutEditor(
     private lateinit var listAdapter: BaseAdapter
     private val title = label(15f, Color.WHITE)
     private val sizeLabel = label(14f, Color.WHITE)
+    private val hint = label(13f, DuoUi.MUTED)
+    private val listHeader = label(13f, DuoUi.MUTED)
+    private val scaleViews = mutableListOf<View>()
     private val screenButtons = mutableMapOf<UiScreen, DuoUi.Chip>()
     private var toolbarAtTop = false
     private var toolbarPlace = -1
@@ -83,7 +90,11 @@ internal class UiLayoutEditor(
                 unanswered = 0
                 elements = result
                 board.chooseMapSide()
-                status = if (result.elements.isEmpty()) "No UI on screen right now" else "Tap a UI element to change it"
+                status = when {
+                    result.elements.isEmpty() -> "No UI on screen right now"
+                    result.elements.none { it.present } -> "Nothing on screen right now: open the List to choose where things go"
+                    else -> "Tap a UI element to change it"
+                }
                 board.clearPreview()
                 if (result.byId(selectedId) == null) selectedId = null
             }
@@ -188,11 +199,16 @@ internal class UiLayoutEditor(
             )
         }
         DuoUi.add(controls, View(context), weight = 1f)
-        DuoUi.add(controls, DuoUi.chip(context, "−") { stepScale(1f / 1.1f) })
-        DuoUi.add(controls, sizeLabel)
-        DuoUi.add(controls, DuoUi.chip(context, "+") { stepScale(1.1f) })
+        scaleViews.clear()
+        scaleViews += DuoUi.chip(context, "−") { stepScale(1f / 1.1f) }
+        scaleViews += sizeLabel
+        scaleViews += DuoUi.chip(context, "+") { stepScale(1.1f) }
+        scaleViews.forEach { DuoUi.add(controls, it) }
         DuoUi.add(controls, DuoUi.chip(context, "Reset") { selected?.let { change(it.id, UiRule(), final = true) } })
         content.addView(controls)
+        (hint.parent as? ViewGroup)?.removeView(hint)
+        hint.setPadding(dp(6), dp(4), dp(6), 0)
+        content.addView(hint)
         optionRows = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         optionRowsFor = null
         content.addView(optionRows)
@@ -271,9 +287,13 @@ internal class UiLayoutEditor(
             )
         }
         content.addView(modes)
+        val unsupported = UiBackgroundMode.entries.filter { !controller.supports(it) }
         if (bg.mode != UiBackgroundMode.GAME && !controller.supports(bg.mode)) {
-            val note = "This game's mod cannot draw this background yet: the bottom screen keeps its default."
+            val note = "${controller.capabilities.owner} cannot draw this background: the bottom screen keeps its default."
             content.addView(DuoUi.label(context, note, 13f, DuoUi.MUTED))
+        } else if (unsupported.isNotEmpty()) {
+            val names = unsupported.joinToString(", ") { it.label.lowercase() }
+            content.addView(DuoUi.label(context, "Greyed out ($names): ${controller.capabilities.owner} cannot draw it.", 13f, DuoUi.MUTED))
         }
         when (if (imageChoice) UiBackgroundMode.IMAGE else bg.mode) {
             UiBackgroundMode.BLUR -> content.addView(
@@ -441,9 +461,20 @@ internal class UiLayoutEditor(
 
     private fun stepScale(factor: Float) {
         val e = selected ?: return
+        val range = e.scaleRange ?: return flashHint()
         val rule = controller.layout.rule(e.id)
-        change(e.id, rule.copy(scale = (rule.scale * factor).coerceIn(UiRule.SCALE_MIN, UiRule.SCALE_MAX)), final = true)
+        change(e.id, rule.copy(scale = (rule.scale * factor).coerceIn(range)), final = true)
     }
+
+    /** A gesture the element does not allow: draw attention to the hint that says why. */
+    private fun flashHint() {
+        if (hint.visibility != VISIBLE) return
+        hint.setTextColor(DuoUi.ACCENT)
+        hint.removeCallbacks(unflash)
+        hint.postDelayed(unflash, 1500)
+    }
+
+    private val unflash = Runnable { hint.setTextColor(DuoUi.MUTED) }
 
     private fun updateToolbar() {
         if (tab != Tab.ELEMENTS) return
@@ -458,6 +489,10 @@ internal class UiLayoutEditor(
             b.visibility = if (e == null || e.allows(screen)) VISIBLE else GONE
         }
         if (::controls.isInitialized) controls.visibility = if (e == null) GONE else VISIBLE
+        scaleViews.forEach { it.visibility = if (e != null && e.canScale && e.present) VISIBLE else GONE }
+        val limits = e?.let { controller.capabilities.limits(it) }
+        hint.text = limits.orEmpty()
+        hint.visibility = if (limits == null) GONE else VISIBLE
         updateOptionRows(e)
     }
 
@@ -501,11 +536,12 @@ internal class UiLayoutEditor(
                         UiScreen.HIDDEN -> "  ⊘ hidden"
                         else -> ""
                     } + if (!rule.isNeutral) "  •" else ""
-                    v.text = e.name + tag
+                    v.text = e.name + tag + if (!e.present) "  · ${e.whenText.ifEmpty { "not on screen" }}" else ""
                     v.setPaddingRelative(dp(12) + dp(14) * min(e.depth, 8), dp(10), dp(12), dp(10))
                     v.setTextColor(
                         when {
                             e.id == selectedId -> Color.CYAN
+                            !e.present || !e.editable -> Color.GRAY
                             e.graphic -> Color.WHITE
                             else -> Color.LTGRAY
                         },
@@ -536,6 +572,7 @@ internal class UiLayoutEditor(
                     },
                 ),
             )
+            addView(listHeader.apply { setPadding(dp(6), dp(6), dp(6), dp(4)) })
             addView(list, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
         }
         val listParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
@@ -547,6 +584,7 @@ internal class UiLayoutEditor(
         listPanel.visibility = if (show) VISIBLE else GONE
         toolbar.visibility = if (show) GONE else VISIBLE
         if (show) {
+            listHeader.text = "Elements from ${controller.capabilities.owner} (${elements?.elements?.size ?: 0})"
             listAdapter.notifyDataSetChanged()
             elements?.elements?.indexOfFirst { it.id == selectedId }?.takeIf { it >= 0 }?.let { list.setSelection(it) }
         }
@@ -725,6 +763,7 @@ internal class UiLayoutEditor(
 
         /** The element's box in view pixels, or false when it is not on a screen the board shows. */
         private fun viewRect(e: UiElement, out: RectF): Boolean {
+            if (!e.present) return false
             val r = e.rect
             when (e.screen) {
                 UiScreen.TOP -> {
@@ -833,7 +872,9 @@ internal class UiLayoutEditor(
             var best: UiElement? = null
             var bestInside = false
             for (e in elements?.elements.orEmpty()) {
-                if ((e.screen == UiScreen.TOP) != top || e.depth == 0 || !viewRect(e, tmp)) continue
+                // Containers at the root (a Unity canvas covering the screen) would swallow every tap; a root with no
+                // children is an element of its own (Balatro's Hand).
+                if ((e.screen == UiScreen.TOP) != top || (e.depth == 0 && e.hasChildren) || !viewRect(e, tmp)) continue
                 val inside = tmp.contains(x, y)
                 // Small elements (a crosshair in the top-screen map is a few pixels) still get a finger-sized target.
                 tmp.inset(-((minTarget - tmp.width()) / 2f).coerceAtLeast(0f), -((minTarget - tmp.height()) / 2f).coerceAtLeast(0f))
@@ -866,7 +907,10 @@ internal class UiLayoutEditor(
                     val onSelection = e != null && viewRect(e, tmp) && tmp.apply { inset(-slop, -slop) }.contains(event.x, event.y)
                     mode = if (onSelection) Mode.DRAG_PENDING else Mode.TAP
                 }
-                MotionEvent.ACTION_POINTER_DOWN -> if (e != null && event.pointerCount == 2) {
+                MotionEvent.ACTION_POINTER_DOWN -> if (e != null && event.pointerCount == 2 && !e.canScale) {
+                    finishGesture(commit = mode == Mode.DRAG)
+                    flashHint()
+                } else if (e != null && event.pointerCount == 2) {
                     finishGesture(commit = mode == Mode.DRAG)
                     mode = Mode.PINCH
                     startGesture(e)
@@ -875,8 +919,13 @@ internal class UiLayoutEditor(
                 MotionEvent.ACTION_MOVE -> when (mode) {
                     Mode.TAP -> if (moved(event)) mode = Mode.NONE
                     Mode.DRAG_PENDING -> if (moved(event) && e != null) {
-                        mode = Mode.DRAG
-                        startGesture(e)
+                        if (e.canMove) {
+                            mode = Mode.DRAG
+                            startGesture(e)
+                        } else {
+                            mode = Mode.NONE
+                            flashHint()
+                        }
                     }
                     Mode.DRAG -> {
                         previewDx = baseDx + event.x - downX
@@ -935,10 +984,11 @@ internal class UiLayoutEditor(
             val onTop = e.screen == UiScreen.TOP
             val pxPerWindowPx = if (onTop) mapScale() else bottomScale()
             val region = if (onTop) topRect else bottomRect
+            val range = e.scaleRange
             val rule = startRule.copy(
-                x = startRule.x + (previewDx - baseDx) / pxPerWindowPx / region[2],
-                y = startRule.y + (previewDy - baseDy) / pxPerWindowPx / region[3],
-                scale = (startRule.scale * previewScale / baseScale).coerceIn(UiRule.SCALE_MIN, UiRule.SCALE_MAX),
+                x = if (e.canMove) startRule.x + (previewDx - baseDx) / pxPerWindowPx / region[2] else startRule.x,
+                y = if (e.canMove) startRule.y + (previewDy - baseDy) / pxPerWindowPx / region[3] else startRule.y,
+                scale = if (range != null) (startRule.scale * previewScale / baseScale).coerceIn(range) else startRule.scale,
             )
             change(e.id, rule, final)
         }

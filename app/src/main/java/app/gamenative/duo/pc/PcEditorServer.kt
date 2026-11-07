@@ -6,6 +6,7 @@ import android.os.Looper
 import android.os.Process
 import app.gamenative.duo.DualScreenHost
 import app.gamenative.duo.community.ShareLayout
+import app.gamenative.duo.ui.EditCapabilities
 import app.gamenative.duo.ui.UiBackground
 import app.gamenative.duo.ui.UiBackgroundMode
 import app.gamenative.duo.ui.UiElementList
@@ -269,7 +270,9 @@ internal class PcEditorServer(private val context: Context, private val host: Pc
                     .put(
                         "caps",
                         JSONObject()
-                            .put("elements", c.canEdit)
+                            .put("elements", c.capabilities.editable)
+                            .put("owner", c.capabilities.owner)
+                            .put("reasonOff", c.capabilities.reasonOff ?: JSONObject.NULL)
                             .apply { UiBackgroundMode.entries.forEach { put(it.id, c.supports(it)) } },
                     )
                     .put("layout", c.layout.toJson())
@@ -280,17 +283,24 @@ internal class PcEditorServer(private val context: Context, private val host: Pc
                             UiWidgetType.entries.forEach { put(JSONObject().put("id", it.id).put("label", it.label)) }
                         },
                     )
-                    .put("elements", JSONArray().apply { elements?.elements?.forEach { e -> put(elementJson(e)) } }),
+                    .put("elements", JSONArray().apply { elements?.elements?.forEach { e -> put(elementJson(e, c.capabilities)) } }),
             )
         } ?: JSONObject().put("error", "busy")
     }
 
-    private fun elementJson(e: app.gamenative.duo.ui.UiElement) = JSONObject()
+    /** One element for the web editor, with the features it allows and the same limits sentence the device shows. */
+    private fun elementJson(e: app.gamenative.duo.ui.UiElement, caps: EditCapabilities) = JSONObject()
         .put("id", e.id).put("name", e.name).put("parent", e.parent).put("depth", e.depth).put("screen", e.screen.id)
         .put("x", e.rect.left.toDouble()).put("y", e.rect.top.toDouble())
         .put("w", e.rect.width().toDouble()).put("h", e.rect.height().toDouble())
         .put("graphic", e.graphic)
+        .put("hasChildren", e.hasChildren)
+        .put("present", e.present)
+        .put("move", e.canMove)
+        .put("scale", e.scaleRange?.let { JSONObject().put("min", it.start.toDouble()).put("max", it.endInclusive.toDouble()) } ?: false)
         .apply {
+            if (e.whenText.isNotEmpty()) put("when", e.whenText)
+            caps.limits(e)?.let { put("limits", it) }
             e.screens?.let { s -> put("screens", JSONArray().apply { s.forEach { put(it.id) } }) }
             if (e.options.isNotEmpty()) {
                 put(

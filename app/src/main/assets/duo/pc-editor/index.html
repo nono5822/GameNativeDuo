@@ -240,7 +240,9 @@ function render() {
   view.top = { el: screenBox("Top screen", "top", 0, 0, topW, topH), x: tx, y: ty, w: tw, h: th, left: 0, topPx: 0 };
   view.bottom = { el: screenBox("Bottom screen", "bottom", (topW - botW) / 2, topH + gap, botW, botH), x: bx, y: by, w: bw, h: bh, left: (topW - botW) / 2, topPx: topH + gap };
   for (const e of state.elements) {
-    if (e.depth === 0 || !e.graphic || e.screen === "hidden") continue;
+    // Root containers (a Unity canvas covering the screen) would catch every click; a root without children is an
+    // element of its own (Balatro's Hand). Elements not on screen now are only in the list.
+    if ((e.depth === 0 && e.hasChildren !== false) || !e.graphic || e.screen === "hidden" || e.present === false) continue;
     const v = e.screen === "top" ? view.top : view.bottom;
     const box = document.createElement("div");
     box.className = "el" + (rules()[e.id] ? " changed" : "") + (e.id === selected ? " sel" : "");
@@ -290,6 +292,12 @@ function overScreen(clientX, clientY) {
   return null;
 }
 
+// What the element's mod lets the editor do (contract "Element features"); absent keys mean everything.
+const canMove = (e) => e.move !== false && e.present !== false;
+const scaleRange = (e) => e.scale === false || e.present === false ? null : (e.scale && typeof e.scale === "object" ? [e.scale.min, e.scale.max] : [0.25, 4]);
+const allows = (e, s) => !e.screens || e.screens.indexOf(s) >= 0;
+const explain = (e) => toast(e.limits || "Not possible for this element");
+
 function startDrag(ev, e, box) {
   ev.preventDefault(); ev.stopPropagation();
   if (selected !== e.id) { select(e.id); return; }
@@ -310,8 +318,11 @@ function startDrag(ev, e, box) {
     const over = overScreen(u.clientX, u.clientY);
     const r = ruleOf(e.id);
     if (over && over !== from) {
+      if (!allows(e, over)) { explain(e); render(); return; }
       setRule(e.id, Object.assign(r, { screen: over, x: 0, y: 0 }));
       toast("Sent to the " + over + " screen");
+    } else if (!canMove(e)) {
+      explain(e); render();
     } else {
       const v = from === "top" ? view.top : view.bottom;
       r.screen = r.screen === "default" ? from : r.screen;
@@ -330,8 +341,10 @@ $("#stage").addEventListener("wheel", (ev) => {
 
 let scaleTimer = 0;
 function scaleSelected(f) {
+  const e = elementById(selected), range = e && scaleRange(e);
+  if (!range) { if (e) explain(e); return; }
   const r = ruleOf(selected);
-  r.scale = Math.min(4, Math.max(0.25, r.scale * f));
+  r.scale = Math.min(range[1], Math.max(range[0], r.scale * f));
   if (!rules()[selected] && r.screen === "default") r.screen = (elementById(selected) || {}).screen === "top" ? "top" : "bottom";
   rules()[selected] = r;
   renderSelection();
@@ -424,9 +437,13 @@ function renderList() {
   for (const e of state.elements.filter(own).concat(state.elements.filter((e) => !own(e)))) {
     if (q && !e.name.toLowerCase().includes(q) && !e.id.toLowerCase().includes(q)) continue;
     const d = document.createElement("div");
-    d.className = "item" + (e.graphic ? " graphic" : "") + (e.id === selected ? " sel" : "");
+    d.className = "item" + (e.graphic && e.present !== false ? " graphic" : "") + (e.id === selected ? " sel" : "");
     d.style.paddingLeft = 10 + Math.min(e.depth, 8) * 14 + "px";
     d.textContent = e.name || e.id;
+    if (e.present === false) {
+      const when = document.createElement("span"); when.className = "badge hidden"; when.textContent = (e.when || "not on screen").toUpperCase();
+      d.appendChild(when);
+    }
     const s = effectiveScreen(e);
     if (s === "top") d.insertAdjacentHTML("beforeend", '<span class="badge top">TOP</span>');
     if (s === "hidden") d.insertAdjacentHTML("beforeend", '<span class="badge hidden">HIDDEN</span>');
@@ -438,6 +455,11 @@ function renderList() {
 
 function renderSelection() {
   const card = $("#selCard"), e = selected && elementById(selected);
+  if (state.caps.reasonOff) {
+    card.innerHTML = '<div class="muted"></div>';
+    card.firstChild.textContent = state.caps.reasonOff;
+    return;
+  }
   if (!e) {
     card.innerHTML = '<div class="muted">Click an element on the screens or in the list. Drag it to move it, drop it on the other screen to send it there, scroll to resize.</div>';
     return;
@@ -448,10 +470,16 @@ function renderSelection() {
     '<div class="field"><span>Size</span><input type="range" min="25" max="400"><span></span></div>' +
     '<div class="row" style="margin-top:10px"><button id="resetOne">Reset this element</button></div>';
   card.children[0].textContent = e.name || e.id; card.children[1].textContent = e.id;
+  if (e.limits) {
+    const note = document.createElement("div"); note.className = "muted"; note.style.marginTop = "8px"; note.textContent = e.limits;
+    card.insertBefore(note, card.children[2]);
+  }
+  if (!scaleRange(e)) card.querySelector("input[type=range]").parentElement.style.display = "none";
+  else { const [lo, hi] = scaleRange(e); const rg = card.querySelector("input[type=range]"); rg.min = Math.round(lo * 100); rg.max = Math.round(hi * 100); }
   card.querySelectorAll("[data-s]").forEach((b) => {
     b.classList.toggle("on", b.dataset.s === s);
-    // A mod's own element may offer fewer screens (e.g. the live map: bottom or hidden).
-    if (e.screens && e.screens.indexOf(b.dataset.s) < 0) b.style.display = "none";
+    // The element's mod may offer fewer screens (e.g. the live map: bottom or hidden).
+    if (!allows(e, b.dataset.s)) b.style.display = "none";
     b.onclick = () => setRule(e.id, Object.assign(ruleOf(e.id), { screen: b.dataset.s, x: b.dataset.s === s ? ruleOf(e.id).x : 0, y: b.dataset.s === s ? ruleOf(e.id).y : 0 }));
   });
   // Settings the mod declares for this element: one select each; the first value is the default (left out of the file).
@@ -485,7 +513,11 @@ document.addEventListener("keydown", (ev) => {
   if (!state || !selected || ev.target.tagName === "INPUT" || ev.target.tagName === "TEXTAREA") return;
   const e = elementById(selected); if (!e) return;
   const r = ruleOf(selected), s = effectiveScreen(e), v = s === "top" ? view.top : view.bottom, step = ev.shiftKey ? 10 : 1;
-  const nudge = (dx, dy) => { if (r.screen === "default") r.screen = s; r.x += dx * step / v.w; r.y += dy * step / v.h; setRule(selected, r); };
+  const nudge = (dx, dy) => {
+    if (!canMove(e)) return explain(e);
+    if (r.screen === "default") r.screen = s; r.x += dx * step / v.w; r.y += dy * step / v.h; setRule(selected, r);
+  };
+  const send = (screen, rule) => (allows(e, screen) ? setRule(selected, rule) : explain(e));
   switch (ev.key) {
     case "ArrowLeft": nudge(-1, 0); break;
     case "ArrowRight": nudge(1, 0); break;
@@ -493,9 +525,9 @@ document.addEventListener("keydown", (ev) => {
     case "ArrowDown": nudge(0, 1); break;
     case "+": case "=": scaleSelected(1.06); break;
     case "-": scaleSelected(1 / 1.06); break;
-    case "t": case "T": setRule(selected, Object.assign(r, { screen: "top", x: 0, y: 0 })); break;
-    case "b": case "B": setRule(selected, Object.assign(r, { screen: "bottom", x: 0, y: 0 })); break;
-    case "h": case "H": setRule(selected, Object.assign(r, { screen: "hidden" })); break;
+    case "t": case "T": send("top", Object.assign(r, { screen: "top", x: 0, y: 0 })); break;
+    case "b": case "B": send("bottom", Object.assign(r, { screen: "bottom", x: 0, y: 0 })); break;
+    case "h": case "H": send("hidden", Object.assign(r, { screen: "hidden" })); break;
     case "r": case "R": setRule(selected, { screen: "default", scale: 1, x: 0, y: 0 }); break;
     case "Escape": select(null); break;
     default: return;
@@ -527,7 +559,7 @@ function renderBackground() {
     modes.appendChild(b);
   }
   const unsupported = modeInfo.filter(([id]) => !state.caps[id]).map(([, l]) => l);
-  $("#modeNote").textContent = unsupported.length ? "This game's mod cannot draw: " + unsupported.join(", ") + "." : "";
+  $("#modeNote").textContent = unsupported.length ? (state.caps.owner || "This game's mod") + " cannot draw: " + unsupported.join(", ") + "." : "";
   const o = $("#bgOptions");
   let html = "";
   if (bg.mode === "color") {

@@ -69,7 +69,8 @@ class EditCapabilities(
 
     companion object {
         /** Nothing to edit, with [reason]. */
-        fun off(reason: String, owner: String = "This game"): EditCapabilities = EditCapabilities(EditSource.NONE, reason, owner, emptySet())
+        fun off(reason: String, owner: String = "This game"): EditCapabilities =
+            EditCapabilities(EditSource.NONE, reason, owner, emptySet())
 
         /**
          * From the bridge: [seenCapabilities] are the capabilities of the mod that said hello this session (0 for
