@@ -323,7 +323,10 @@ class UiLayoutController(
             val p = RegionOutput.placePx(r, sw, sh, bw, bh)
             val place = list.size
             val placeRect = RectF(p[0], sh + p[1], p[0] + p[2], sh + p[1] + p[3])
-            list += UiElement(place, r.id, r.name, -1, 0, UiScreen.BOTTOM, placeRect, graphic = true)
+            list += UiElement(
+                place, r.id, r.name, -1, 0, UiScreen.BOTTOM, placeRect, graphic = true,
+                note = "Show: on this screen. Off: only in the game. Move here: on this screen and blacked out in the game.",
+            )
             list += UiElement(
                 list.size, r.id + SOURCE_SUFFIX, r.name + " · source", place, 1, UiScreen.TOP, srcRect, graphic = true,
                 screens = setOf(UiScreen.TOP), note = "The part of the game ${r.name} shows: drag and pinch it in the top-screen map.",

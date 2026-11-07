@@ -40,9 +40,11 @@ Commit after every box (code + this file together). Device: Thor `d615ac15` (USB
 - [x] U3c Session: region mode gets a `UiLayoutController` (source REGIONS); `RegionOutput` turns regions into
   `duoSetRegions` / `duoSetMasks` data (pure function, unit-tested); background color drawn as the clear color;
   widgets on in region mode; touch: a tap inside a shown region clicks at its source point
-- [ ] U3d Editor: REGIONS elements (bottom = place, top map = source); "Add region" (new region in the top map's
-  middle); dragging/pinching the source in the map, the place on the bottom; Remove; list header "Your regions";
-  background modes color only (image/blur greyed: "not in region view yet"); PC editor gets the same
+- [x] U3d Editor (device): REGIONS elements (place on the bottom, source in the top map); Add / Remove; buttons
+  Show / Off / Move here; source drag moves the crop and its mask live; background modes game (black) and color
+  (image/blur greyed with the reason)
+- [ ] U3d PC editor: Add/Remove regions from the web editor (it already lists and moves them through the same
+  controller; needs two API calls and two buttons)
 - [ ] U3e `EditingLevel.REGIONS` tag for games without a mod (mod explorer and Dual screen control)
 - [ ] U3 Thor test: a game without a mod (Isaac / Dead Cells), two regions, one hidden (masked on top)
 
@@ -82,3 +84,7 @@ Commit after every box (code + this file together). Device: Thor `d615ac15` (USB
   menu offers Edit UI layout in region view too (no Line up screens there). Masks are cleared whenever the bottom
   surface goes (companion, display off, session end). `RegionView.pan/zoom/format` are now only used by their tests
   (cleanup candidate).
+- Thor, Dead Cells (region view, no mod): the old single region migrated to "Region 1" filling the bottom screen;
+  Add region drew a second crop live; Move here blacked its source out on the top screen; dragging the source in
+  the map moved crop and mask together; Remove cleared the mask; the saved file holds only `regions` (synthetic
+  rules stripped); regions survive a relaunch.

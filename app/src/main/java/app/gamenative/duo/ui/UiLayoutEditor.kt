@@ -98,7 +98,7 @@ internal class UiLayoutEditor(
                 board.chooseMapSide()
                 status = when {
                     regions && result.elements.isEmpty() -> "No regions: Add region shows a part of the game here"
-                    regions -> "Tap a region; drag its source in the top-screen map"
+                    regions -> "Tap a region to change it"
                     result.elements.isEmpty() -> "No UI on screen right now"
                     result.elements.none { it.present && it.graphic } -> "Nothing on screen now: see the List"
                     else -> "Tap a UI element to change it"
@@ -190,22 +190,38 @@ internal class UiLayoutEditor(
         val top = DuoUi.row(context)
         DuoUi.add(top, title, weight = 1f)
         if (regions) {
-            // Region view: the elements are the user's own parts of the frame.
+            // Region view: the elements are the user's own parts of the frame (a source's region is a tap away: no Parent).
             DuoUi.add(
                 top,
-                DuoUi.chip(context, "Add region") {
+                DuoUi.chip(context, "Add") {
                     val id = controller.addRegion() ?: return@chip
                     selectedId = id
                     refresh()
                 },
             )
+            DuoUi.add(
+                top,
+                DuoUi.chip(context, "Remove") {
+                    val e = selected ?: return@chip
+                    controller.removeRegion(e.id)
+                    selectedId = null
+                    refresh()
+                },
+            )
+        } else {
+            DuoUi.add(top, DuoUi.chip(context, "Parent") { selected?.let { e -> elements?.parentOf(e)?.let { select(it) } } })
         }
-        DuoUi.add(top, DuoUi.chip(context, "Parent") { selected?.let { e -> elements?.parentOf(e)?.let { select(it) } } })
         DuoUi.add(top, DuoUi.chip(context, "List") { showList(true) })
         content.addView(top)
         controls = DuoUi.row(context)
         screenButtons.clear()
-        listOf(UiScreen.BOTTOM to "Bottom", UiScreen.TOP to "Top", UiScreen.HIDDEN to "Hide").forEach { (screen, text) ->
+        // A region is shown below, off, or moved here (shown below and blacked out on the top screen).
+        val labels = if (regions) {
+            listOf(UiScreen.BOTTOM to "Show", UiScreen.TOP to "Off", UiScreen.HIDDEN to "Move here")
+        } else {
+            listOf(UiScreen.BOTTOM to "Bottom", UiScreen.TOP to "Top", UiScreen.HIDDEN to "Hide")
+        }
+        labels.forEach { (screen, text) ->
             DuoUi.add(
                 controls,
                 DuoUi.chip(context, text) {
@@ -224,17 +240,6 @@ internal class UiLayoutEditor(
         scaleViews += DuoUi.chip(context, "+") { stepScale(1.1f) }
         scaleViews.forEach { DuoUi.add(controls, it) }
         DuoUi.add(controls, DuoUi.chip(context, "Reset") { selected?.let { change(it.id, UiRule(), final = true) } })
-        if (regions) {
-            DuoUi.add(
-                controls,
-                DuoUi.chip(context, "Remove") {
-                    val e = selected ?: return@chip
-                    controller.removeRegion(e.id)
-                    selectedId = null
-                    refresh()
-                },
-            )
-        }
         content.addView(controls)
         (hint.parent as? ViewGroup)?.removeView(hint)
         hint.setPadding(dp(6), dp(4), dp(6), 0)
@@ -516,7 +521,8 @@ internal class UiLayoutEditor(
         screenButtons.forEach { (screen, b) ->
             b.isEnabled = e != null
             b.on = current == screen
-            b.visibility = if (e == null || e.allows(screen)) VISIBLE else GONE
+            // One possible screen is no choice: no button.
+            b.visibility = if (e == null || (e.allows(screen) && (e.screens?.size ?: 3) > 1)) VISIBLE else GONE
         }
         if (::controls.isInitialized) controls.visibility = if (e == null) GONE else VISIBLE
         scaleViews.forEach { it.visibility = if (e != null && e.canScale && e.present) VISIBLE else GONE }
