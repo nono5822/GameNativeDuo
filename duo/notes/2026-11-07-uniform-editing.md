@@ -50,7 +50,7 @@ Commit after every box (code + this file together). Device: Thor `d615ac15` (USB
 
 ## U4 Conformance
 
-- [ ] Check runner in developer mode (rule tweak, dump, compare, restore), report in the editor
+- [x] Check runner (`ui/ConformanceCheck.kt`): plan per element from its features, test rule, dump, judge, restore; "Check" in the editor's List panel (mod games), report panel, logcat, `files/duo/conformance/<game>.json`. No developer-mode setting yet (devkit item 2): the button is in the list panel, out of the way
 - [ ] Thor test on Balatro and a Unity game
 
 ## Log
@@ -88,3 +88,4 @@ Commit after every box (code + this file together). Device: Thor `d615ac15` (USB
   Add region drew a second crop live; Move here blacked its source out on the top screen; dragging the source in
   the map moved crop and mask together; Remove cleared the mask; the saved file holds only `regions` (synthetic
   rules stripped); regions survive a relaunch.
+- Balatro's Hand read `scale` as an absolute size (default 1.15), against the contract (multiplies the element's own size): the first pinch from 100% shrank the hand. Now relative; declared range 0.7 to 1.2.

@@ -97,7 +97,8 @@ do
     -- when it is on screen. Absent ones are listed with present = false so their screen can be chosen ahead.
     local ELEMENTS = {
         { id = "Hand", default = "bottom", when = "During a run",
-          features = { screens = { "bottom", "top" }, move = true, scale = { min = 0.8, max = 1.4 } } },
+          -- Scale multiplies the default hand size (1.15); the result stays within 0.8 to 1.4 (duo_layout.lua).
+          features = { screens = { "bottom", "top" }, move = true, scale = { min = 0.7, max = 1.2 } } },
         { id = "Consumables", default = "bottom", when = "During a run",
           features = { screens = { "bottom", "top" }, move = true, scale = false } },
         { id = "Hand info", default = "bottom", when = "During a run",

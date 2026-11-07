@@ -596,24 +596,73 @@ internal class UiLayoutEditor(
             visibility = GONE
             setPadding(dp(10), dp(8), dp(10), dp(8))
             background = DuoUi.panelBackground(context)
-            addView(
-                DuoUi.row(
-                    context,
-                    DuoUi.chip(context, "Close list") { showList(false) },
-                    DuoUi.chip(context, "Reset all") {
-                        controller.resetAll()
-                        showList(false)
-                        updateToolbar()
-                        postDelayed({ refresh() }, 120)
-                    },
-                ),
+            val header = DuoUi.row(
+                context,
+                DuoUi.chip(context, "Close list") { showList(false) },
+                DuoUi.chip(context, "Reset all") {
+                    controller.resetAll()
+                    showList(false)
+                    updateToolbar()
+                    postDelayed({ refresh() }, 120)
+                },
             )
+            // For mod makers: does the mod do what its elements declare? (uniform-editing.md, conformance check)
+            if (!regions) DuoUi.add(header, DuoUi.chip(context, "Check") { runCheck() })
+            addView(header)
             addView(listHeader.apply { setPadding(dp(6), dp(6), dp(6), dp(4)) })
             addView(list, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
         }
         val listParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
         listParams.setMargins(dp(8), dp(8), dp(8), dp(8))
         addView(listPanel, listParams)
+    }
+
+    // ---- conformance check ------------------------------------------------------------------------------------
+
+    private var check: ConformanceCheck? = null
+
+    /** Tries every declared feature of the elements on screen and lists what the mod really did. */
+    private fun runCheck() {
+        showList(false)
+        selectedId = null
+        val panel = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            background = DuoUi.panelBackground(context)
+            isClickable = true
+        }
+        val text = label(13f, Color.WHITE).apply { text = "Starting the check…" }
+        val scroll = android.widget.ScrollView(context).apply { addView(text) }
+        panel.addView(DuoUi.label(context, "Feature check", 16f, Color.WHITE, bold = true))
+        panel.addView(scroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+        val close = DuoUi.chip(context, "Stop") {
+            check?.cancel()
+            check = null
+            removeView(panel)
+            refresh()
+        }
+        panel.addView(DuoUi.row(context, close))
+        val params = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
+        params.setMargins(dp(8), dp(8), dp(8), dp(8))
+        addView(panel, params)
+        check = ConformanceCheck(
+            context, controller, topRect, bottomRect,
+            onProgress = { text.text = it },
+            onDone = { report ->
+                if (check == null) return@ConformanceCheck
+                check = null
+                val head = when {
+                    report.results.isEmpty() -> "Nothing on screen to check. Open the screens the elements appear on, then check again."
+                    report.passed -> "Every declared feature works (${report.results.size} checks)."
+                    else -> {
+                        val failed = report.results.count { !it.passed }
+                        "$failed of ${report.results.size} checks failed: the editor offers what the mod declares, so fix the mod or its declaration."
+                    }
+                }
+                text.text = (listOf(head, "") + report.lines()).joinToString("\n")
+                close.text = "Close"
+            },
+        ).also { it.start() }
     }
 
     private fun showList(show: Boolean) {

@@ -28,7 +28,7 @@ class ModFeaturesTest {
         assertFalse(menus.canMove)
         assertNull(menus.scaleRange)
         assertEquals(setOf(UiScreen.BOTTOM, UiScreen.TOP), menus.screens)
-        assertEquals(0.8f..1.4f, f.elements.first { it.id == "Hand" }.scaleRange)
+        assertEquals(0.7f..1.2f, f.elements.first { it.id == "Hand" }.scaleRange)
         assertFalse(UiBackgroundMode.BLUR in f.backgrounds)
     }
 

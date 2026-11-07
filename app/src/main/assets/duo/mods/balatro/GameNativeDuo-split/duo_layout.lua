@@ -142,7 +142,8 @@ do
 
     function D.hand_scale()
         if not hand_on_bottom() then return 1 end
-        local s = tonumber(D.rule("Hand").scale) or HAND_SCALE
+        -- The rule's scale multiplies the hand's default size (contract: "multiplies the element's own size").
+        local s = HAND_SCALE * (tonumber(D.rule("Hand").scale) or 1)
         local _, _, bw = D.bottom_room()
         local fit = hand_base and (bw - 0.4) / hand_base.w or 1.2
         return math.max(0.8, math.min(s, fit, 1.4))
