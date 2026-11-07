@@ -91,6 +91,48 @@ Parents before children (`parent` is an index). Rectangles are where the element
 pixels. `graphic`: it draws something (the editor outlines those). Write it after the frame's rules are applied. It is
 only requested while the editor is open, so walking the whole UI is fine.
 
+### Element features: what the editor may do to each element
+
+The editors offer only what an element declares (`uniform-editing.md`): a gesture the mod would ignore is greyed out
+with a reason instead of silently doing nothing. Declare what differs from "everything":
+
+```json
+{"id":"Menus","name":"Menus","parent":-1,"screen":"bottom","x":0,"y":0,"w":0,"h":0,"graphic":true,
+ "present":false,"when":"While a menu is open",
+ "features":{"screens":["bottom","top"],"move":false,"scale":false}}
+```
+
+| Key | Meaning | Absent |
+|---|---|---|
+| `features.screens` | Screens the editors offer (`hidden` = can be turned off) | top, bottom, hidden |
+| `features.move` | `x`/`y` are honoured | true |
+| `features.scale` | `scale` honoured: `true`, `false`, or `{"min":0.8,"max":1.4}` | true (0.25 to 4) |
+| `present` | On screen now; `false` = listed for its screen choice only, rectangle ignored | true |
+| `when` | Short text: when an absent element appears ("During a run") | none |
+
+- **List every element you know, in every scene**, with `present: false` when it is not on screen. The user can then
+  choose where the Hand goes from the title screen, and the editor never comes up empty.
+- A root element (`parent: -1`) with no children is selectable on the screens; a root with children (a whole canvas)
+  is only reachable from the list, so it does not swallow every tap.
+- `screens` at the top level of an element (older plugin elements) still works; `features.screens` wins.
+- Declarations are checked: the conformance check (`uniform-editing.md`, U4) applies each declared feature and
+  verifies the rectangle changed.
+
+### `features.json` (adapter → app)
+
+Written next to `elements.json` once the adapter is active, and shipped in the mod's package, so the app knows what
+the mod supports before the game runs and while GameNative's menu pauses it:
+
+```json
+{"format":"gamenative-duo/features","version":1,"engine":"balatro-love","touch":true,
+ "background":["game","color","image"],
+ "elements":[{"id":"Hand","name":"Hand","when":"During a run","features":{"screens":["bottom","top"],"move":true,"scale":{"min":0.8,"max":1.4}}}],
+ "dynamic":false}
+```
+
+`elements` are the fixed elements; `dynamic: true` means more come from the running game (Unity scenes), with their
+own `features` in `elements.json`.
+
 ### Plugin elements: a mod's own element with settings
 
 A mod can list something it draws itself (Hollow Knight's live map, id `GameNativeDuo/LiveMap`) as an element, and
@@ -102,7 +144,8 @@ give it settings the editors show (bottom screen and PC editor) without any app 
  "options":[{"id":"zoom","label":"Start zoom","values":[["knight","Knight"],["area","Area"],["world","Whole map"]]}]}
 ```
 
-- **`screens`** (optional): the only screens the editors offer for it (`hidden` = turned off). Absent: all.
+- **`screens`** (optional): the only screens the editors offer for it (`hidden` = turned off). Absent: all. New
+  plugin elements should use `features` (above), which also covers move and scale.
 - **`options`** (optional): one setting each, `values` as `[id, label]` pairs; the **first value is the default**. The
   user's choice is stored in the element's rule in `ui.json`: `"options":{"zoom":"world"}` (defaults are left out).
   Unknown values (an option dropped in a newer mod) fall back to the default; values are short strings.

@@ -17,7 +17,7 @@ Commit after every box (code + this file together). Device: Thor `d615ac15` (USB
 - [x] Balatro: declare features, list all four elements always (`present`), `features.json`
 - [x] Stardew: list absent menus with `present: false`, declare features (rebuild DLL, needs the game's folder)
 - [x] Unity: elements under camera roots (sprite HUDs, tk2d) declare screens = their camera's + hidden (rebuild shared DLL). Crosshairs left free: they can move, the default only keeps them on top
-- [ ] `engine-adapter-contract.md` updated
+- [x] `engine-adapter-contract.md` updated
 - [ ] Thor test: Balatro title screen + run, Stardew, a Unity game
 
 ## U2 Known before launch + tags
