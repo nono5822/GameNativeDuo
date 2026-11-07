@@ -85,6 +85,10 @@ the id: prebuilt `libkgslshim.so` matches on that substring.
 6. **Community packages**: Git-based index, per-game presets that auto-apply (data-only by default, code mods
    need consent), device profiles, signing, compatibility reports. **Started**: repo `nono5822/GameNativeDuo-community`
    (schemas, validator, signed index on GitHub Pages); design and app-side plan in `duo/docs/community-packages.md`.
+7. **Developer platform**: Bridge v2 + SDKs, dev tools (`duo` binary: sim, CLI, web UI, MCP; developer mode),
+   game profiles, code trust, docs/templates (`duo/docs/devkit-platform.md`). Every editor surface follows
+   `duo/docs/uniform-editing.md` (declared element features, one `EditCapabilities` model, regions as elements for
+   games without a mod).
 
 Performance rules: the CPU is the bottleneck (Box64/FEX), so keep devkit work off it: low-priority threads,
 no CPU frame copies, data over pixels, idle at 0 fps when nothing changes.
