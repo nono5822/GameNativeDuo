@@ -16,7 +16,7 @@ Commit after every box (code + this file together). Device: Thor `d615ac15` (USB
 - [x] PC editor: server sends capabilities, `index.html` gates the same way
 - [x] Balatro: declare features, list all four elements always (`present`), `features.json`
 - [x] Stardew: list absent menus with `present: false`, declare features (rebuild DLL, needs the game's folder)
-- [ ] Unity: crosshair screens, plugin elements declare features (rebuild shared DLL)
+- [x] Unity: elements under camera roots (sprite HUDs, tk2d) declare screens = their camera's + hidden (rebuild shared DLL). Crosshairs left free: they can move, the default only keeps them on top
 - [ ] `engine-adapter-contract.md` updated
 - [ ] Thor test: Balatro title screen + run, Stardew, a Unity game
 
@@ -47,3 +47,4 @@ Commit after every box (code + this file together). Device: Thor `d615ac15` (USB
   click bug (`e.depth === 0`); fixed the same way. `canEdit`/`modSeen` are gone: everything reads
   `UiLayoutController.capabilities`.
 - Stardew references: pulled the game folder (no Content) from the Thor into the session scratchpad; build with `-p:GamePath=<that> -p:EnableModDeploy=false -p:EnableModZip=false`. Pull again with `adb exec-out run-as app.gamenative.duo sh -c 'cd ".../common/Stardew Valley" && tar cf - --exclude=Content --exclude=Mods .'`.
+- Unity build refs: `-p:ManagedPath=~/dev/GameNativeDuo/duo/agents/runs/2026-10-28-0119/sr-managed` (Slime Rancher, oldest Unity).

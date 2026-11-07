@@ -106,6 +106,10 @@ namespace GameNativeDuo.UnitySplit
             public DuoScreen Screen;
             public Rect Rect;
             public bool Graphic;
+
+            /// <summary>Under a camera root (sprite HUDs, tk2d): it stays on that camera's screen, it can only be hidden.</summary>
+            public bool FixedScreen;
+            public DuoScreen Home;
         }
 
         private Layout _layout;
@@ -996,6 +1000,9 @@ namespace GameNativeDuo.UnitySplit
                 sb.Append(",\"w\":").Append(Mathf.RoundToInt(e.Rect.width));
                 sb.Append(",\"h\":").Append(Mathf.RoundToInt(e.Rect.height));
                 sb.Append(",\"graphic\":").Append(e.Graphic ? "true" : "false");
+                // Contract "Element features": only what differs from "everything" (see Apply: sprites keep their camera).
+                if (e.FixedScreen && e.Home != DuoScreen.Hidden)
+                    sb.Append(",\"features\":{\"screens\":[\"").Append(UiRule.ScreenId(e.Home)).Append("\",\"hidden\"]}");
                 sb.Append('}');
             }
             bool first = _dump.Count == 0;
@@ -1039,10 +1046,14 @@ namespace GameNativeDuo.UnitySplit
             _dump.Clear();
         }
 
+        /// <summary>The screen of the root being walked: where elements under a camera root stay.</summary>
+        private DuoScreen _walkHome;
+
         private void WalkRoot(RootState root)
         {
             if (root.IsProxy || !root.Alive || !root.Root.gameObject.activeInHierarchy)
                 return;
+            _walkHome = root.Screen;
             Walk(root.Root, root.Id, -1, 0, root.Screen, CameraOf(root), root.CameraRoot);
         }
 
@@ -1090,7 +1101,10 @@ namespace GameNativeDuo.UnitySplit
             }
 
             int index = _dump.Count;
-            _dump.Add(new DumpEntry { Id = id, Name = t.name, Parent = parent, Screen = screen, Rect = own, Graphic = graphic });
+            _dump.Add(new DumpEntry
+            {
+                Id = id, Name = t.name, Parent = parent, Screen = screen, Rect = own, Graphic = graphic, FixedScreen = sprites, Home = _walkHome,
+            });
             Rect union = own;
             if (depth < MaxDumpDepth)
             {
