@@ -110,6 +110,7 @@ h3 { margin: 4px 0 10px; font-size: 13px; letter-spacing: .08em; text-transform:
       <div class="card" id="selCard">
         <div class="muted">Click an element on the screens or in the list. Drag it to move it, drop it on the other screen to send it there, scroll to resize.</div>
       </div>
+      <div class="row" id="regionRow" style="display:none;margin-bottom:8px"><button id="addRegion">Add region</button><button id="removeRegion">Remove selected region</button></div>
       <input type="text" id="search" placeholder="Search elements">
       <div class="list" id="list" style="margin-top:8px"></div>
       <p class="muted">Keys: <span class="kbd">Arrows</span> move, <span class="kbd">+</span> <span class="kbd">-</span> resize, <span class="kbd">T</span> top, <span class="kbd">B</span> bottom, <span class="kbd">H</span> hide, <span class="kbd">R</span> reset, <span class="kbd">Esc</span> deselect.</p>
@@ -187,6 +188,7 @@ async function load(withSnapshot = true) {
   state = s;
   $("#game").textContent = s.title + (s.engine ? "  ·  " + s.engine : "");
   $("#status").textContent = "Connected"; $("#status").className = "status ok";
+  $("#regionRow").style.display = s.caps.source === "regions" ? "" : "none";
   if (withSnapshot) snapTime = Date.now();
   render();
 }
@@ -612,6 +614,17 @@ $("#download").onclick = () => {
   const blob = new Blob([JSON.stringify(state.layout, null, 2)], { type: "application/json" });
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = state.layout.game + "-layout.json"; a.click();
 };
+// Region view (games without a mod): the elements are the user's regions of the frame.
+$("#addRegion").onclick = async () => {
+  const r = await api("/api/regions/add", {});
+  if (!r.ok) return toast("Up to 8 regions");
+  selected = r.id; scheduleRefresh(150);
+};
+$("#removeRegion").onclick = async () => {
+  if (!selected) return toast("Select a region first");
+  await api("/api/regions/remove", { id: selected }); selected = null; scheduleRefresh(150);
+};
+
 $("#resetAll").onclick = async () => {
   if (!confirm("Reset every change for this game?")) return;
   await api("/api/reset", {}); selected = null; selectedWidget = -1; scheduleRefresh(200);

@@ -207,6 +207,16 @@ internal class PcEditorServer(private val context: Context, private val host: Pc
                 onMainUnit { host.controller.set(o.getString("id"), rule, save = true) }
                 sendJson(out, JSONObject().put("ok", true))
             }
+            // Region view: the user's regions are the elements (see UiRegion).
+            "POST /api/regions/add" -> {
+                val id = onMain(2_000) { done: (String?) -> Unit -> done(host.controller.addRegion()) }
+                sendJson(out, JSONObject().put("ok", id != null).put("id", id ?: JSONObject.NULL))
+            }
+            "POST /api/regions/remove" -> {
+                val id = JSONObject(String(req.body)).getString("id")
+                onMainUnit { host.controller.removeRegion(id) }
+                sendJson(out, JSONObject().put("ok", true))
+            }
             "POST /api/background" -> {
                 val bg = UiBackground.fromJson(JSONObject(String(req.body)))
                 onMainUnit { host.controller.setBackground(bg.copy(image = host.controller.layout.background.image), save = true) }
@@ -272,6 +282,7 @@ internal class PcEditorServer(private val context: Context, private val host: Pc
                         JSONObject()
                             .put("elements", c.capabilities.editable)
                             .put("owner", c.capabilities.owner)
+                            .put("source", c.capabilities.source.name.lowercase())
                             .put("reasonOff", c.capabilities.reasonOff ?: JSONObject.NULL)
                             .apply { UiBackgroundMode.entries.forEach { put(it.id, c.supports(it)) } },
                     )

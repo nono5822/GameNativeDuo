@@ -43,8 +43,8 @@ Commit after every box (code + this file together). Device: Thor `d615ac15` (USB
 - [x] U3d Editor (device): REGIONS elements (place on the bottom, source in the top map); Add / Remove; buttons
   Show / Off / Move here; source drag moves the crop and its mask live; background modes game (black) and color
   (image/blur greyed with the reason)
-- [ ] U3d PC editor: Add/Remove regions from the web editor (it already lists and moves them through the same
-  controller; needs two API calls and two buttons)
+- [x] U3d PC editor: Add/Remove regions (`/api/regions/add|remove`, buttons shown when `caps.source == "regions"`); tested over Wi-Fi with curl (state, add, remove), page JS syntax-checked, not opened in a browser
+
 - [ ] U3e `EditingLevel.REGIONS` tag for games without a mod (mod explorer and Dual screen control)
 - [ ] U3 Thor test: a game without a mod (Isaac / Dead Cells), two regions, one hidden (masked on top)
 
