@@ -51,7 +51,9 @@ Commit after every box (code + this file together). Device: Thor `d615ac15` (USB
 ## U4 Conformance
 
 - [x] Check runner (`ui/ConformanceCheck.kt`): plan per element from its features, test rule, dump, judge, restore; "Check" in the editor's List panel (mod games), report panel, logcat, `files/duo/conformance/<game>.json`. No developer-mode setting yet (devkit item 2): the button is in the list panel, out of the way
-- [ ] Thor test on Balatro and a Unity game
+- [x] Thor test: Hollow Knight title 39/40 (one finding below); Balatro with a menu open: Menus failed first (a
+  real gap), passes after the fix
+- [ ] "Verified" tag: needs the community index to carry check reports (`duo check` / share flow); not started
 
 ## Log
 
@@ -89,3 +91,18 @@ Commit after every box (code + this file together). Device: Thor `d615ac15` (USB
   the map moved crop and mask together; Remove cleared the mask; the saved file holds only `regions` (synthetic
   rules stripped); regions survive a relaunch.
 - Balatro's Hand read `scale` as an absolute size (default 1.15), against the contract (multiplies the element's own size): the first pinch from 100% shrank the hand. Now relative; declared range 0.7 to 1.2.
+- Check findings: (1) Balatro moved menus between screens only when they opened; an open menu now follows the rule
+  (`D.place_open_menu`). (2) Hollow Knight `.../StartGameButton/Text/CursorLeft` moved 248 px for an expected 124:
+  the menu cursor is animated by the game, and the adapter takes the game's writes as the new base and offsets again.
+  Not fixed; look at `UiRouter`'s "changed element becomes the new base" path for animated elements.
+
+## Status 2026-11-07 (end of session)
+
+U1, U2, U3 done and tested on the Thor; U4 done except the "Verified" tag (community index side). For a person:
+- Balatro during a run (Hand / Consumables / Hand info move, resize, screens) with a seeded run and
+  `G.F_NO_ACHIEVEMENTS`; Hollow Knight in a save (tk2d HUD fixed screens); Stardew in a save.
+- The PC editor page in a real browser (API tested with curl only).
+- Merge with the hotkeys work in the main checkout: both touch `UiLayout.kt`, `UiLayoutController.kt`,
+  `PcEditorServer.kt`, `pc-editor/index.html`, `DuoBridge.kt`; `UiLayout.extra` now keeps the `hotkeys` key on save.
+- Dev device: bundled mod files hand-pushed in earlier sessions are never refreshed by app updates (the install
+  record counts them as the user's): use "Reset mod files" in Dual screen status or push by hand.

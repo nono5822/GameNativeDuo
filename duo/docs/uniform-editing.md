@@ -182,6 +182,9 @@ A mod that declares features must honour them; otherwise uniformity is only on p
 
 ## Plan
 
+Status 2026-11-07: phases 1 to 3 built and tested on the Thor; phase 4 built (check in the editor's List panel),
+the "Verified" tag still needs the community index. Progress: `duo/notes/2026-11-07-uniform-editing.md`.
+
 **Phase 1: declare and gate (app + bundled mods).** `EditCapabilities`; parse `features`, `present`, `when`; gate
 gestures, chips and the PC editor; reasons in the toolbar; absent elements in the list. Balatro: declare features
 as in the table, list all four elements always, `features.json`. Stardew: list absent menus with `present: false`.

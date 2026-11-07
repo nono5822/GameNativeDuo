@@ -80,6 +80,7 @@ do
         }
         D.log("ui.json: %d rules, background %s", (function() local n = 0 for _ in pairs(D.rules) do n = n + 1 end return n end)(), mode)
         D.safe("relayout", D.relayout)
+        if D.place_open_menu then D.safe("menus", D.place_open_menu) end
         if D.preview_rules_changed then D.safe("preview", D.preview_rules_changed) end
     end
 

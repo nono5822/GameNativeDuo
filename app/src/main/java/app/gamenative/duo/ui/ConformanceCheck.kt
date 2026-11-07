@@ -35,7 +35,7 @@ class ConformanceCheck(
         val passed: Boolean get() = results.isNotEmpty() && results.all { it.passed }
 
         fun lines(): List<String> {
-            val checked = results.map { r ->
+            val checked = results.sortedBy { it.passed }.map { r ->
                 val mark = if (r.passed) "✓" else "✗"
                 val why = if (r.passed) "" else " (${r.detail})"
                 "$mark ${r.name}: ${r.feature.label}$why"
@@ -110,7 +110,7 @@ class ConformanceCheck(
                     JSONArray().apply {
                         report.results.forEach {
                             val r = JSONObject().put("id", it.id).put("feature", it.feature.name.lowercase())
-                            put(r.put("passed", it.passed).put("detail", it.detail))
+                            put(r.put("passed", it.passed).apply { if (!it.passed) put("detail", it.detail) })
                         }
                     },
                 )

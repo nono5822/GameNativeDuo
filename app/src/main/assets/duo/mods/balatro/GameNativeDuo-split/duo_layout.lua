@@ -279,6 +279,7 @@ do
         G.FUNCS.overlay_menu = function(args)
             local default_anchor = not (args and args.config and args.config.major)
             orig_overlay(args)
+            if type(G.OVERLAY_MENU) == "table" then G.OVERLAY_MENU.duo_default_anchor = default_anchor end
             if D.active and default_anchor and D.screen_of("Menus", "bottom") == "bottom" then
                 D.safe("overlay", function()
                     local box = G.OVERLAY_MENU
@@ -287,6 +288,22 @@ do
                     end
                 end)
             end
+        end
+    end
+
+    -- The "Menus" rule changed while a menu is open: move that menu now (not only the next one). Only menus aligned to
+    -- the room by default, like when they open.
+    function D.place_open_menu()
+        local box = G.OVERLAY_MENU
+        if not (D.active and type(box) == "table" and not box.REMOVED and box.alignment and box.duo_default_anchor) then return end
+        local want_bottom = D.screen_of("Menus", "bottom") == "bottom" and D.fits_bottom(box)
+        local on_bottom = box.role and box.role.major == D.anchor()
+        local offset = { x = box.alignment.offset.x, y = box.alignment.offset.y }
+        if want_bottom and not on_bottom then
+            D.to_bottom(box, box.alignment.type, offset)
+        elseif not want_bottom and on_bottom then
+            box:set_alignment({ major = G.ROOM_ATTACH, type = box.alignment.type, offset = offset, bond = 'Weak' })
+            box:align_to_major()
         end
     end
 

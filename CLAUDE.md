@@ -132,6 +132,11 @@ no CPU frame copies, data over pixels, idle at 0 fps when nothing changes.
   `assets/duo/mods/<mod>/ui-layout.json`, handed to the mod as `ui.json`. The editor opens with a two-finger long press
   on the bottom screen -> "Edit UI layout". A mod can add its own element with settings (`screens`, `options` in
   `elements.json`, the choice in the rule's `options`; contract "Plugin elements"): both editors list it first.
+- **Uniform editing** (`duo/docs/uniform-editing.md`): elements declare what the editor may do (`features`, `present`,
+  `when` in `elements.json`; `features.json` bundled per mod), every editor surface reads `EditCapabilities`, mod cards
+  show Full / Partial editing / Regions. Region view's elements are the user's regions (`UiRegion` in the UI layout:
+  several crops on the bottom screen, "Move here" blacks the source out on top via `duoSetMasks`). "Check" in the
+  editor's List panel tries every declared feature (`ConformanceCheck`, report in `files/duo/conformance/`).
 - **Bottom screen look** (part of the UI layout, so it is shared with layouts): background `game` / `blur` / `color` /
   `image` with dim (drawn by the mod on the GPU, announced in HELLO capabilities 8/16/32: Stardew all, Unity color and
   image), and widgets (FPS, CPU, GPU, temperature, battery, clock) drawn by the app (`duo/ui/WidgetLayer.kt`, reads
