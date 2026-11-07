@@ -43,6 +43,7 @@ class EditCapabilities(
      * appear; the rest name what the mod does not support ("Balatro's mod cannot move or resize Menus.").
      */
     fun limits(e: UiElement): String? {
+        if (e.note.isNotEmpty()) return e.note
         val name = e.name.ifEmpty { e.id.substringAfterLast('/') }
         if (!e.present) {
             val whenText = e.whenText.ifEmpty { "not on screen right now" }.trimEnd('.').replaceFirstChar { it.lowercase() }

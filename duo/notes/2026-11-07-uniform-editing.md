@@ -37,7 +37,7 @@ Commit after every box (code + this file together). Device: Thor `d615ac15` (USB
 - [x] U3b Model: `UiRegion` (id, name, source fractions of the X screen, screen top/bottom/hidden, place on the bottom
   as centre fractions + width fraction, options filter/touch) in `UiLayout.regions`; JSON round trip; migrate the
   old single `region` string to one region filling the bottom screen; unit tests
-- [ ] U3c Session: region mode gets a `UiLayoutController` (source REGIONS); `RegionOutput` turns regions into
+- [x] U3c Session: region mode gets a `UiLayoutController` (source REGIONS); `RegionOutput` turns regions into
   `duoSetRegions` / `duoSetMasks` data (pure function, unit-tested); background color drawn as the clear color;
   widgets on in region mode; touch: a tap inside a shown region clicks at its source point
 - [ ] U3d Editor: REGIONS elements (bottom = place, top map = source); "Add region" (new region in the top map's
@@ -76,3 +76,9 @@ Commit after every box (code + this file together). Device: Thor `d615ac15` (USB
 - Thor, Stardew (title): Chat absent with "In multiplayer". Found and fixed: on the title screen the HUD menus exist
   with stale positions (a box drawn at the screen edge); now everything is absent until `Context.IsWorldReady`.
   Editor status counts only visible elements.
+- U3c/U3d code: region mode has a `UiLayoutController` (`regionMode`), regions become elements (place on the bottom,
+  `<id>#source` child in the top map; a region only on top is one element in the map), editor gestures are applied
+  relative to the regions as last saved (`regionBase`). "Choose bottom view" and `RegionPanel` are gone: the two-finger
+  menu offers Edit UI layout in region view too (no Line up screens there). Masks are cleared whenever the bottom
+  surface goes (companion, display off, session end). `RegionView.pan/zoom/format` are now only used by their tests
+  (cleanup candidate).

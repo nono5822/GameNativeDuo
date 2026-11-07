@@ -138,8 +138,11 @@ object RegionOutput {
     }
 
     /** `duoSetMasks` data: the sources of hidden regions, `{x, y, w, h}` each in X screen pixels. */
-    fun masks(regions: List<UiRegion>, screenW: Int, screenH: Int): FloatArray =
-        regions.filter { it.screen == UiScreen.HIDDEN }.take(UiRegion.MAX).flatMap { sourcePx(it, screenW, screenH).toList() }.toFloatArray()
+    fun masks(regions: List<UiRegion>, screenW: Int, screenH: Int): FloatArray = regions
+        .filter { it.screen == UiScreen.HIDDEN }
+        .take(UiRegion.MAX)
+        .flatMap { sourcePx(it, screenW, screenH).toList() }
+        .toFloatArray()
 
     /**
      * The X screen point under bottom-surface point ([x], [y]): the topmost shown region with touch on that contains

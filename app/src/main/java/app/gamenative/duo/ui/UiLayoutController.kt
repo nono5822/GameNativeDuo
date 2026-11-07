@@ -39,6 +39,8 @@ class UiElement(
     val whenText: String = "",
     /** Other elements have this one as their parent. */
     val hasChildren: Boolean = false,
+    /** What the editor's hint says about it instead of its limits (a region's source in the top-screen map). */
+    val note: String = "",
 ) {
     val area: Float get() = rect.width() * rect.height()
     val canScale: Boolean get() = scaleRange != null
@@ -125,9 +127,34 @@ class UiLayoutController(
     private val context: Context,
     private val container: Container,
     private val bridge: DuoBridge?,
+    /** Region view: the editor's elements are the user's regions (no mod), see [UiRegion]. */
+    val regionMode: Boolean = false,
+    /** Older region views kept one region as `"x,y,w,h"` in the container's settings: it becomes the first region. */
+    legacyRegion: String? = null,
 ) : DuoBridge.Listener {
-    var layout: UiLayout = UiLayoutStore.load(context, container.id)
+    var layout: UiLayout = UiLayoutStore.load(context, container.id).let { loaded ->
+        if (!regionMode || loaded.regions.isNotEmpty()) {
+            loaded
+        } else {
+            val first = UiRegion.fromLegacy(app.gamenative.duo.split.RegionView.parse(legacyRegion))
+                ?: UiRegion.fromLegacy(floatArrayOf(0.72f, 0f, 0.28f, 0.4f))!!
+            loaded.copy(regions = listOf(first))
+        }
+    }.withRegionRules()
         private set
+
+    /**
+     * Region view: X screen and bottom surface sizes (`screenW, screenH, surfaceW, surfaceH`), set by the bottom screen
+     * once its surface exists. The editor shows the bottom screen as `{0, screenH, surfaceW, surfaceH}` below the X
+     * screen (see [regionBottomRect]).
+     */
+    var regionGeometry: IntArray? = null
+
+    val regionBottomRect: FloatArray?
+        get() = regionGeometry?.let { g -> floatArrayOf(0f, g[1].toFloat(), g[2].toFloat(), g[3].toFloat()) }
+
+    /** The regions as of the last saved change: editor gestures send changes relative to it. */
+    private var regionBase: List<UiRegion> = layout.regions
 
     private val main = Handler(Looper.getMainLooper())
     private var nextRequest = 1
@@ -143,6 +170,9 @@ class UiLayoutController(
      */
     val capabilities: EditCapabilities
         get() {
+            if (regionMode) {
+                return EditCapabilities(EditSource.REGIONS, null, REGION_OWNER, setOf(UiBackgroundMode.GAME, UiBackgroundMode.COLOR))
+            }
             val seen = bridge?.takeIf { it.seenMod(ANY_CAPABILITY) }?.capabilities ?: 0
             val static = staticFeatures
             if (seen == 0 && static != null) return EditCapabilities.forStatic(static.backgrounds, gameName)
@@ -201,30 +231,125 @@ class UiLayoutController(
 
     /** Changes one element; [save] also stores the user's layout (at the end of a gesture, not on every move). */
     fun set(id: String, rule: UiRule, save: Boolean) {
+        if (regionMode) return setRegion(id, rule, save)
         layout = layout.with(id, rule)
         push()
         if (save) {
-            UiLayoutStore.save(context, layout)
+            persist()
             Timber.tag(DualScreenHost.TAG).i("UI layout: %s -> %s", id, rule)
         }
     }
 
     fun resetAll() {
         layout = UiLayoutStore.reset(context, container.id)
+        if (regionMode) {
+            layout = layout.copy(regions = layout.regions.ifEmpty { listOf(UiRegion.create(emptyList())) }).withRegionRules()
+            regionBase = layout.regions
+        }
         push()
     }
+
+    // ---- region view ---------------------------------------------------------------------------------------------
+
+    /** A new region in the middle of the frame, shown on the bottom screen; returns its element id. */
+    fun addRegion(): String? {
+        if (!regionMode || layout.regions.size >= UiRegion.MAX) return null
+        val r = UiRegion.create(layout.regions)
+        saveRegions(layout.regions + r)
+        return r.id
+    }
+
+    fun removeRegion(id: String) {
+        val regionId = id.removeSuffix(SOURCE_SUFFIX)
+        saveRegions(layout.regions.filterNot { it.id == regionId })
+    }
+
+    private fun saveRegions(regions: List<UiRegion>) {
+        layout = layout.copy(regions = regions).withRegionRules()
+        regionBase = layout.regions
+        push()
+        persist()
+    }
+
+    /**
+     * An editor change to a region's element. [rule] is relative to the region as last saved ([regionBase]): its
+     * screen, a shift as fractions of the screen it is on, a scale. A region's place element moves its place on the
+     * bottom screen; its source element (or the region itself while it is only on top) moves the part of the game.
+     */
+    private fun setRegion(id: String, rule: UiRule, save: Boolean) {
+        val regionId = id.removeSuffix(SOURCE_SUFFIX)
+        val base = regionBase.firstOrNull { it.id == regionId } ?: return
+        // A source element only moves the source: the screen it is drawn on (the top map) is not the region's.
+        val newScreen = if (rule.screen == UiScreen.DEFAULT || id.endsWith(SOURCE_SUFFIX)) base.screen else rule.screen
+        val changed = when {
+            newScreen != base.screen -> base.copy(screen = newScreen)
+            // "Reset" on a shown region: back to the middle of the bottom screen.
+            rule == UiRule() -> base.copy(cx = 0.5f, cy = 0.5f, width = 0.5f)
+            id.endsWith(SOURCE_SUFFIX) || !base.shown -> {
+                val s = base.source
+                val w = s[2] * rule.scale
+                val h = s[3] * rule.scale
+                val cx = s[0] + s[2] / 2f + rule.x
+                val cy = s[1] + s[3] / 2f + rule.y
+                base.copy(source = UiRegion.clampSource(listOf(cx - w / 2f, cy - h / 2f, w, h)))
+            }
+            else -> base.copy(
+                cx = (base.cx + rule.x).coerceIn(0f, 1f),
+                cy = (base.cy + rule.y).coerceIn(0f, 1f),
+                width = (base.width * rule.scale).coerceIn(0.05f, 1f),
+            )
+        }
+        val regions = layout.regions.map { if (it.id == regionId) changed else it }
+        if (save) {
+            saveRegions(regions)
+        } else {
+            layout = layout.copy(regions = regions).withRegionRules()
+            listeners.forEach { it(layout) }
+        }
+    }
+
+    /** The regions as editor elements: each shown region on the bottom screen with its source in the top-screen map. */
+    private fun regionElements(): UiElementList? {
+        val g = regionGeometry ?: return null
+        val (sw, sh, bw, bh) = g.toList()
+        val list = ArrayList<UiElement>()
+        for (r in layout.regions) {
+            val src = RegionOutput.sourcePx(r, sw, sh)
+            val srcRect = RectF(src[0], src[1], src[0] + src[2], src[1] + src[3])
+            if (!r.shown) {
+                list += UiElement(list.size, r.id, r.name, -1, 0, UiScreen.TOP, srcRect, graphic = true)
+                continue
+            }
+            val p = RegionOutput.placePx(r, sw, sh, bw, bh)
+            val place = list.size
+            val placeRect = RectF(p[0], sh + p[1], p[0] + p[2], sh + p[1] + p[3])
+            list += UiElement(place, r.id, r.name, -1, 0, UiScreen.BOTTOM, placeRect, graphic = true)
+            list += UiElement(
+                list.size, r.id + SOURCE_SUFFIX, r.name + " · source", place, 1, UiScreen.TOP, srcRect, graphic = true,
+                screens = setOf(UiScreen.TOP), note = "The part of the game ${r.name} shows: drag and pinch it in the top-screen map.",
+            )
+        }
+        return UiElementList(sw, sh + bh, list)
+    }
+
+    /** Stores the user's layout; in region view without the rules made from the regions. */
+    private fun persist() = UiLayoutStore.save(context, if (regionMode) layout.copy(rules = emptyMap()) else layout)
+
+    /** Each region's screen as a rule, so the editor's screen buttons show it (never saved: regions are the truth). */
+    private fun UiLayout.withRegionRules(): UiLayout =
+        if (!regionMode) this else copy(rules = regions.associate { it.id to UiRule(screen = it.screen) })
 
     fun setBackground(background: UiBackground, save: Boolean) {
         layout = layout.copy(background = background)
         push()
-        if (save) UiLayoutStore.save(context, layout)
+        if (save) persist()
     }
 
     fun setWidgets(widgets: List<UiWidget>, save: Boolean) {
         layout = layout.copy(widgets = widgets.take(UiLayout.MAX_WIDGETS))
         // Widgets are the app's own: the mod has nothing to redraw.
         listeners.forEach { it(layout) }
-        if (save) UiLayoutStore.save(context, layout)
+        if (save) persist()
     }
 
     /**
@@ -243,6 +368,11 @@ class UiLayoutController(
 
     /** Asks the mod for its element list; [callback] gets it on the main thread (null after 3 s without an answer). */
     fun requestElements(callback: (UiElementList?) -> Unit) {
+        if (regionMode) {
+            val list = regionElements()
+            main.post { callback(list) }
+            return
+        }
         val b = bridge
         if (b == null) {
             callback(null)
@@ -269,8 +399,12 @@ class UiLayoutController(
         }, "GNDuo-elements").start()
     }
 
-    private companion object {
-        const val ANY_CAPABILITY = -1
+    companion object {
+        private const val ANY_CAPABILITY = -1
+
+        /** A region's source element id: the region's id plus this. */
+        const val SOURCE_SUFFIX = "#source"
+        const val REGION_OWNER = "Region view"
     }
 
     private fun push() {

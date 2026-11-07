@@ -20,10 +20,9 @@ internal class DuoMenuPanel(
     /** Why the UI layout editor is unavailable, or null when it can open ([app.gamenative.duo.ui.EditCapabilities]). */
     editUiOff: String?,
     onEditUi: () -> Unit,
-    onCalibrate: () -> Unit,
+    /** Lines the screens up (null in region view: the game does not continue across both screens there). */
+    onCalibrate: (() -> Unit)?,
     onClose: () -> Unit,
-    /** Region view only: pan and zoom what the bottom screen shows. */
-    onChooseRegion: (() -> Unit)? = null,
     /** Opens the PC editor (null where it is unavailable); [pcRunning] when it is already on. */
     onEditOnPc: (() -> Unit)? = null,
     pcRunning: Boolean = false,
@@ -50,15 +49,10 @@ internal class DuoMenuPanel(
             )
         }
         onCompanion?.let { item("Companion") { it() } }
-        if (onChooseRegion != null) {
-            item("Choose bottom view") { onChooseRegion() }
-        } else {
-            item("Edit UI layout", editUiOff == null) { onEditUi() }
-            onEditOnPc?.let { item(if (pcRunning) "PC editor (on)" else "Edit on PC", editUiOff == null) { it() } }
-            if (editUiOff != null) card.addView(DuoUi.label(context, editUiOff, 12f, DuoUi.MUTED))
-            // Lining the screens up only matters when the game continues across both (not in region view).
-            item("Line up screens") { onCalibrate() }
-        }
+        item("Edit UI layout", editUiOff == null) { onEditUi() }
+        onEditOnPc?.let { item(if (pcRunning) "PC editor (on)" else "Edit on PC", editUiOff == null) { it() } }
+        if (editUiOff != null) card.addView(DuoUi.label(context, editUiOff, 12f, DuoUi.MUTED))
+        onCalibrate?.let { item("Line up screens") { it() } }
         card.addView(View(context), LinearLayout.LayoutParams(1, dp(4)))
         item("Close") { onClose() }
         addView(card, LayoutParams(dp(320), LayoutParams.WRAP_CONTENT, Gravity.CENTER))

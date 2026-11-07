@@ -120,7 +120,12 @@ class DualScreenSession internal constructor(
 
     // Talks to the game's mod (native touch, UI layout); only worth a socket when the game is split.
     private val bridge = if (splitOn) DuoBridge.open() else null
-    private val uiLayout = if (splitOn) UiLayoutController(context, container, bridge) else null
+    private val uiLayout = if (splitOn) {
+        val regions = SplitLayout.fromId(settings.splitLayout) == SplitLayout.REGION
+        UiLayoutController(context, container, bridge, regionMode = regions, legacyRegion = settings.region)
+    } else {
+        null
+    }
     private val screenSplit = if (splitOn) {
         SplitScreenController(
             context, xServer!!, profile, container, SplitLayout.fromId(settings.splitLayout),
@@ -129,9 +134,6 @@ class DualScreenSession internal constructor(
             nativeTouch = settings.nativeTouch,
             scale = settings.splitScale,
             region = settings.region,
-            onRegionSaved = { region ->
-                DuoSettingsStore.save(context, container.id, DuoSettingsStore.load(context, container.id).copy(region = region))
-            },
             modExpected = sessionStatus.modExpected,
             onOutputAttached = { updateStatus { it.copy(secondScreen = true) } },
             companion = companion,

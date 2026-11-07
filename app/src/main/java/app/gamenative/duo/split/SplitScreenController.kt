@@ -33,7 +33,9 @@ import app.gamenative.duo.pc.PcEditorHost
 import app.gamenative.duo.pc.PcEditorPanel
 import app.gamenative.duo.pc.PcEditorServer
 import app.gamenative.duo.ui.EditCapabilities
+import app.gamenative.duo.ui.RegionOutput
 import app.gamenative.duo.ui.Snapshots
+import app.gamenative.duo.ui.UiBackgroundMode
 import app.gamenative.duo.ui.UiLayout
 import app.gamenative.duo.ui.UiLayoutController
 import app.gamenative.duo.ui.UiLayoutEditor
@@ -66,9 +68,8 @@ class SplitScreenController(
     private val nativeTouch: Boolean,
     /** Render scale of the native layout (see DuoContainerSettings.splitScale). */
     private val scale: Float = 1f,
-    /** Region view: the bottom screen's part of the game (fractions, see [RegionView]); saved with [onRegionSaved]. */
-    private var region: String = "",
-    private val onRegionSaved: (String) -> Unit = {},
+    /** Region view, older single region (fractions, see [RegionView]): where the bottom output starts before the regions apply. */
+    private val region: String = "",
     /** A dual-screen mod is installed and should say hello on the bridge (the bottom screen says so until it does). */
     private val modExpected: Boolean = false,
     /** The bottom screen output is running (for the session's status record). */
@@ -136,9 +137,8 @@ class SplitScreenController(
             presentation = SplitBottomPresentation(
                 context, bottomDisplay, xServer, top, newSplit.top, newSplit.bottom, calibration, profile.calibration,
                 bridge = bridge.takeIf { nativeTouch && layout != SplitLayout.REGION },
-                uiLayout = uiLayout.takeIf { layout != SplitLayout.REGION },
+                uiLayout = uiLayout,
                 regionView = layout == SplitLayout.REGION,
-                onRegionDone = ::onRegionDone,
                 onCalibrationChange = ::onCalibrationChange,
                 onCalibrationDone = { ScreenCalibrationStore.save(context, profile, it) },
                 modExpected = modExpected && layout != SplitLayout.REGION,
@@ -154,19 +154,6 @@ class SplitScreenController(
         } catch (t: Throwable) {
             Timber.tag(DualScreenHost.TAG).e(t, "Failed to update screen split")
             stop()
-        }
-    }
-
-    /** Region chosen on the bottom screen (null: back to the default); kept for this container. */
-    private fun onRegionDone(pixels: FloatArray?) {
-        val w = xServer.screenInfo.width.toInt()
-        val h = xServer.screenInfo.height.toInt()
-        region = pixels?.let { RegionView.format(RegionView.fractions(it, w, h)) }.orEmpty()
-        onRegionSaved(region)
-        if (pixels == null) {
-            // Back to the default: rebuild the bottom view with it.
-            split = null
-            update()
         }
     }
 
@@ -281,7 +268,6 @@ private class SplitBottomPresentation(
     private val bridge: DuoBridge?,
     private val uiLayout: UiLayoutController?,
     private val regionView: Boolean,
-    private val onRegionDone: (FloatArray?) -> Unit,
     private val onCalibrationChange: (ScreenCalibration) -> Unit,
     private val onCalibrationDone: (ScreenCalibration) -> Unit,
     private val modExpected: Boolean,
@@ -307,7 +293,10 @@ private class SplitBottomPresentation(
     private var widgets: WidgetLayer? = null
     private var editor: UiLayoutEditor? = null
     private var pc: PcEditorServer? = null
-    private val layoutListener: (UiLayout) -> Unit = { widgets?.show(it.widgets) }
+    private val layoutListener: (UiLayout) -> Unit = {
+        widgets?.show(it.widgets)
+        if (regionView) applyRegions()
+    }
 
     /** Snapshots are copied and compressed here, never on the main thread (started on first use). */
     private var snapThread: android.os.HandlerThread? = null
@@ -361,6 +350,11 @@ private class SplitBottomPresentation(
                 val t = DuoViewport.transform(rect, width, height, xServer.screenInfo.width.toInt(), xServer.screenInfo.height.toInt())
                 if (topRenderer.duoSetSecondary(h.surface, t)) {
                     Timber.tag(DualScreenHost.TAG).i("Second screen output attached (%dx%d)", width, height)
+                    if (regionView) {
+                        val screen = xServer.screenInfo
+                        uiLayout?.regionGeometry = intArrayOf(screen.width.toInt(), screen.height.toInt(), width, height)
+                        applyRegions()
+                    }
                     onOutputAttached()
                     // No mod to wait for: the hint can show now.
                     if (!modExpected) showHintOnce()
@@ -429,6 +423,7 @@ private class SplitBottomPresentation(
     override fun surfaceDestroyed(holder: SurfaceHolder) {
         handler.removeCallbacks(attach)
         this.holder = null
+        clearRegions()
         try {
             topRenderer.duoClearSecondary()
         } catch (t: Throwable) {
@@ -532,7 +527,7 @@ private class SplitBottomPresentation(
     override val controller: UiLayoutController get() = uiLayout!!
     override val windowW: Int get() = xServer.screenInfo.width.toInt()
     override val windowH: Int get() = xServer.screenInfo.height.toInt()
-    override val bottomRect: FloatArray get() = rect
+    override val bottomRect: FloatArray get() = uiLayout?.regionBottomRect?.takeIf { regionView } ?: rect
     override val bottomSize: Pair<Int, Int> get() = surfaceSize ?: (1240 to 1080)
 
     override fun snapshot(top: Boolean, done: (ByteArray?) -> Unit) {
@@ -611,9 +606,8 @@ private class SplitBottomPresentation(
                     context,
                     editUiOff = uiLayout?.capabilities?.reasonOff ?: if (uiLayout == null) EditCapabilities.NO_MOD else null,
                     onEditUi = ::showEditor,
-                    onCalibrate = ::showCalibration,
                     onClose = ::hideOverlay,
-                    onChooseRegion = if (regionView) ::showRegion else null,
+                    onCalibrate = ::showCalibration.takeIf { !regionView },
                     onEditOnPc = if (uiLayout != null) ::showPc else null,
                     pcRunning = pc != null,
                     onCompanion = if (companion != null) ::showCompanion else null,
@@ -628,7 +622,7 @@ private class SplitBottomPresentation(
         val ui = uiLayout ?: return
         try {
             val e = UiLayoutEditor(
-                context, ui, topRect, rect, widgets,
+                context, ui, topRect, bottomRect, widgets,
                 onPickImage = ::pickImage,
                 onSnapshotBackground = ::snapshotBackground,
                 onDone = ::hideOverlay,
@@ -641,39 +635,41 @@ private class SplitBottomPresentation(
         }
     }
 
-    /** Pan and zoom what the bottom screen shows (region view), live. */
-    private fun showRegion() {
+    // ---- region view: the user's regions (UiRegion) ------------------------------------------------------------
+
+    /** Hands the regions to the renderer: their crops on this screen, masks on the top screen, the background color. */
+    private fun applyRegions() {
+        val ui = uiLayout ?: return
+        val (width, height) = surfaceSize ?: return
         try {
-            val w = xServer.screenInfo.width.toInt()
-            val h = xServer.screenInfo.height.toInt()
-            val (sw, sh) = surfaceSize ?: return
-            showOverlay(
-                RegionPanel(
-                    context, rect, w, h, sw.toFloat() / sh,
-                    onChange = ::setRegion,
-                    onDone = { pixels ->
-                        hideOverlay()
-                        if (pixels != null) setRegion(pixels)
-                        onRegionDone(pixels)
-                    },
-                ),
-            )
+            val sw = xServer.screenInfo.width.toInt()
+            val sh = xServer.screenInfo.height.toInt()
+            val regions = ui.layout.regions
+            // Nothing shown: one empty region, so the renderer draws only the background (not its single-crop view).
+            val data = RegionOutput.nativeData(regions, sw, sh, width, height).takeIf { it.isNotEmpty() } ?: EMPTY_REGION
+            val bg = ui.layout.background
+            topRenderer.duoSetRegions(data, if (bg.mode == UiBackgroundMode.COLOR) bg.color and 0xFFFFFF else 0)
+            topRenderer.duoSetMasks(RegionOutput.masks(regions, sw, sh))
         } catch (t: Throwable) {
-            Timber.tag(DualScreenHost.TAG).e(t, "Failed to open the region view editor")
+            Timber.tag(DualScreenHost.TAG).w(t, "Failed to apply the regions")
         }
     }
 
-    /** Shows another part of the frame: same surface, only the crop changes (cheap in the renderer). */
-    private fun setRegion(pixels: FloatArray) {
-        rect = pixels
-        val h = holder ?: return
-        val (width, height) = surfaceSize ?: return
+    /** No regions and, above all, no masks left on the top screen once this screen goes. */
+    private fun clearRegions() {
+        if (!regionView) return
         try {
-            DuoViewport.transform(rect, width, height, xServer.screenInfo.width.toInt(), xServer.screenInfo.height.toInt())
-                ?.let { topRenderer.duoSetSecondary(h.surface, it) }
+            topRenderer.duoSetMasks(FloatArray(0))
+            topRenderer.duoSetRegions(FloatArray(0), 0)
         } catch (t: Throwable) {
-            Timber.tag(DualScreenHost.TAG).w(t, "Failed to move the region view")
+            Timber.tag(DualScreenHost.TAG).w(t, "Failed to clear the regions")
         }
+    }
+
+    /** The game point under a bottom-screen touch: through the region under the finger (null outside regions). */
+    private fun regionPoint(width: Int, height: Int, x: Float, y: Float): Pair<Int, Int>? {
+        val regions = uiLayout?.layout?.regions ?: return null
+        return RegionOutput.hit(regions, x, y, xServer.screenInfo.width.toInt(), xServer.screenInfo.height.toInt(), width, height)
     }
 
     private fun showCalibration() {
@@ -705,6 +701,7 @@ private class SplitBottomPresentation(
         handler.removeCallbacks(hideHint)
         endGesture(cancel = true)
         uiLayout?.listeners?.remove(layoutListener)
+        clearRegions()
         pc?.stop()
         pc = null
         snapThread?.quitSafely()
@@ -772,7 +769,11 @@ private class SplitBottomPresentation(
 
     /** The first finger clicks and drags with the left mouse button; a second finger never drags in the game. */
     private fun mouseTouch(width: Int, height: Int, event: MotionEvent) {
-        val pos = DuoViewport.surfaceToScreen(rect, width, height, event.x, event.y)
+        val pos = if (regionView) {
+            regionPoint(width, height, event.x, event.y)
+        } else {
+            DuoViewport.surfaceToScreen(rect, width, height, event.x, event.y)
+        }
         when (event.actionMasked) {
             MotionEvent.ACTION_POINTER_DOWN -> if (buttonDown) {
                 inject { xServer.injectPointerButtonRelease(Pointer.Button.BUTTON_LEFT) }
@@ -822,6 +823,8 @@ private class SplitBottomPresentation(
     }
 
     private companion object {
+        /** A region with no size: the renderer clears the screen to the background and draws nothing. */
+        val EMPTY_REGION = floatArrayOf(0f, 0f, 1f, 1f, 0f, 0f, 0f, 0f)
         const val MENU_HOLD_MS = 900L
         const val MAX_FINGERS = 16
 

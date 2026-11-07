@@ -53,6 +53,9 @@ internal class UiLayoutEditor(
     private val onDone: () -> Unit,
 ) : FrameLayout(context) {
     private var elements: UiElementList? = null
+
+    /** Region view: the elements are the user's regions (Add, Remove), not a mod's UI. */
+    private val regions = controller.capabilities.source == EditSource.REGIONS
     private var selectedId: String? = null
     private var status = "Loading the game's UI…"
     private val board = Board()
@@ -94,6 +97,8 @@ internal class UiLayoutEditor(
                 elements = result
                 board.chooseMapSide()
                 status = when {
+                    regions && result.elements.isEmpty() -> "No regions: Add region shows a part of the game here"
+                    regions -> "Tap a region; drag its source in the top-screen map"
                     result.elements.isEmpty() -> "No UI on screen right now"
                     result.elements.none { it.present && it.graphic } -> "Nothing on screen now: see the List"
                     else -> "Tap a UI element to change it"
@@ -184,6 +189,17 @@ internal class UiLayoutEditor(
         }
         val top = DuoUi.row(context)
         DuoUi.add(top, title, weight = 1f)
+        if (regions) {
+            // Region view: the elements are the user's own parts of the frame.
+            DuoUi.add(
+                top,
+                DuoUi.chip(context, "Add region") {
+                    val id = controller.addRegion() ?: return@chip
+                    selectedId = id
+                    refresh()
+                },
+            )
+        }
         DuoUi.add(top, DuoUi.chip(context, "Parent") { selected?.let { e -> elements?.parentOf(e)?.let { select(it) } } })
         DuoUi.add(top, DuoUi.chip(context, "List") { showList(true) })
         content.addView(top)
@@ -208,6 +224,17 @@ internal class UiLayoutEditor(
         scaleViews += DuoUi.chip(context, "+") { stepScale(1.1f) }
         scaleViews.forEach { DuoUi.add(controls, it) }
         DuoUi.add(controls, DuoUi.chip(context, "Reset") { selected?.let { change(it.id, UiRule(), final = true) } })
+        if (regions) {
+            DuoUi.add(
+                controls,
+                DuoUi.chip(context, "Remove") {
+                    val e = selected ?: return@chip
+                    controller.removeRegion(e.id)
+                    selectedId = null
+                    refresh()
+                },
+            )
+        }
         content.addView(controls)
         (hint.parent as? ViewGroup)?.removeView(hint)
         hint.setPadding(dp(6), dp(4), dp(6), 0)
@@ -587,7 +614,11 @@ internal class UiLayoutEditor(
         listPanel.visibility = if (show) VISIBLE else GONE
         toolbar.visibility = if (show) GONE else VISIBLE
         if (show) {
-            listHeader.text = "Elements from ${controller.capabilities.owner} (${elements?.elements?.size ?: 0})"
+            listHeader.text = if (regions) {
+                "Your regions (${controller.layout.regions.size}): parts of the game shown below"
+            } else {
+                "Elements from ${controller.capabilities.owner} (${elements?.elements?.size ?: 0})"
+            }
             listAdapter.notifyDataSetChanged()
             elements?.elements?.indexOfFirst { it.id == selectedId }?.takeIf { it >= 0 }?.let { list.setSelection(it) }
         }
