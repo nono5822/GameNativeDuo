@@ -138,7 +138,8 @@ do
             Hand = run and G.hand or nil,
             Consumables = run and G.consumeables or nil,
             ["Hand info"] = run and D.preview_box and D.preview_box() or nil,
-            Menus = D.active and G.ROOM and type(G.OVERLAY_MENU) == "table" and G.OVERLAY_MENU or nil,
+            -- The menu's panel: the box itself spans the whole dimmed backdrop, far larger than the window.
+            Menus = D.active and G.ROOM and type(G.OVERLAY_MENU) == "table" and { T = D.content_of(G.OVERLAY_MENU) } or nil,
         }
         for _, def in ipairs(ELEMENTS) do element(list, def, nodes[def.id]) end
         local doc = { engine = ENGINE, screen = { w = D.full_w, h = D.full_h }, elements = list }

@@ -45,8 +45,10 @@ class EditCapabilities(
     fun limits(e: UiElement): String? {
         val name = e.name.ifEmpty { e.id.substringAfterLast('/') }
         if (!e.present) {
-            val whenText = e.whenText.ifEmpty { "Not on screen right now" }.trimEnd('.')
-            return "$name: $whenText. Choose its screen now; move or resize it when it shows."
+            val whenText = e.whenText.ifEmpty { "not on screen right now" }.trimEnd('.').replaceFirstChar { it.lowercase() }
+            val later = listOfNotNull("move".takeIf { e.canMove }, "resize".takeIf { e.canScale })
+            val then = if (later.isEmpty()) "" else "; ${later.joinToString(" or ")} it when it shows"
+            return "$name shows $whenText. Choose its screen now$then."
         }
         val screens = e.screens
         val verbs = buildList {

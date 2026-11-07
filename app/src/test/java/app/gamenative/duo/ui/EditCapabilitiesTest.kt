@@ -62,9 +62,18 @@ class EditCapabilitiesTest {
         assertEquals("Balatro's mod cannot hide Hand.", caps.limits(list.byId("Hand")!!))
         assertEquals("Balatro's mod cannot resize Hand info or put it on the top screen.", caps.limits(list.byId("Hand info")!!))
         assertEquals(
-            "Menus: While a menu is open. Choose its screen now; move or resize it when it shows.",
+            "Menus shows while a menu is open. Choose its screen now.",
             caps.limits(list.byId("Menus")!!),
         )
+    }
+
+    @Test
+    fun absentElementSaysWhatComesLater() {
+        val list = UiElementList.parse(
+            """{"screen":{"w":10,"h":10},"elements":[{"id":"Hand","name":"Hand","parent":-1,"present":false,"when":"During a run"}]}""",
+        )
+        val caps = EditCapabilities.forMod(DuoBridge.CAP_ELEMENTS, "Balatro")
+        assertEquals("Hand shows during a run. Choose its screen now; move or resize it when it shows.", caps.limits(list.byId("Hand")!!))
     }
 
     @Test

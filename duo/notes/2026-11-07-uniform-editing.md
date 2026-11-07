@@ -48,3 +48,10 @@ Commit after every box (code + this file together). Device: Thor `d615ac15` (USB
   `UiLayoutController.capabilities`.
 - Stardew references: pulled the game folder (no Content) from the Thor into the session scratchpad; build with `-p:GamePath=<that> -p:EnableModDeploy=false -p:EnableModZip=false`. Pull again with `adb exec-out run-as app.gamenative.duo sh -c 'cd ".../common/Stardew Valley" && tar cf - --exclude=Content --exclude=Mods .'`.
 - Unity build refs: `-p:ManagedPath=~/dev/GameNativeDuo/duo/agents/runs/2026-10-28-0119/sr-managed` (Slime Rancher, oldest Unity).
+- Thor, Balatro (title screen only, no run: achievements): editor lists all 4 elements as absent with their `when`;
+  Menus selectable by tap once a popup is open; drag refused with the hint lit; Hide and size controls hidden;
+  background tab greys blur with the reason. Found and fixed: Menus reported the overlay's whole backdrop
+  (6279x3610 px in a 1440 window) instead of its panel (`D.content_of`). Hand/Consumables/Hand info during a run
+  still to check (needs a seeded run with `G.F_NO_ACHIEVEMENTS`).
+- `refreshIfUpdated` left Balatro's Lua alone ("0 updated": files hand-pushed in earlier sessions count as the
+  user's). Pushed by hand with `run-as cp`.
