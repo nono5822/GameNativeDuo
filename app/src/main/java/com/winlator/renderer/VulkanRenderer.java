@@ -160,6 +160,7 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
     private native void nativeSetTransform(long handle, float ox, float oy, float sx, float sy);
     private native boolean nativeDuoSetSecondary(long handle, Surface surface, float ox, float oy, float sx, float sy); // GameNativeDuo
     private native void nativeDuoClearSecondary(long handle); // GameNativeDuo
+    private native void nativeDuoSetRegions(long handle, float[] regions, int clearRgb); private native void nativeDuoSetMasks(long handle, float[] rects); // GameNativeDuo
     private native void nativeSetPointerPos(long handle, short x, short y);
     private native void nativeSetCursorVisible(long handle, boolean visible);
     private native void nativeUpdateCursorImage(long handle, java.nio.ByteBuffer pixels,
@@ -1017,6 +1018,7 @@ public class VulkanRenderer implements WindowManager.OnWindowModificationListene
     public void setDuoViewRect(float[] rect) { duoViewRect = rect; synchronized (lock) { updateTransform(); } } // GameNativeDuo
     public boolean duoSetSecondary(Surface surface, float[] t) { synchronized (lock) { return nativeHandle != 0 && t != null && nativeDuoSetSecondary(nativeHandle, surface, t[0], t[1], t[2], t[3]); } } // GameNativeDuo: draw this renderer's scene on a second screen too
     public void duoClearSecondary() { synchronized (lock) { if (nativeHandle != 0) nativeDuoClearSecondary(nativeHandle); } } // GameNativeDuo
+    public void duoSetRegions(float[] regions, int clearRgb) { synchronized (lock) { if (nativeHandle != 0) nativeDuoSetRegions(nativeHandle, regions, clearRgb); } } public void duoSetMasks(float[] rects) { synchronized (lock) { if (nativeHandle != 0) nativeDuoSetMasks(nativeHandle, rects); } } // GameNativeDuo: regions on the second screen, masks on this one
     public void setScreenOffsetYRelativeToCursor(boolean b) { screenOffsetYRelativeToCursor = b; synchronized (lock) { updateTransform(); } }
     public boolean isScreenOffsetYRelativeToCursor() { return screenOffsetYRelativeToCursor; }
     public void setMagnifierZoom(float zoom) { magnifierZoom = zoom; }

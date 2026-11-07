@@ -189,6 +189,7 @@ public:
     bool verboseLog = true;
     void setVerboseLog(bool v) { verboseLog = v; }
     struct DuoSecondary* duoSecondary = nullptr; bool duoSetSecondary(ANativeWindow* win, float ox, float oy, float sx, float sy); void duoClearSecondary(); void duoDestroySecondary(); void duoRenderSecondary(); void duoWaitSecondary(); // GameNativeDuo: second screen output, see DuoSecondaryOutput.cpp
+    std::vector<float> duoRegions, duoMasks; float duoClear[3] = {0.f, 0.f, 0.f}; void duoSetRegions(const float* data, int count, float r, float g, float b); void duoSetMasks(const float* rects, int count); void duoDrawMasks(VkCommandBuffer cb, float ox, float oy, float sx, float sy, float cw, float ch, VkExtent2D ext); // GameNativeDuo: regions and top-screen masks
     void dumpRendererInfo();
 
     std::string adrenoDriverPath;

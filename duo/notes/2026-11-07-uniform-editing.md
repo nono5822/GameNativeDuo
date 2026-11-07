@@ -29,8 +29,22 @@ Commit after every box (code + this file together). Device: Thor `d615ac15` (USB
 
 ## U3 Regions as elements
 
-- [ ] Read current region view code (`split/RegionView.kt`, `RegionPanel.kt`, native output) and write the sub-plan here
-- [ ] (sub-steps go here)
+- [x] Read current region view code and write the sub-plan (below)
+- [x] U3a Native: `duoSetRegions` (per region crop + scissor on the bottom output, clear color) and `duoSetMasks`
+  (black rects on the top frame via `vkCmdClearAttachments`, loaded with `GetDeviceProcAddr`); Java hooks in
+  `VulkanRenderer`; .so rebuilt (worktree needed `lsfg-vk-android/thirdparty/*` copied from the main checkout: the
+  dxbc submodule clone fails)
+- [ ] U3b Model: `UiRegion` (id, name, source fractions of the X screen, screen top/bottom/hidden, place on the bottom
+  as centre fractions + width fraction, options filter/touch) in `UiLayout.regions`; JSON round trip; migrate the
+  old single `region` string to one region filling the bottom screen; unit tests
+- [ ] U3c Session: region mode gets a `UiLayoutController` (source REGIONS); `RegionOutput` turns regions into
+  `duoSetRegions` / `duoSetMasks` data (pure function, unit-tested); background color drawn as the clear color;
+  widgets on in region mode; touch: a tap inside a shown region clicks at its source point
+- [ ] U3d Editor: REGIONS elements (bottom = place, top map = source); "Add region" (new region in the top map's
+  middle); dragging/pinching the source in the map, the place on the bottom; Remove; list header "Your regions";
+  background modes color only (image/blur greyed: "not in region view yet"); PC editor gets the same
+- [ ] U3e `EditingLevel.REGIONS` tag for games without a mod (mod explorer and Dual screen control)
+- [ ] U3 Thor test: a game without a mod (Isaac / Dead Cells), two regions, one hidden (masked on top)
 
 ## U4 Conformance
 

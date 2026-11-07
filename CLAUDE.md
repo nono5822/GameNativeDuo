@@ -38,8 +38,8 @@ Upstream lands ~4-5 commits/day; `XServerScreen.kt` (~6,800 lines) changes almos
 | `ui/screen/xserver/XServerScreen.kt` | import + one `DualScreenHost.attach(...)` line after the external-display controllers start |
 | `app/build.gradle.kts` | `applicationId = "app.gamenative.duo"` |
 | `build.gradle.kts` (root) | `buildscript` pins D8/R8 `com.android.tools:r8` (see Known issues) |
-| `com/winlator/renderer/VulkanRenderer.java` | `duoViewRect` crop in `updateTransform` (right after the surface guard, before upstream's effective-screen scaling; uses the full `xServer.screenInfo`), `setDuoViewRect`, `duoSetSecondary`/`duoClearSecondary` + their natives |
-| `cpp/winlator/VulkanRendererContext.{h,cpp}` | declarations, `duoRenderSecondary()` after both present paths, `duoWaitSecondary()` before the `deleteQueue` flush, `duoDestroySecondary()` in the destructor (new code in `DuoSecondaryOutput.cpp`) |
+| `com/winlator/renderer/VulkanRenderer.java` | `duoViewRect` crop in `updateTransform` (right after the surface guard, before upstream's effective-screen scaling; uses the full `xServer.screenInfo`), `setDuoViewRect`, `duoSetSecondary`/`duoClearSecondary`, `duoSetRegions`/`duoSetMasks` + their natives |
+| `cpp/winlator/VulkanRendererContext.{h,cpp}` | declarations, `duoRenderSecondary()` after both present paths, `duoWaitSecondary()` before the `deleteQueue` flush, `duoDestroySecondary()` in the destructor, `duoDrawMasks()` after the window draws in `recordCmdBuf`, region/mask members (new code in `DuoSecondaryOutput.cpp`) |
 | `cpp/CMakeLists.txt` | `DuoSecondaryOutput.cpp` source line |
 | `modern/jniLibs/arm64-v8a/libvulkan_renderer.so` | **rebuilt by us** (see `duo/native/README.md`); rebuild after upstream renderer changes |
 | `AndroidManifest.xml` | 3 launcher labels -> `@string/duo_app_name` |
