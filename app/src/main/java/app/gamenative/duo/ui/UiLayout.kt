@@ -206,6 +206,8 @@ data class UiLayout(
     val rules: Map<String, UiRule> = emptyMap(),
     val background: UiBackground = UiBackground(),
     val widgets: List<UiWidget> = emptyList(),
+    /** Region view's parts of the frame on the bottom screen (games without a mod); mods ignore them. */
+    val regions: List<UiRegion> = emptyList(),
 ) {
     fun rule(id: String): UiRule = rules[id] ?: UiRule()
 
@@ -219,6 +221,7 @@ data class UiLayout(
         put("elements", JSONObject().apply { rules.toSortedMap().forEach { (id, r) -> put(id, r.toJson()) } })
         if (!background.isDefault) put("background", background.toJson())
         if (widgets.isNotEmpty()) put("widgets", org.json.JSONArray().apply { widgets.forEach { put(it.toJson()) } })
+        if (regions.isNotEmpty()) put("regions", org.json.JSONArray().apply { regions.forEach { put(it.toJson()) } })
     }
 
     companion object {
@@ -235,12 +238,17 @@ data class UiLayout(
             val widgets = (0 until (widgetArray?.length() ?: 0)).mapNotNull { i ->
                 widgetArray!!.optJSONObject(i)?.let { UiWidget.fromJson(it) }
             }.take(MAX_WIDGETS)
+            val regionArray = json.optJSONArray("regions")
+            val regions = (0 until (regionArray?.length() ?: 0)).mapNotNull { i ->
+                regionArray!!.optJSONObject(i)?.let { UiRegion.fromJson(it) }
+            }.distinctBy { it.id }.take(UiRegion.MAX)
             return UiLayout(
                 json.optString("game", game).ifEmpty { game },
                 json.optString("engine").ifEmpty { null },
                 rules,
                 UiBackground.fromJson(json.optJSONObject("background")),
                 widgets,
+                regions,
             )
         }
     }

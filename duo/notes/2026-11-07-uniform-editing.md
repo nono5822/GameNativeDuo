@@ -34,7 +34,7 @@ Commit after every box (code + this file together). Device: Thor `d615ac15` (USB
   (black rects on the top frame via `vkCmdClearAttachments`, loaded with `GetDeviceProcAddr`); Java hooks in
   `VulkanRenderer`; .so rebuilt (worktree needed `lsfg-vk-android/thirdparty/*` copied from the main checkout: the
   dxbc submodule clone fails)
-- [ ] U3b Model: `UiRegion` (id, name, source fractions of the X screen, screen top/bottom/hidden, place on the bottom
+- [x] U3b Model: `UiRegion` (id, name, source fractions of the X screen, screen top/bottom/hidden, place on the bottom
   as centre fractions + width fraction, options filter/touch) in `UiLayout.regions`; JSON round trip; migrate the
   old single `region` string to one region filling the bottom screen; unit tests
 - [ ] U3c Session: region mode gets a `UiLayoutController` (source REGIONS); `RegionOutput` turns regions into
