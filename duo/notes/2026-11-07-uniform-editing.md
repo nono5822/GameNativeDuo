@@ -14,7 +14,7 @@ Commit after every box (code + this file together). Device: Thor `d615ac15` (USB
 - [x] On-device editor gated by it (drag/pinch/+-/screen chips, reasons in the toolbar, absent elements in the list)
 - [x] Menus (`DuoMenuPanel`, `DuoQuickMenu`, `SplitScreenController`) read it instead of `canEdit`/`modSeen`
 - [x] PC editor: server sends capabilities, `index.html` gates the same way
-- [ ] Balatro: declare features, list all four elements always (`present`), `features.json`
+- [x] Balatro: declare features, list all four elements always (`present`), `features.json`
 - [ ] Stardew: list absent menus with `present: false`, declare features (rebuild DLL, needs the game's folder)
 - [ ] Unity: crosshair screens, plugin elements declare features (rebuild shared DLL)
 - [ ] `engine-adapter-contract.md` updated

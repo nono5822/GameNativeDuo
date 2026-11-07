@@ -93,24 +93,54 @@ do
             math.floor(t.w * ts + 0.5), math.floor(t.h * ts + 0.5)
     end
 
-    local function element(list, id, name, node, default_screen)
-        if not (node and node.T and not node.REMOVED) then return end
-        local x, y, w, h = window_rect(node.T)
-        local screen = D.screen_of(id, default_screen)
-        if screen ~= "hidden" then screen = D.on_bottom(node.T.y + node.T.h / 2) and "bottom" or "top" end
-        list[#list + 1] = { id = id, name = name, parent = -1, screen = screen, x = x, y = y, w = w, h = h, graphic = true }
+    -- Every element the editor can change, in every scene (contract "Element features"): what each one supports, and
+    -- when it is on screen. Absent ones are listed with present = false so their screen can be chosen ahead.
+    local ELEMENTS = {
+        { id = "Hand", default = "bottom", when = "During a run",
+          features = { screens = { "bottom", "top" }, move = true, scale = { min = 0.8, max = 1.4 } } },
+        { id = "Consumables", default = "bottom", when = "During a run",
+          features = { screens = { "bottom", "top" }, move = true, scale = false } },
+        { id = "Hand info", default = "bottom", when = "During a run",
+          features = { screens = { "bottom", "hidden" }, move = true, scale = false } },
+        { id = "Menus", default = "bottom", when = "While a menu is open",
+          features = { screens = { "bottom", "top" }, move = false, scale = false } },
+    }
+    D.ELEMENTS = ELEMENTS
+
+    local function element(list, def, node)
+        local present = node and node.T and not node.REMOVED and true or false
+        local x, y, w, h = 0, 0, 0, 0
+        local screen = D.screen_of(def.id, def.default)
+        if present then
+            x, y, w, h = window_rect(node.T)
+            if screen ~= "hidden" then screen = D.on_bottom(node.T.y + node.T.h / 2) and "bottom" or "top" end
+        end
+        list[#list + 1] = { id = def.id, name = def.id, parent = -1, screen = screen, x = x, y = y, w = w, h = h,
+            graphic = true, present = present, when = def.when, features = def.features }
+    end
+
+    -- What this mod supports, for the app before the game runs and while it is paused (contract "features.json").
+    local features_written = false
+    local function write_features()
+        local elements = {}
+        for i, def in ipairs(ELEMENTS) do
+            elements[i] = { id = def.id, name = def.id, when = def.when, features = def.features }
+        end
+        local doc = { format = "gamenative-duo/features", version = 1, engine = ENGINE, touch = true,
+            background = { "game", "color", "image" }, elements = elements, dynamic = false }
+        return D.write_file(D.dir .. "features.json", D.json_encode(doc))
     end
 
     local function write_elements(request)
         local list = setmetatable({}, D.ARRAY)
-        if D.active and G.ROOM and G.STAGE == G.STAGES.RUN then
-            element(list, "Hand", "Hand", G.hand, "bottom")
-            element(list, "Consumables", "Consumables", G.consumeables, "bottom")
-            if D.preview_box then element(list, "Hand info", "Hand info", D.preview_box(), "bottom") end
-        end
-        if D.active and G.ROOM and type(G.OVERLAY_MENU) == "table" then
-            element(list, "Menus", "Menus", G.OVERLAY_MENU, "bottom")
-        end
+        local run = D.active and G.ROOM and G.STAGE == G.STAGES.RUN
+        local nodes = {
+            Hand = run and G.hand or nil,
+            Consumables = run and G.consumeables or nil,
+            ["Hand info"] = run and D.preview_box and D.preview_box() or nil,
+            Menus = D.active and G.ROOM and type(G.OVERLAY_MENU) == "table" and G.OVERLAY_MENU or nil,
+        }
+        for _, def in ipairs(ELEMENTS) do element(list, def, nodes[def.id]) end
         local doc = { engine = ENGINE, screen = { w = D.full_w, h = D.full_h }, elements = list }
         if not D.write_file(D.dir .. "elements.json", D.json_encode(doc)) then D.log("elements.json not written") end
         send(header(0x83) .. le32(request))
@@ -224,7 +254,10 @@ do
                 D.log("layout.json changed (port %s)", tostring(D.port))
             end
             D.safe("ui.json", D.read_ui)
-            if D.active then send(header(0x81) .. le32(CAPS) .. ENGINE) end
+            if D.active then
+                if not features_written then features_written = D.safe("features.json", write_features) ~= false end
+                send(header(0x81) .. le32(CAPS) .. ENGINE)
+            end
         end
         receive()
         apply_touches()
