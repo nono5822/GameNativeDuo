@@ -80,11 +80,14 @@ internal class UiLayoutEditor(
         controller.requestElements { result ->
             if (result == null) {
                 unanswered++
+                // Meanwhile the mod's bundled element list: screens can be chosen before the game answers.
+                if (elements == null) elements = controller.staticElements()
+                val waiting = if (elements != null) "Game paused: choose screens from the List" else "Waiting for the game to answer..."
                 if (unanswered <= MAX_WAIT_TRIES && isAttachedToWindow) {
-                    status = "Waiting for the game to answer..."
+                    status = waiting
                     postDelayed({ if (isAttachedToWindow) refresh() }, 1500)
                 } else {
-                    status = "The game's mod did not answer. Is the game still running?"
+                    status = if (elements != null) waiting else "The game's mod did not answer. Is the game still running?"
                 }
             } else {
                 unanswered = 0

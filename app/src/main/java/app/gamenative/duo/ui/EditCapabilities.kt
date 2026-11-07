@@ -95,6 +95,13 @@ class EditCapabilities(
             return EditCapabilities(EditSource.MOD, null, owner, backgrounds)
         }
 
+        /**
+         * The installed mod has not said hello yet (the game is loading, or paused by GameNative's menu) but its bundled
+         * `features.json` says what it supports: the editor can already choose screens from its element list.
+         */
+        fun forStatic(backgrounds: Set<UiBackgroundMode>, gameName: String): EditCapabilities =
+            EditCapabilities(EditSource.MOD, null, if (gameName.isBlank()) "This game's mod" else "$gameName's mod", backgrounds)
+
         const val NO_MOD = "Needs this game's GameNative Duo mod, running."
 
         private fun join(items: List<String>): String = when (items.size) {

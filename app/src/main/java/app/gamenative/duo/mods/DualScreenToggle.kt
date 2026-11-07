@@ -103,7 +103,7 @@ fun DualScreenToggle(appId: String, installLocation: String?, isInstalled: Boole
                         Text(
                             when {
                                 problem != null -> problemShort(problem)
-                                selected != null -> shortTitle(selected)
+                                selected != null -> shortTitle(selected) + levelSuffix(selected)
                                 else -> stringResource(R.string.duo_hub_choose)
                             },
                             style = MaterialTheme.typography.labelSmall,
@@ -167,6 +167,14 @@ fun DualScreenToggle(appId: String, installLocation: String?, isInstalled: Boole
         ModExplorerSheet(state, title, onDismiss = { explorer = false })
     }
     if (statusDialog) ModStatusDialog(state, onDismiss = { statusDialog = false })
+}
+
+/** How much of the UI layout editor works with the mod, after its name (uniform-editing.md). */
+@Composable
+private fun levelSuffix(entry: HubEntry): String = when (rememberFeatures(entry)?.level) {
+    EditingLevel.FULL -> " · " + stringResource(R.string.duo_hub_level_full)
+    EditingLevel.PARTIAL -> " · " + stringResource(R.string.duo_hub_level_partial)
+    null -> ""
 }
 
 /** The bundled mod's title is the game's own name; under the switch it reads as who made it. */

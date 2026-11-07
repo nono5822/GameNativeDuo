@@ -6,6 +6,9 @@ import android.os.Handler
 import android.os.Looper
 import app.gamenative.duo.DualScreenHost
 import app.gamenative.duo.bridge.DuoBridge
+import app.gamenative.duo.mods.DuoModCatalog
+import app.gamenative.duo.mods.DuoModInstaller
+import app.gamenative.duo.mods.ModFeatures
 import app.gamenative.service.SteamService
 import com.winlator.container.Container
 import java.io.File
@@ -140,9 +143,40 @@ class UiLayoutController(
      */
     val capabilities: EditCapabilities
         get() {
-            val b = bridge ?: return EditCapabilities.off(EditCapabilities.NO_MOD)
-            return EditCapabilities.forMod(if (b.seenMod(ANY_CAPABILITY)) b.capabilities else 0, gameName)
+            val seen = bridge?.takeIf { it.seenMod(ANY_CAPABILITY) }?.capabilities ?: 0
+            val static = staticFeatures
+            if (seen == 0 && static != null) return EditCapabilities.forStatic(static.backgrounds, gameName)
+            return EditCapabilities.forMod(seen, gameName)
         }
+
+    /** The installed bundled mod's `features.json` (null without one): known before the mod says hello. */
+    private val staticFeatures: ModFeatures? by lazy {
+        try {
+            DuoModInstaller.enabledModId(context, container.id)
+                ?.let { id -> DuoModCatalog.mods.firstOrNull { it.id == id } }
+                ?.let { ModFeatures.forMod(context, it) }
+        } catch (t: Throwable) {
+            Timber.tag(DualScreenHost.TAG).w(t, "No features.json for %s", container.id)
+            null
+        }
+    }
+
+    /**
+     * The mod's fixed elements from its bundled `features.json`, all absent: what the editor shows while the game cannot
+     * answer (paused by GameNative's menu, still loading). Null when the mod has none.
+     */
+    fun staticElements(): UiElementList? {
+        val f = staticFeatures ?: return null
+        if (f.elements.isEmpty()) return null
+        val list = f.elements.mapIndexed { i, e ->
+            UiElement(
+                index = i, id = e.id, name = e.name, parent = -1, depth = 0, screen = UiScreen.DEFAULT, rect = RectF(),
+                graphic = true, screens = e.screens, canMove = e.canMove, scaleRange = e.scaleRange, present = false,
+                whenText = e.whenText,
+            )
+        }
+        return UiElementList(0, 0, list)
+    }
 
     /** The game's name for display (the container's), and the engine its mod reported. */
     val gameName: String by lazy {

@@ -109,6 +109,17 @@
     <string name="duo_hub_badge_official">✓ OFFICIAL</string>
     <string name="duo_hub_badge_community">Community</string>
     <string name="duo_hub_badge_code">Code mod</string>
+    <string name="duo_hub_level_full">Full editing</string>
+    <string name="duo_hub_level_partial">Partial editing</string>
+    <string name="duo_hub_detail_editing">UI editing</string>
+    <string name="duo_hub_level_full_detail">Every element can go on the top or bottom screen or be hidden, moved and resized.</string>
+    <string name="duo_hub_level_partial_detail">What the UI layout editor can change in this game:</string>
+    <string name="duo_hub_level_dynamic">Plus the game\'s own UI, found while it runs: every element can go anywhere, move and resize.</string>
+    <string name="duo_hub_level_background">Bottom screen background: %1$s</string>
+    <string name="duo_hub_el_move">move</string>
+    <string name="duo_hub_el_resize">resize</string>
+    <string name="duo_hub_el_no_move">no moving</string>
+    <string name="duo_hub_el_no_resize">no resizing</string>
     <string name="duo_hub_by">by %1$s</string>
     <string name="duo_hub_included">included with the app</string>
     <string name="duo_hub_state_on">On</string>

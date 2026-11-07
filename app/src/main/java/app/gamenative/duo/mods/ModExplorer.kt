@@ -85,6 +85,7 @@ import app.gamenative.duo.community.CompatVerdict
 import app.gamenative.duo.community.RulesNote
 import app.gamenative.duo.community.ShareLayout
 import app.gamenative.duo.community.ShareLayoutDialog
+import app.gamenative.duo.ui.UiScreen
 import app.gamenative.ui.util.SnackbarManager
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
@@ -371,7 +372,48 @@ private fun Badges(entry: HubEntry) {
         if (pkg?.experimental == true) {
             Badge(stringResource(R.string.duo_community_experimental), colors.errorContainer, colors.onErrorContainer)
         }
+        // How much of the UI layout editor works with it (uniform-editing.md); none when the mod does not say.
+        when (rememberFeatures(entry)?.level) {
+            EditingLevel.FULL -> Badge(stringResource(R.string.duo_hub_level_full), colors.primaryContainer, colors.onPrimaryContainer)
+            EditingLevel.PARTIAL -> Badge(stringResource(R.string.duo_hub_level_partial), colors.surfaceVariant, colors.onSurfaceVariant)
+            null -> Unit
+        }
     }
+}
+
+/** The entry's `features.json`: bundled mods only for now (community packages will carry their own). */
+@Composable
+internal fun rememberFeatures(entry: HubEntry): ModFeatures? {
+    val context = LocalContext.current
+    val mod = (entry as? HubEntry.Bundled)?.mod ?: return null
+    return remember(mod.id) { ModFeatures.forMod(context.applicationContext, mod) }
+}
+
+/** What the UI layout editor can change with this mod: one line, or one per element when it is partial. */
+@Composable
+private fun EditingSection(features: ModFeatures) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        HorizontalDivider()
+        Text(stringResource(R.string.duo_hub_detail_editing), style = MaterialTheme.typography.titleSmall)
+        if (features.level == EditingLevel.FULL) {
+            Note(stringResource(R.string.duo_hub_level_full_detail))
+        } else {
+            Note(stringResource(R.string.duo_hub_level_partial_detail))
+            features.elements.forEach { Note(featureLine(it)) }
+            if (features.dynamic) Note(stringResource(R.string.duo_hub_level_dynamic))
+        }
+        val backgrounds = features.backgrounds.joinToString(", ") { it.label.lowercase() }
+        if (backgrounds.isNotEmpty()) Note(stringResource(R.string.duo_hub_level_background, backgrounds))
+    }
+}
+
+@Composable
+private fun featureLine(e: FeatureElement): String {
+    val screens = (e.screens ?: setOf(UiScreen.BOTTOM, UiScreen.TOP, UiScreen.HIDDEN)).joinToString(" / ") { it.id }
+    val move = stringResource(if (e.canMove) R.string.duo_hub_el_move else R.string.duo_hub_el_no_move)
+    val resize = stringResource(if (e.scaleRange != null) R.string.duo_hub_el_resize else R.string.duo_hub_el_no_resize)
+    val whenText = e.whenText.takeIf { it.isNotEmpty() }?.let { " ($it)" }.orEmpty()
+    return "${e.name}$whenText: $screens, $move, $resize"
 }
 
 @Composable
@@ -530,6 +572,7 @@ private fun Note(text: String) {
 private fun EntryDetail(state: ModHubState, entry: HubEntry, gameTitle: String, onBack: () -> Unit, onRate: (CommunityPackage) -> Unit) {
     val context = LocalContext.current
     val pkg = (entry as? HubEntry.Community)?.pkg
+    val features = rememberFeatures(entry)
     val back = remember { FocusRequester() }
     LazyColumn(
         // Full height like the list, so the sheet does not jump when a card opens.
@@ -556,6 +599,7 @@ private fun EntryDetail(state: ModHubState, entry: HubEntry, gameTitle: String, 
                 }?.let { Note(stringResource(R.string.duo_community_game_version, it.joinToString(", "))) }
             }
         }
+        features?.let { f -> item(key = "editing") { EditingSection(f) } }
         item(key = "actions") { EntryActions(state, entry, compact = false) }
         item(key = "desc") {
             Text(
