@@ -42,7 +42,7 @@ internal static class HudLayout
         new() { Id = "hud/clock", Name = "Clock and money", MenuType = typeof(DayTimeMoneyBox), When = "While playing" },
         new() { Id = "hud/buffs", Name = "Buffs", MenuType = typeof(BuffsDisplay), When = "While playing" },
         new() { Id = "hud/chat", Name = "Chat", MenuType = typeof(ChatBox), When = "In multiplayer" },
-        new() { Id = "hud/bars", Name = "Health and energy", MenuType = null }, // drawn by Game1.drawHUD
+        new() { Id = "hud/bars", Name = "Health and energy", MenuType = null, When = "While playing" }, // drawn by Game1.drawHUD
     };
 
     private static readonly Dictionary<Type, Element> ByType = Elements.Where(e => e.MenuType != null).ToDictionary(e => e.MenuType!);
@@ -293,12 +293,14 @@ internal static class HudLayout
         var sb = new StringBuilder(2048);
         sb.Append("{\"engine\":\"stardew-smapi\",\"screen\":{\"w\":").Append(L.Screen.X).Append(",\"h\":").Append(L.Screen.Y).Append("},\"elements\":[");
         Append(sb, "hud", "HUD", -1, DuoScreen.Bottom, L.Bottom, false, first: true);
+        // The title screen keeps the HUD menus around (stale positions, not drawn): nothing is on screen before a save loads.
+        bool playing = Context.IsWorldReady;
         foreach (Element e in Elements)
         {
             IClickableMenu? menu = e.MenuType == null ? null : Game1.onScreenMenus.FirstOrDefault(m => m.GetType() == e.MenuType);
             DuoScreen screen = e.Rule?.Screen is DuoScreen.Top or DuoScreen.Hidden ? e.Rule.Screen : DuoScreen.Bottom;
             // Not on screen now (title screen, a cutscene, chat outside multiplayer): listed so its screen can be chosen ahead.
-            if (e.MenuType != null && menu == null)
+            if (!playing || (e.MenuType != null && menu == null))
             {
                 Append(sb, e.Id, e.Name, 0, screen, Rectangle.Empty, true, first: false, present: false, when: e.When);
                 continue;

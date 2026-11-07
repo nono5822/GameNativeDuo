@@ -92,7 +92,7 @@ internal class UiLayoutEditor(
                 board.chooseMapSide()
                 status = when {
                     result.elements.isEmpty() -> "No UI on screen right now"
-                    result.elements.none { it.present } -> "Nothing on screen now: see the List"
+                    result.elements.none { it.present && it.graphic } -> "Nothing on screen now: see the List"
                     else -> "Tap a UI element to change it"
                 }
                 board.clearPreview()

@@ -18,7 +18,7 @@ Commit after every box (code + this file together). Device: Thor `d615ac15` (USB
 - [x] Stardew: list absent menus with `present: false`, declare features (rebuild DLL, needs the game's folder)
 - [x] Unity: elements under camera roots (sprite HUDs, tk2d) declare screens = their camera's + hidden (rebuild shared DLL). Crosshairs left free: they can move, the default only keeps them on top
 - [x] `engine-adapter-contract.md` updated
-- [ ] Thor test: Balatro title screen + run, Stardew, a Unity game
+- [x] Thor test: Balatro title + menus, Stardew title, Hollow Knight title (in-run/in-save checks listed in the log)
 
 ## U2 Known before launch + tags
 
@@ -55,3 +55,10 @@ Commit after every box (code + this file together). Device: Thor `d615ac15` (USB
   still to check (needs a seeded run with `G.F_NO_ACHIEVEMENTS`).
 - `refreshIfUpdated` left Balatro's Lua alone ("0 updated": files hand-pushed in earlier sessions count as the
   user's). Pushed by hand with `run-as cp`.
+- Thor, Hollow Knight (title): editor lists 43 elements from the new shared plugin, no regressions. tk2d HUD (fixed
+  screens) only exists in-game: untested. Plugins were not refreshed by the app update either: they predate the
+  install record (hand-pushed during HK work), so the installer counts them as the user's. Not a user-facing bug
+  (fresh installs record them), but the dev device needs hand pushes after each change.
+- Thor, Stardew (title): Chat absent with "In multiplayer". Found and fixed: on the title screen the HUD menus exist
+  with stale positions (a box drawn at the screen edge); now everything is absent until `Context.IsWorldReady`.
+  Editor status counts only visible elements.
