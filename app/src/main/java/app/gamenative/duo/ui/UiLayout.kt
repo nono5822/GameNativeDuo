@@ -208,12 +208,24 @@ data class UiLayout(
     val widgets: List<UiWidget> = emptyList(),
     /** Region view's parts of the frame on the bottom screen (games without a mod); mods ignore them. */
     val regions: List<UiRegion> = emptyList(),
+    /**
+     * Keys this version does not know (a newer app's), as a JSON object's text: written back unchanged, so saving a
+     * layout never drops what a newer version or another branch stored in the same file.
+     */
+    val extra: String = "",
 ) {
     fun rule(id: String): UiRule = rules[id] ?: UiRule()
 
     fun with(id: String, rule: UiRule): UiLayout = copy(rules = if (rule.isNeutral) rules - id else rules + (id to rule))
 
     fun toJson(): JSONObject = JSONObject().apply {
+        if (extra.isNotEmpty()) {
+            try {
+                val o = JSONObject(extra)
+                o.keys().forEach { put(it, o.get(it)) }
+            } catch (_: org.json.JSONException) {
+            }
+        }
         put("format", FORMAT)
         put("version", VERSION)
         put("game", game)
@@ -228,6 +240,8 @@ data class UiLayout(
         const val FORMAT = "gamenative-duo/ui-layout"
         const val VERSION = 1
         const val MAX_WIDGETS = 12
+
+        private val KNOWN = setOf("format", "version", "game", "engine", "elements", "background", "widgets", "regions")
 
         fun fromJson(json: JSONObject, game: String): UiLayout {
             val elements = json.optJSONObject("elements") ?: JSONObject()
@@ -249,6 +263,8 @@ data class UiLayout(
                 UiBackground.fromJson(json.optJSONObject("background")),
                 widgets,
                 regions,
+                extra = JSONObject().apply { json.keys().forEach { k -> if (k !in KNOWN) put(k, json.get(k)) } }
+                    .takeIf { it.length() > 0 }?.toString().orEmpty(),
             )
         }
     }

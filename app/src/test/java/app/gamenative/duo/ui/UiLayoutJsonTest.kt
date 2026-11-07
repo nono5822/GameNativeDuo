@@ -23,6 +23,15 @@ class UiLayoutJsonTest {
     }
 
     @Test
+    fun unknownKeysSurviveASave() {
+        val json = JSONObject("""{"format":"gamenative-duo/ui-layout","version":1,"game":"g","elements":{},"hotkeys":{"columns":3,"buttons":[{"label":"Map","keys":"M"}]}}""")
+        val back = UiLayout.fromJson(json, "g").copy(regions = listOf(UiRegion.create(emptyList()))).toJson()
+        assertEquals(3, back.getJSONObject("hotkeys").getInt("columns"))
+        assertEquals("M", back.getJSONObject("hotkeys").getJSONArray("buttons").getJSONObject(0).getString("keys"))
+        assertTrue(back.has("regions"))
+    }
+
+    @Test
     fun defaultsAreLeftOutOfTheFile() {
         val json = UiLayout("g").toJson()
         assertFalse(json.has("background"))
