@@ -47,7 +47,7 @@ this file and starts at the first unchecked box.
 - [x] A4 Consent screen: author and key, review status, what it writes, bridge features; changed-owner variant
 - [x] A5 Revocation: fetch and verify `revoked.json` (ETag) with the catalog; revoked mod turned off through the undo
       record, reason in the status; tests
-- [ ] A6 Docs (`community-packages.md`, devkit-platform status, CLAUDE.md), Keystore upstream proposal
+- [x] A6 Docs (`community-packages.md`, devkit-platform status, CLAUDE.md), Keystore upstream proposal
 
 ## Log
 - K1 (community `32f5388`): `build` in the package schema (engine `dotnet` | `scripts`; source `src/` or a repo at a full
@@ -128,3 +128,23 @@ this file and starts at the first unchecked box.
   refresh; the page shows the reason once (snackbar) and reloads. `DualScreenHost` gives a withdrawn mod that was not
   swept yet no bridge features. Tests: a list signed with a throwaway key (match, wildcard, tampered, wrong key).
   **Not device-tested**: the published index has no revoked.json until the community branch is merged and published.
+- A6: `community-packages.md` ("Code trust" section, kinds table, consent), devkit-platform.md item 4 status,
+  `llms.txt`, CLAUDE.md, and `upstream-keystore-credentials.md`: Steam tokens and EA credentials are already
+  Keystore-encrypted upstream (`Crypto.kt`), Epic / GOG / Amazon credentials are plain JSON under `files/`, which a game
+  can read (Wine's `\\?\unix\` paths, P/Invoke, raw syscalls ignore the drive map); proposal: one PR per store using
+  the EA pattern, with migration. Nothing upstream changed.
+
+## Status 2026-11-08 (end of session)
+
+Every box is checked; nothing is pushed. Tests: community `tools/test_code_trust.py` 29, duo tool 8, app duo unit
+tests all pass. Needs a person:
+- **Before merging the community branch**: sign the Hollow Knight package with the maintainer's key (`duo keygen`, then
+  `duo pack --sign games/steam-367520/gamenative-duo.hollow-knight-dual-screen`); decide whether and where to host the
+  two reference stub sets (`refs.json` `url`; derived from game files: the maintainer's call), else CI cannot build it;
+  push the app commit the package names (`cc6ea25fe`) or re-point it at the commit that lands.
+- Optional: an `ANTHROPIC_API_KEY` repository secret turns on the AI-assisted review (`ai_review.py` only
+  syntax-checked here: the anthropic package is not installed on this PC).
+- Thor: install the HK package from a published index (author key, consent screen, built DLL loads), a revocation
+  (add it to revoked.json, publish, open the game page: the mod comes off and the reason shows), the consent dialog's
+  look, and that bundled mods are unaffected by bridge permissions.
+- Upstream: offer the Keystore change (`duo/docs/upstream-keystore-credentials.md`).

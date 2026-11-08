@@ -170,7 +170,11 @@ no CPU frame copies, data over pixels, idle at 0 fps when nothing changes.
   `DuoModInstaller`'s undo record. Code mods install after a consent dialog (once per version). "Official" comes only
   from the bundled catalog, `CommunityIndex.OFFICIAL_PACKAGES` or the signed index's top-level `official` list.
   Design: `duo/docs/community-packages.md`, ratings: `duo/docs/community-ratings.md`. Index signing key: repo
-  secret + `~/.config/gamenative-duo/` (maintainer).
+  secret + `~/.config/gamenative-duo/` (maintainer). **Code trust**: code mods are built from source by the community
+  CI (`tools/build_mods.py`, game assemblies as `duo stubs` reference sets), signed by an SSH author key (`duo pack
+  --sign`; the app pins it, `AuthorKeyPins`), limited to the bridge features they declare (`DuoBridge.permissions`) and
+  revocable (`CommunityRevocations`); see the "Code trust" section of community-packages.md. Never commit or upload
+  stubs of a game's assemblies without the maintainer's decision.
 - **Status and save backups**: each session records what it saw in `files/duo/status/<appId>.json` (mod hello,
   X screen, Gamescope); the Dual screen control shows the first problem and a status segment that opens "Dual screen
   status" (`mods/ModStatus*.kt`: Use X11, Set WxH, Reset mod files, file check, save backups). The bottom screen shows

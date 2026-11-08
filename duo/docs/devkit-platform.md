@@ -329,6 +329,14 @@ It protects every GameNative user, not just modders; propose it upstream.
 **Done when:** the Hollow Knight plugin goes through the CI build and is installed from the index with author key,
 consent screen and a working revocation test.
 
+**Status (2026-11-08, branches `duo/code-trust` and community `devkit/code-trust`):** built and unit-tested on the PC:
+source packages and the CI builder (reproducible, job without secrets), `duo stubs` and `refs.json`, `loaders.json`,
+review hints and the optional AI review, author keys (`duo keygen`, `duo pack --sign`, handovers), bridge permissions
+and install rules (CI and app), revocation (index and app), the consent screen. The Hollow Knight package builds from
+source end to end in a throwaway clone. Left: the maintainer's author key on the HK package, hosting the reference
+stubs (a decision: they are derived from game files), the device test, and the Keystore change offered upstream
+(`upstream-keystore-credentials.md`). Progress: `duo/notes/2026-11-08-code-trust.md`.
+
 ---
 
 ## 5. Docs site and templates

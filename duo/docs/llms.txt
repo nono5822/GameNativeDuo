@@ -14,7 +14,8 @@
 - [Uniform editing](uniform-editing.md): element features, editing levels, region view, the conformance check.
 - [Companions](companions.md): bottom-screen apps from JSON: cards, templates, conditions, bridge state and commands.
 - [Game profiles](game-profiles.md): Unity games as data (cameras, canvases, elements, state).
-- [Community packages](community-packages.md): the package format, signing, the index, consent for code.
+- [Community packages](community-packages.md): the package format, signing, the index, consent for code; code trust
+  (built from source, author keys, bridge permissions, revocation).
 
 ## Tools
 - `duo` (duo/tools/duo): `sim`, `new`, `build`, `dev`, `test`, `check`, `pack`, `submit`, `mcp`; one binary, AOT.

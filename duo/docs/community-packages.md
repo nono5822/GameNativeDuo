@@ -49,11 +49,36 @@ Game keys: `steam-433340` = container id `STEAM_433340` lower-cased with `-`.
 | `ui-layout` | `ui-layout.json` | Data: one tap, may auto-apply |
 | `duo-settings` | `duo-settings.json` (split mode, native touch, screen size) | Data: one tap |
 | `device-profile` | `device-profile.json` (screens, calibration) | Data: one tap |
-| `mod` | DLLs/scripts + an install map | Code: explicit consent, reviewed before merge |
+| `game-profile` | `profile.json` (configures the shared Unity adapter) | Data: one tap |
+| `mod` | source + build description + an install map | Code: built from source by CI, signed, reviewed, explicit consent |
 
-Wine runs as the app's own Android user, so code in a mod can read the app's data (including store logins). Data kinds
-may only contain `.json` and images; code is reviewed by maintainers, hash-pinned, and installed only after the user
-sees what it writes.
+Wine runs as the app's own Android user, so code in a mod can read the app's data (including store logins: see
+`upstream-keystore-credentials.md` for the hardening offered upstream). Data kinds may only contain `.json` and
+images; code is reviewed by maintainers, hash-pinned, and installed only after the user sees what it writes.
+
+### Code trust (devkit item 4)
+
+- **Built from source.** A mod package holds source (`src/`, or a public repository at a full commit) and a `build`
+  section; `tools/build_mods.py` builds it in a CI job with no secrets (pinned .NET SDK, Deterministic + PathMap,
+  locked NuGet restore), and the signed index lists only those outputs (`builtFrom: "repo@commit"`). Validate builds
+  every mod twice and compares. The only binaries a package may contain are pinned loader files (`loaders.json`:
+  BepInEx 5.4.23.5, Lovely 0.10.0). Game assemblies come from reference sets (`refs.json`): stubs made by
+  `duo stubs` (method bodies `throw null`, resources and static data zeroed; metadata kept), pinned by sha256. The
+  Hollow Knight plugin builds byte-identical against stubs and against the real game files.
+- **Review.** `review.yml` comments hints on every package PR (`tools/review_flags.py`: diff since the approved
+  version, flagged lines for network, processes, native code, files outside the game, sign-ins, run-time loading,
+  obfuscation, plus manifest changes that widen access), and an AI-assisted reading when the repository has an
+  `ANTHROPIC_API_KEY` secret (`tools/ai_review.py`). A maintainer approves every code PR (CODEOWNERS).
+- **Author keys.** `author.key` (SSH ed25519) signs `manifest.json` into `manifest.json.sig` (`duo pack --sign`,
+  `ssh-keygen -Y`); `author.history` hands a package from an old key to a new one. CI checks the signature, the chain
+  and, against the approved state, that a changed key was handed over. The index carries `authorKey`/`authorKeys`; the
+  app pins the key at install (`AuthorKeyPins`) and shows "This mod changed owner" when an update comes from another.
+- **Permissions.** `bridge` declares the features a mod uses (capabilities by name, `haptic`, commands); for built mods
+  the app masks HELLO capabilities, drops other packets and refuses other commands (`DuoBridge.permissions`). Install
+  targets: prefix files only under the user's AppData/Documents (never GameNative Duo's folder), DLL overrides only for
+  DLLs installed at the game root; checked by CI and again by the installer.
+- **Revocation.** `revoked.json` (maintainers) is published signed as `v1/revoked.json`; the app fetches it with an
+  ETag, removes a withdrawn mod through its undo record and shows the reason once (`CommunityRevocations`).
 
 ## App side
 
@@ -64,7 +89,9 @@ unit-tested against the RFC vectors and a published catalog), and the mod explor
 community packages together: code mods (or, for games without one, settings packages) are what the switch applies,
 one at a time, switched through `DuoModInstaller`'s undo record; layouts and settings are add-ons on top. Layouts
 and settings apply in one tap; a layout the user made is only replaced after asking; code mods need consent once
-per version; updates show when the index has a newer `packageVersion`. Ratings: `duo/docs/community-ratings.md`.
+per version and author key (the consent screen shows the author key, whether the code was built from source, the
+bridge features, and "This mod changed owner" when that applies); updates show when the index has a newer
+`packageVersion`. Withdrawn versions never install. Ratings: `duo/docs/community-ratings.md`.
 
 Still to build:
 
