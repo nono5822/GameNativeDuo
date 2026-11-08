@@ -18,6 +18,8 @@ public static class Program
           duo test SCRIPT          Run a test script against the sim or device.
           duo new --engine love|unity|smapi|native ID    Start a mod from a template.
           duo pack DIR             Check a package folder against the community schemas.
+          duo stubs DIR --out SET.zip [--only A.dll,B.dll]
+                Reference stubs of a game's assemblies (no code, no assets) for building mods in CI (refs.json).
           duo mcp                  MCP server (stdio) over the Duo API, for Claude Code and other agents.
           duo version
         """;

@@ -27,9 +27,9 @@ this file and starts at the first unchecked box.
 ## Checklist
 
 ### Community repo
-- [ ] K1 Source packages: `build` in the package schema (folder or pinned repo + commit, project, engine); `loaders.json`
+- [x] K1 Source packages: `build` in the package schema (folder or pinned repo + commit, project, engine); `loaders.json`
       (BepInEx 5.4.23.5, Lovely 0.10.0, per-file sha256); validator refuses other binaries in mod packages; tests
-- [ ] K2 `duo stubs` (duo tool, Cecil): reference-only assemblies; `refs.json` format; HK set generated locally
+- [x] K2 `duo stubs` (duo tool, Cecil): reference-only assemblies; `refs.json` format; HK set generated locally
 - [ ] K3 CI builder `tools/build_mods.py`: deterministic dotnet build (pinned SDK, PathMap), refs fetched and
       checked by sha256, outputs hashed; publish builds and lists only built outputs; validate builds twice and compares
 - [ ] K4 Review flags `tools/review_flags.py` (network, process, P/Invoke, file access, reflection, obfuscation) as a PR
@@ -50,3 +50,14 @@ this file and starts at the first unchecked box.
 - [ ] A6 Docs (`community-packages.md`, devkit-platform status, CLAUDE.md), Keystore upstream proposal
 
 ## Log
+- K1 (community `32f5388`): `build` in the package schema (engine `dotnet` | `scripts`; source `src/` or a repo at a full
+  commit; `refs`, `properties` with `{refs:<id>}`, `outputs` -> package paths). `loaders.json` pins BepInEx 5.4.23.5
+  (14 files) and Lovely 0.10.0 per file, hashed from the copies the app bundles (official releases, unmodified).
+  Binaries (extension or MZ/ELF/Mach-O/wasm/zip magic) are refused in files, release assets and `src/` unless pinned.
+  NuGet needs `packages.lock.json`. `tools/test_code_trust.py` (12 tests) runs in validate.yml.
+- K2: `duo stubs DIR --out SET.zip [--only ...]` patches assemblies in place with System.Reflection.Metadata (no new
+  dependency, AOT-safe): every method body -> `ldnull; throw`, embedded resources and static data blobs zeroed, names
+  and signatures kept (private too: publicized builds and Harmony targets need them). Deterministic zip (same sha256
+  twice). Hollow Knight's whole Managed folder (134 assemblies, 36 MB -> 8.3 MB zip) and BepInEx (BepInEx.dll,
+  0Harmony.dll) stubbed into the scratchpad: the Hollow Knight plugin built against the stubs is **byte-identical** to
+  the build against the real game files (both DLLs). Stubs are not committed anywhere.

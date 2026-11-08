@@ -15,6 +15,7 @@ public static class Commands
             case "capture": return CaptureWindow(a);
             case "new": return Templates.New(a);
             case "pack": return Pack(a);
+            case "stubs": return Stubs.Run(a);
             case "build": return Build(a);
             case "submit": return Submit(a);
             case "dev": return await Dev(a);
