@@ -118,8 +118,9 @@ class DualScreenSession internal constructor(
         expectedScreen = DuoModInstaller.recordedScreenSize(context, container.id),
     )
 
-    // Talks to the game's mod (native touch, UI layout); only worth a socket when the game is split.
-    private val bridge = if (splitOn) DuoBridge.open() else null
+    // Talks to the game's mod (native touch, UI layout, companion state); only worth a socket when the game is split
+    // or its companion reads a mod's state.
+    private val bridge = if (splitOn || companion?.manifest?.api != null) DuoBridge.open() else null
     private val uiLayout = if (splitOn) {
         val regions = SplitLayout.fromId(settings.splitLayout) == SplitLayout.REGION
         UiLayoutController(context, container, bridge, regionMode = regions, legacyRegion = settings.region)
@@ -167,6 +168,8 @@ class DualScreenSession internal constructor(
         displayManager?.registerDisplayListener(displayListener, Handler(Looper.getMainLooper()))
         report("session start (container ${container.id}, profile ${profile.id}, $settings)")
         if (screenSplit == null) LayoutFile.delete(container)
+        LayoutFile.writeBridge(container, bridge?.port ?: 0)
+        bridge?.let { companion?.attachBridge(it) }
         try {
             uiLayout?.start()
         } catch (t: Throwable) {
@@ -229,6 +232,7 @@ class DualScreenSession internal constructor(
         }
         gamescopeStatus = null
         bridge?.close()
+        if (bridge != null) LayoutFile.writeBridge(container, 0)
         updateStatus { it.copy(endedAt = System.currentTimeMillis()) }
         Timber.tag(DualScreenHost.TAG).i("Session ended")
     }

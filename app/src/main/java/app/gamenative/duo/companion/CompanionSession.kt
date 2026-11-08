@@ -7,7 +7,9 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
 import android.os.Process
+import android.os.SystemClock
 import app.gamenative.duo.DualScreenHost
+import app.gamenative.duo.bridge.DuoBridge
 import app.gamenative.powercontrol.PowerManager
 import java.io.File
 import java.text.DateFormat
@@ -51,6 +53,66 @@ class CompanionSession(
     private var ioThread: HandlerThread? = null
     private val startedAt = System.currentTimeMillis()
     private var stopped = false
+
+    // ---- mod state (bridge STATE / SUBSCRIBE) ----------------------------------------------------------------------
+
+    private var bridge: DuoBridge? = null
+    private var subscribed: List<String> = emptyList()
+
+    /** Keys the mod set and has not deleted: a full snapshot removes the ones it no longer sends. */
+    private val modKeys = HashSet<String>()
+    private val pendingState = LinkedHashMap<String, Any?>()
+    private var pendingFull = false
+    private var statePosted = false
+    private var lastStateAt = 0L
+    private val applyState = Runnable { flushState() }
+    private val stateListener: (Int, Map<String, Any?>) -> Unit = { flags, changes -> onState(flags, changes) }
+
+    /** Live cards read the game's mod through [b] from now on (main thread). */
+    fun attachBridge(b: DuoBridge) {
+        bridge = b
+        b.stateListeners += stateListener
+        b.subscribe(subscribed)
+    }
+
+    /** The store keys shown cards and conditions read now; empty when the companion is hidden (the mod then sends nothing). */
+    fun showKeys(keys: Collection<String>) {
+        val list = ModState.subscription(keys, manifest.api?.first)
+        if (list == subscribed) return
+        subscribed = list
+        bridge?.subscribe(list)
+    }
+
+    private fun onState(flags: Int, changes: Map<String, Any?>) {
+        if (stopped) return
+        if (flags and DuoBridge.STATE_FULL != 0) {
+            pendingState.clear()
+            pendingFull = true
+        }
+        val api = manifest.api?.first
+        changes.forEach { (k, v) -> if (pendingState.size < MAX_MOD_KEYS && ModState.accepts(k, api)) pendingState[k] = v }
+        if (statePosted) return
+        statePosted = true
+        // Cards redraw at most 10 times a second, however fast the mod sends.
+        main.postDelayed(applyState, (lastStateAt + STATE_GAP_MS - SystemClock.uptimeMillis()).coerceAtLeast(0))
+    }
+
+    private fun flushState() {
+        statePosted = false
+        lastStateAt = SystemClock.uptimeMillis()
+        val changes = HashMap(pendingState)
+        pendingState.clear()
+        if (pendingFull) {
+            (modKeys - changes.keys).forEach { changes[it] = null }
+            pendingFull = false
+        }
+        changes.forEach { (k, v) -> if (v == null) modKeys.remove(k) else if (modKeys.size < MAX_MOD_KEYS) modKeys.add(k) }
+        try {
+            data.putAll(changes)
+        } catch (t: Throwable) {
+            Timber.tag(DualScreenHost.TAG).w(t, "Failed to apply mod state")
+        }
+    }
 
     // ---- user state ------------------------------------------------------------------------------------------------
 
@@ -224,6 +286,8 @@ class CompanionSession(
     fun stop() {
         if (stopped) return
         try {
+            bridge?.stateListeners?.remove(stateListener)
+            main.removeCallbacks(applyState)
             observers.forEach { it.stopWatching() }
             observers.clear()
             main.removeCallbacks(tick)
@@ -265,6 +329,10 @@ class CompanionSession(
         private const val SAVE_DELAY_MS = 800L
         private const val RELOAD_DELAY_MS = 400L
         private const val KEEPALIVE_MS = 60_000L
+        private const val STATE_GAP_MS = 100L
+
+        /** A mod's state is a few hundred keys; this caps what a broken one can make the app hold. */
+        private const val MAX_MOD_KEYS = 5000
 
         /** The companion [choice] picks for the container, ready to show; null when there is none (logged). */
         fun open(context: Context, containerId: String, choice: String): CompanionSession? = try {

@@ -108,12 +108,14 @@ internal class CompanionView(
         session.data.listener = dataListener
         if (reloadListener !in session.reloadListeners) session.reloadListeners += reloadListener
         setUsingSession(bindings.any { b -> b.keys.any { it.startsWith(CompanionSession.SESSION) } })
+        updateSubscription()
     }
 
     override fun onDetachedFromWindow() {
         if (session.data.listener === dataListener) session.data.listener = null
         session.reloadListeners -= reloadListener
         setUsingSession(false)
+        session.showKeys(emptyList())
         super.onDetachedFromWindow()
     }
 
@@ -184,6 +186,7 @@ internal class CompanionView(
             visibleCards = emptyList()
             content.addView(DuoUi.label(context, "This companion has nothing to show yet.", 15f, DuoUi.MUTED))
             setUsingSession(false)
+            updateSubscription()
             return
         }
         val cards = page.cards.filter { c -> c.showWhen?.let { session.data.test(it) } != false }
@@ -250,6 +253,21 @@ internal class CompanionView(
             )
         }
         setUsingSession(isAttachedToWindow && bindings.any { b -> b.keys.any { it.startsWith(CompanionSession.SESSION) } })
+        updateSubscription()
+    }
+
+    /** Tells the mod which keys to send: what the shown page's cards read, plus every condition that can change the view. */
+    private fun updateSubscription() {
+        if (!isAttachedToWindow) return session.showKeys(emptyList())
+        val keys = HashSet<String>()
+        bindings.forEach { keys += it.keys }
+        manifest.pages.forEach { p ->
+            p.showWhen?.let { keys += it.keys() }
+            p.focusWhen?.let { keys += it.keys() }
+            if (p.id == pageId) p.cards.forEach { c -> c.showWhen?.let { keys += it.keys() } }
+        }
+        manifest.builds.forEach { keys += it.source }
+        session.showKeys(keys)
     }
 
     private fun onData(changed: Set<String>) {

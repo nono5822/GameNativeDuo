@@ -38,4 +38,24 @@ object LayoutFile {
             Timber.tag(DualScreenHost.TAG).w(t, "Failed to delete layout.json")
         }
     }
+
+    /**
+     * `bridge.json` (`{"port": N}`) next to `layout.json`: written whenever a bridge is open, also in sessions without
+     * a split, so a companion-only mod knows where to send; [port] 0 deletes it.
+     */
+    fun writeBridge(container: Container, port: Int) {
+        try {
+            val file = File(file(container).parentFile, "bridge.json")
+            if (port <= 0) {
+                file.delete()
+                return
+            }
+            file.parentFile?.mkdirs()
+            val tmp = File(file.parentFile, file.name + ".tmp")
+            tmp.writeText(JSONObject().put("port", port).toString())
+            if (!tmp.renameTo(file)) file.writeText(JSONObject().put("port", port).toString())
+        } catch (t: Throwable) {
+            Timber.tag(DualScreenHost.TAG).w(t, "Failed to write bridge.json")
+        }
+    }
 }
