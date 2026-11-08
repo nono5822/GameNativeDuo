@@ -15,6 +15,7 @@ import app.gamenative.duo.community.CommunityKind
 import app.gamenative.duo.community.CommunityModInstaller
 import app.gamenative.duo.community.CommunityPackage
 import app.gamenative.duo.community.CommunityPackages
+import app.gamenative.duo.community.CommunityRevocations
 import app.gamenative.duo.display.DeviceProfile
 import app.gamenative.duo.settings.DuoSettingsStore
 import app.gamenative.duo.split.SplitLayout
@@ -138,6 +139,8 @@ class ModHubState(
     /** First read: the cached list (never the network), then a background refresh if the list is old. */
     suspend fun load() {
         val (snapshot, inCatalog) = withContext(Dispatchers.IO) {
+            // A withdrawn mod comes off before anything else reads the install state (cached list, no network).
+            CommunityRevocations.sweep(context)
             // After an app update: bring the mod's files up to date now, not at the next launch's session start.
             DuoModInstaller.refreshIfUpdated(context, containerId)
             val cached = CommunityPackages.cached(context, containerId)
@@ -148,7 +151,15 @@ class ModHubState(
         publish(snapshot)
         visible = bundled != null || inCatalog || snapshot.entries.isNotEmpty() || regionView
         loaded = true
-        withContext(Dispatchers.IO) { CommunityCatalog.refreshOnce(context) }
+        withContext(Dispatchers.IO) {
+            CommunityCatalog.refreshOnce(context)
+            CommunityRevocations.refreshOnce(context)
+        }
+        withContext(Dispatchers.IO) { CommunityRevocations.takeNotice(context, containerId) }?.let { removed ->
+            val title = entries.firstOrNull { it.id == removed.packageId }?.title ?: removed.packageId
+            SnackbarManager.show(context.getString(R.string.duo_community_withdrawn, title, removed.reason))
+            reload(game)
+        }
         if (!visible && CommunityCatalog.known(context)?.contains(gameKey) == true) visible = true
         if (visible) refresh(force = false)
     }

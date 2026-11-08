@@ -42,6 +42,15 @@ object DuoModInstaller {
         null
     }
 
+    /** Every app id with an installed mod (an undo record), e.g. for the revocation sweep. */
+    fun installedAppIds(context: Context): List<String> = try {
+        File(context.filesDir, "duo/mods").listFiles { f -> f.isFile && f.name.endsWith(".json") }.orEmpty()
+            .filter { f -> runCatching { JSONObject(f.readText()).has("mod") }.getOrDefault(false) }
+            .map { it.name.removeSuffix(".json") }
+    } catch (t: Throwable) {
+        emptyList()
+    }
+
     /** Where the installed mod came from (a community package: `{package, version, bridge?}`), or null. */
     fun origin(context: Context, appId: String): JSONObject? = try {
         stateFile(context, appId).takeIf { it.isFile }?.let { JSONObject(it.readText()).optJSONObject("origin") }

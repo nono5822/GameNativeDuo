@@ -91,3 +91,27 @@ class AuthorKeyPinsTest {
         assertTrue(e.message!!.contains("sent saves away"))
     }
 }
+
+class CommunityRevocationsTest {
+    // Signed with a throwaway key, exactly as tools/duo_index.py writes v1/revoked.json (compact, sorted keys).
+    private val key = "tibiF/cBTbDQUhB6+2MPi9OVX5W3hT2a7rnJSNBOhg4="
+    private val body = """{"format":"gamenative-duo/revoked","revoked":[{"id":"a.mod","reason":"sent saves away",""" +
+        """"versions":["1.0.0"]},{"id":"b.mod","reason":"key leaked","versions":["*"]}],"version":1}"""
+    private val sig = "EY5QqPDWi62Y+H9IOnb9nwAEi5RhxoUofOGbd4734CkHHOfH6Bm03GDcHZPz+W95faPBWFXKVnfhv+wWa4y8Bw=="
+
+    @Test
+    fun signedListIsReadAndMatched() {
+        val list = CommunityRevocations.parse(body.toByteArray(), sig, key)!!
+        assertEquals("sent saves away", CommunityRevocations.reason(list, "a.mod", "1.0.0"))
+        assertNull(CommunityRevocations.reason(list, "a.mod", "1.0.1"))
+        assertEquals("key leaked", CommunityRevocations.reason(list, "b.mod", "7.0.0"))
+        assertNull(CommunityRevocations.reason(list, "c.mod", "1.0.0"))
+    }
+
+    @Test
+    fun tamperedListIsRefused() {
+        assertNull(CommunityRevocations.parse(body.replace("1.0.0", "1.0.1").toByteArray(), sig, key))
+        assertNull(CommunityRevocations.parse(body.toByteArray(), "not base64 !!", key))
+        assertNull(CommunityRevocations.parse(body.toByteArray(), sig, CommunityIndex.PUBLIC_KEY))
+    }
+}

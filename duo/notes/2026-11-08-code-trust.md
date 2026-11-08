@@ -45,7 +45,7 @@ this file and starts at the first unchecked box.
 - [x] A2 Author key pinning at install; an update signed by another key needs consent again ("changed owner"); tests
 - [x] A3 Installer path hardening; bridge masks undeclared capabilities and drops their packets for community mods; tests
 - [x] A4 Consent screen: author and key, review status, what it writes, bridge features; changed-owner variant
-- [ ] A5 Revocation: fetch and verify `revoked.json` (ETag) with the catalog; revoked mod turned off through the undo
+- [x] A5 Revocation: fetch and verify `revoked.json` (ETag) with the catalog; revoked mod turned off through the undo
       record, reason in the status; tests
 - [ ] A6 Docs (`community-packages.md`, devkit-platform status, CLAUDE.md), Keystore upstream proposal
 
@@ -121,3 +121,10 @@ this file and starts at the first unchecked box.
   community's build service, after a maintainer reviewed the code" or "Adds no code of its own: it uses GameNative Duo's
   plugin" (true now that the validator refuses unpinned binaries); for built mods the bridge features in plain words.
   Compiles; **not seen on screen** (Thor).
+- A5: `CommunityRevocations`: `v1/revoked.json` fetched once per app run with an ETag, verified with the index key
+  (java.util.Base64, so it is unit-testable), cached. `sweep` removes every installed community mod whose version is
+  withdrawn through `DuoModInstaller.disable` (undo record: files, screen size, settings), forgets it, and leaves a
+  notice; runs on the game page's load (cached list first, so the page reads the post-removal state) and after the
+  refresh; the page shows the reason once (snackbar) and reloads. `DualScreenHost` gives a withdrawn mod that was not
+  swept yet no bridge features. Tests: a list signed with a throwaway key (match, wildcard, tampered, wrong key).
+  **Not device-tested**: the published index has no revoked.json until the community branch is merged and published.
