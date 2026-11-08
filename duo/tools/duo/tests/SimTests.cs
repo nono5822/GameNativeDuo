@@ -133,6 +133,31 @@ public class SimTests : IDisposable
     }
 
     [Fact]
+    public async Task TestScriptsAndTheCheckCommand()
+    {
+        await WaitConnected();
+        var client = new DuoClient(_http.BaseAddress!.ToString(), "TOKEN1");
+        string script = Path.Combine(_dir, "t.duo");
+        File.WriteAllText(script, string.Join("\n",
+            "# a script like hk-test.txt",
+            "tap 620 540",
+            "subscribe test.hp",
+            "wait 0.3",
+            "expect state test.hp = 5",
+            "expect command test.ping ok",
+            "expect element Score on bottom",
+            "rule Score {\"screen\":\"hidden\"}",
+            "wait 0.3",
+            "expect element Score on hidden"));
+        Assert.Equal(0, await TestScript.Run(client, script));
+        File.WriteAllText(script, "expect element Score on top");
+        Assert.Equal(1, await TestScript.Run(client, script));
+        Assert.Equal(1, _touches);
+        await client.Post("/api/rule", new JsonObject { ["id"] = "Score", ["rule"] = null });
+        Assert.Equal(0, await Commands.Check(client, json: false));
+    }
+
+    [Fact]
     public async Task ConformanceCheckPassesForAnHonestMod()
     {
         await WaitConnected();
