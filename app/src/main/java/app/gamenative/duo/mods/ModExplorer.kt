@@ -76,6 +76,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.gamenative.R
 import app.gamenative.duo.DualScreenHost
+import app.gamenative.duo.community.AuthorKeyPins
+import app.gamenative.duo.community.BridgePermissions
 import app.gamenative.duo.community.CommunityIndex
 import app.gamenative.duo.community.CommunityKind
 import app.gamenative.duo.community.CommunityModInstaller
@@ -151,6 +153,7 @@ fun ModExplorerSheet(state: ModHubState, gameTitle: String, onDismiss: () -> Uni
             plan = c.plan,
             gameTitle = gameTitle,
             replacesMod = c.replacesMod,
+            owner = c.owner,
             onConfirm = {
                 state.consent = null
                 c.then()
@@ -791,6 +794,20 @@ private fun Message(text: String) {
     )
 }
 
+/** The declared bridge features as strings, in a fixed order, without repeats (backgrounds count once). */
+private fun bridgeFeatures(bridge: BridgePermissions?): List<Int> {
+    val names = bridge?.capabilities.orEmpty()
+    return listOfNotNull(
+        R.string.duo_bridge_feature_touch.takeIf { "touch" in names },
+        R.string.duo_bridge_feature_ui_rules.takeIf { "ui-rules" in names },
+        R.string.duo_bridge_feature_elements.takeIf { "elements" in names || "elements-changed" in names },
+        R.string.duo_bridge_feature_background.takeIf { names.any { it.startsWith("background-") } },
+        R.string.duo_bridge_feature_state.takeIf { "state" in names },
+        R.string.duo_bridge_feature_commands.takeIf { "commands" in names },
+        R.string.duo_bridge_feature_haptic.takeIf { BridgePermissions.HAPTIC in names },
+    )
+}
+
 /** What a code mod will do, in plain words, before anything is downloaded or written. */
 @Composable
 private fun ModConsentDialog(
@@ -798,6 +815,7 @@ private fun ModConsentDialog(
     plan: CommunityModInstaller.Plan,
     gameTitle: String,
     replacesMod: Boolean,
+    owner: AuthorKeyPins.Check,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -807,8 +825,30 @@ private fun ModConsentDialog(
         text = {
             // Scrolls: on a landscape 1080p screen the full list does not fit.
             Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.verticalScroll(rememberScrollState())) {
+                if (owner == AuthorKeyPins.Check.CHANGED_OWNER) {
+                    Text(stringResource(R.string.duo_mod_consent_changed_owner), color = MaterialTheme.colorScheme.error)
+                }
                 Text(stringResource(R.string.duo_mod_consent_warning, gameTitle), color = MaterialTheme.colorScheme.error)
                 Text(stringResource(R.string.duo_mod_consent_author, pkg.authors.joinToString(", "), pkg.license))
+                val trust = buildList {
+                    add(
+                        pkg.authorKey?.let { stringResource(R.string.duo_mod_consent_signed, AuthorKeyPins.fingerprint(it)) }
+                            ?: stringResource(R.string.duo_mod_consent_unsigned),
+                    )
+                    if (owner == AuthorKeyPins.Check.HANDED_OVER) add(stringResource(R.string.duo_mod_consent_handed_over))
+                    add(stringResource(if (pkg.builtFrom != null) R.string.duo_mod_consent_built else R.string.duo_mod_consent_no_code))
+                    if (pkg.builtFrom != null) {
+                        val features = bridgeFeatures(pkg.bridge)
+                        add(
+                            if (features.isEmpty()) {
+                                stringResource(R.string.duo_mod_consent_bridge_none)
+                            } else {
+                                stringResource(R.string.duo_mod_consent_bridge, features.map { stringResource(it) }.joinToString(", "))
+                            },
+                        )
+                    }
+                }
+                trust.forEach { Text("• $it", style = MaterialTheme.typography.bodySmall) }
                 val lines = buildList {
                     val game = plan.gameFiles.size + plan.sharedAssets.size
                     if (game > 0) add(stringResource(R.string.duo_mod_consent_game_files, game))

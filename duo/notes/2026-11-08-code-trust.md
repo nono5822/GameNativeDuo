@@ -44,7 +44,7 @@ this file and starts at the first unchecked box.
 - [x] A1 Package model: author keys, review status, bridge permissions, built-from-source; parser tests
 - [x] A2 Author key pinning at install; an update signed by another key needs consent again ("changed owner"); tests
 - [x] A3 Installer path hardening; bridge masks undeclared capabilities and drops their packets for community mods; tests
-- [ ] A4 Consent screen: author and key, review status, what it writes, bridge features; changed-owner variant
+- [x] A4 Consent screen: author and key, review status, what it writes, bridge features; changed-owner variant
 - [ ] A5 Revocation: fetch and verify `revoked.json` (ETag) with the catalog; revoked mod turned off through the undo
       record, reason in the status; tests
 - [ ] A6 Docs (`community-packages.md`, devkit-platform status, CLAUDE.md), Keystore upstream proposal
@@ -116,3 +116,8 @@ this file and starts at the first unchecked box.
   ELEMENTS_WRITTEN / COMMAND_RESULT / HAPTIC dropped unless declared (HELLO and LOG always pass), `sendCommand` refuses
   undeclared commands. Bundled and non-built mods: no permissions, unchanged. Tests: install rules, packet gating.
   **Not device-tested** (needs a built community mod installed on the Thor).
+- A4: the consent dialog adds: "This mod changed owner" first and in red for CHANGED_OWNER; "Signed by its author
+  (key …<last 12>)" or "Not signed by its author"; the handover note; "Built from its published source by the
+  community's build service, after a maintainer reviewed the code" or "Adds no code of its own: it uses GameNative Duo's
+  plugin" (true now that the validator refuses unpinned binaries); for built mods the bridge features in plain words.
+  Compiles; **not seen on screen** (Thor).
