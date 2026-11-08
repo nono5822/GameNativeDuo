@@ -71,6 +71,16 @@ h3 { margin: 4px 0 10px; font-size: 13px; letter-spacing: .08em; text-transform:
 #pair .box { background: var(--panel); border: 1px solid var(--line); border-radius: 20px; padding: 28px 32px; width: 380px; text-align: center; }
 #pair input { text-align: center; font-size: 28px; letter-spacing: .3em; text-transform: uppercase; font-family: ui-monospace, monospace; margin: 16px 0; }
 #toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--panel2); border: 1px solid var(--line); padding: 10px 16px; border-radius: 12px; display: none; z-index: 60; }
+.tabs.dev { padding-top: 0; display: none; }
+.tabs.dev.show { display: flex; }
+.tabs.dev button { font-size: 13px; padding: 6px 4px; }
+.mono { font-family: ui-monospace, monospace; font-size: 12px; white-space: pre-wrap; word-break: break-word; }
+.log { max-height: 60vh; overflow: auto; background: var(--bg); border-radius: 10px; padding: 6px 8px; }
+.log div { border-bottom: 1px solid #1A1F3C; padding: 2px 0; }
+.log .W { color: var(--warn); } .log .E { color: #FF7A8A; } .log .D { color: var(--muted); }
+.kv { display: grid; grid-template-columns: 90px 1fr; gap: 4px 10px; font-size: 13px; }
+.kv span:nth-child(odd) { color: var(--muted); }
+.pass { color: #4ADE80; } .fail { color: #FF7A8A; }
 @media (max-width: 900px) { main { grid-template-columns: 1fr; height: auto; } aside { border-left: 0; border-top: 1px solid var(--line); } }
 </style>
 </head>
@@ -106,6 +116,13 @@ h3 { margin: 4px 0 10px; font-size: 13px; letter-spacing: .08em; text-transform:
       <button data-tab="widgets">Widgets</button>
       <button data-tab="share">Share</button>
     </div>
+    <div class="tabs dev" id="devTabs">
+      <button data-tab="inspector">Inspector</button>
+      <button data-tab="bridge">Bridge</button>
+      <button data-tab="logs">Logs</button>
+      <button data-tab="console">Console</button>
+      <button data-tab="check">Check</button>
+    </div>
     <section class="pane show" id="pane-elements">
       <div class="card" id="selCard">
         <div class="muted">Click an element on the screens or in the list. Drag it to move it, drop it on the other screen to send it there, scroll to resize.</div>
@@ -138,6 +155,43 @@ h3 { margin: 4px 0 10px; font-size: 13px; letter-spacing: .08em; text-transform:
       </div>
       <h3>Layout file</h3>
       <div class="row"><button id="download">Download layout</button><button id="resetAll">Reset everything</button></div>
+    </section>
+    <section class="pane" id="pane-inspector">
+      <div class="row"><button id="inspRefresh">Ask the mod again</button><span class="muted" id="inspNote"></span></div>
+      <div class="list" id="inspList" style="margin-top:10px"></div>
+      <div class="card mono" id="inspDetail" style="margin-top:10px">Pick an element to see what the mod reported: features, present and when, the rectangle, the user's rule.</div>
+    </section>
+    <section class="pane" id="pane-bridge">
+      <div class="card kv" id="bridgeHello"></div>
+      <div class="row" style="margin-bottom:10px"><button id="sendRules">Send RULES_CHANGED</button><button id="sendDump">Send DUMP_ELEMENTS</button></div>
+      <div class="log mono" id="bridgeRecent"></div>
+    </section>
+    <section class="pane" id="pane-logs">
+      <div class="row"><input type="text" id="logFilter" placeholder="Filter" style="flex:1"><button id="logClear">Clear</button></div>
+      <div class="log mono" id="logList" style="margin-top:8px"></div>
+    </section>
+    <section class="pane" id="pane-console">
+      <h3>Command</h3>
+      <div class="card">
+        <input type="text" id="cmdName" placeholder="hk.map.zoom">
+        <textarea id="cmdArgs" rows="2" placeholder='{"level": "area"}' style="margin-top:8px"></textarea>
+        <div class="row"><button class="primary" id="cmdSend">Send</button><span class="mono" id="cmdResult"></span></div>
+      </div>
+      <h3>Companion state</h3>
+      <div class="card">
+        <div class="row"><input type="text" id="stateKeys" placeholder="Keys to subscribe: hk.geo, hk.charms" style="flex:1"><button id="stateSub">Subscribe</button></div>
+        <div class="mono" id="stateValues" style="margin-top:8px"></div>
+      </div>
+      <h3>Touch</h3>
+      <div class="card">
+        <div class="row"><span class="muted">Tap the bottom screen at</span><input type="text" id="tapXY" value="620,540" style="width:110px"><button id="tapSend">Tap</button></div>
+        <p class="muted">Bottom-screen pixels (1240 x 1080 on a Thor), delivered like a finger.</p>
+      </div>
+    </section>
+    <section class="pane" id="pane-check">
+      <p class="muted">Tries every feature each element on screen declares (other screen, hide, move, resize) and checks that the mod did it. Your layout is put back afterwards.</p>
+      <div class="row"><button class="primary" id="checkRun">Run the check</button><span class="muted" id="checkProgress"></span></div>
+      <div class="mono" id="checkReport" style="margin-top:12px"></div>
     </section>
   </aside>
 </main>
@@ -174,6 +228,7 @@ async function connect() {
   try {
     await load();
     localStorage.setItem("duoCode", code);
+    startDev().catch(() => {});
     $("#pair").style.display = "none";
   } catch (e) {
     if (e.message !== "code") $("#pairError").textContent = "The device did not answer. Is the game running with the PC editor on?";
@@ -630,11 +685,144 @@ $("#resetAll").onclick = async () => {
   await api("/api/reset", {}); selected = null; selectedWidget = -1; scheduleRefresh(200);
 };
 
+// ---- developer tabs (duo/docs/duo-api.md; shown when the server is the sim or the device is in developer mode) --------
+
+let devOn = false, eventsSince = 0, logLines = [], bridgeTimer = 0;
+const esc = (t) => String(t).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
+
+async function startDev() {
+  const info = await api("/api/info").catch(() => null);
+  devOn = !!(info && info.dev);
+  $("#devTabs").classList.toggle("show", devOn);
+  if (!devOn) return;
+  $("#game").textContent += info.server === "sim" ? "  ·  simulator" : "  ·  developer mode";
+  eventsLoop();
+}
+
+async function eventsLoop() {
+  while (devOn) {
+    try {
+      const r = await api("/api/events?since=" + eventsSince + "&wait=20");
+      eventsSince = r.next;
+      for (const e of r.events) onEvent(e);
+    } catch (e) {
+      if (e.message === "code") return;
+      await new Promise((ok) => setTimeout(ok, 3000));
+    }
+  }
+}
+
+function onEvent(e) {
+  if (e.kind === "log") {
+    logLines.push(e); if (logLines.length > 1000) logLines.shift();
+    if ($("#pane-logs").classList.contains("show")) renderLogs();
+  } else if (e.kind === "elements") {
+    scheduleRefresh(200);
+    if ($("#pane-inspector").classList.contains("show")) inspect();
+  } else if (e.kind === "check") {
+    if (e.text) $("#checkProgress").textContent = e.text;
+    if (e.event === "done") showCheck();
+  } else if (e.kind === "state") {
+    if ($("#pane-console").classList.contains("show")) showState();
+  } else if (e.kind === "bridge") {
+    load(true).catch(() => {});
+  }
+}
+
+function renderLogs() {
+  const f = $("#logFilter").value.toLowerCase();
+  const box = $("#logList"), atEnd = box.scrollTop + box.clientHeight >= box.scrollHeight - 20;
+  box.innerHTML = logLines.filter((l) => !f || l.text.toLowerCase().includes(f) || l.source.includes(f))
+    .map((l) => `<div class="${esc(l.level)}">${new Date(l.t).toLocaleTimeString()} [${esc(l.source)}] ${esc(l.text)}</div>`).join("");
+  if (atEnd) box.scrollTop = box.scrollHeight;
+}
+
+let inspData = null;
+async function inspect() {
+  $("#inspNote").textContent = "Asking...";
+  try { inspData = await api("/api/elements"); } catch (e) { $("#inspNote").textContent = "The mod did not answer"; return; }
+  const els = inspData.elements || [];
+  $("#inspNote").textContent = els.length + " elements · " + (inspData.engine || "");
+  const depth = []; els.forEach((e, i) => (depth[i] = e.parent >= 0 ? depth[e.parent] + 1 : 0));
+  $("#inspList").innerHTML = els.map((e, i) =>
+    `<div class="item${e.graphic ? " graphic" : ""}" data-i="${i}" style="padding-left:${10 + depth[i] * 14}px">${esc(e.name || e.id)}` +
+    `${e.present === false ? '<span class="badge">absent</span>' : ""}<span class="badge ${esc(e.screen)}">${esc(e.screen)}</span></div>`).join("");
+  $("#inspList").querySelectorAll(".item").forEach((n) => (n.onclick = () => {
+    const e = els[+n.dataset.i];
+    const rule = (state && state.layout.elements && state.layout.elements[e.id]) || null;
+    $("#inspDetail").textContent = JSON.stringify({ ...e, rule }, null, 2);
+    $("#inspList").querySelectorAll(".item").forEach((m) => m.classList.toggle("sel", m === n));
+  }));
+}
+
+async function showBridge() {
+  try {
+    const b = await api("/api/bridge"), h = b.hello || {};
+    $("#bridgeHello").innerHTML = [["Mod", h.engine ? `${h.engine}${h.sdk ? " · SDK " + h.sdk : ""}` : "none yet"],
+      ["Connected", h.connected ? "yes" : "no"], ["Capabilities", "0x" + (h.caps || 0).toString(16)],
+      ["Ports", `app ${b.port ?? "?"} · mod ${h.port || "-"}`], ["Packets/s", `in ${b.rates?.in ?? 0} · out ${b.rates?.out ?? 0}`]]
+      .map(([k, v]) => `<span>${k}</span><span>${esc(v)}</span>`).join("");
+    $("#bridgeRecent").innerHTML = (b.recent || []).slice().reverse()
+      .map((p) => `<div>${new Date(p.t).toLocaleTimeString()} ${p.dir === "in" ? "←" : "→"} ${esc(p.type)} ${esc(p.text || "")}</div>`).join("");
+  } catch (e) { /* the next tick tries again */ }
+}
+
+async function showState() {
+  try {
+    const r = await api("/api/companion/state");
+    $("#stateValues").textContent = Object.keys(r.values).length ? JSON.stringify(r.values, null, 1) : "No state yet (subscribe to keys first).";
+  } catch (e) { }
+}
+
+async function showCheck() {
+  const r = await api("/api/check");
+  $("#checkRun").disabled = !!r.running;
+  if (r.progress) $("#checkProgress").textContent = r.progress;
+  const rep = r.report;
+  if (!rep) return;
+  if (rep.error) { $("#checkReport").textContent = rep.error; return; }
+  const lines = rep.results.slice().sort((a, b) => a.passed - b.passed)
+    .map((x) => `<div class="${x.passed ? "pass" : "fail"}">${x.passed ? "✓" : "✗"} ${esc(x.name)}: ${esc(x.feature)}${x.detail ? " (" + esc(x.detail) + ")" : ""}</div>`);
+  (rep.skipped || []).forEach((n) => lines.push(`<div class="muted">· ${esc(n)}: not on screen, not checked</div>`));
+  $("#checkReport").innerHTML = `<div class="${rep.passed ? "pass" : "fail"}">${rep.passed ? "Passed" : "Failed"}</div>` + lines.join("");
+}
+
+$("#inspRefresh").onclick = inspect;
+$("#sendRules").onclick = () => api("/api/bridge/send", { type: "RULES_CHANGED" }).then(showBridge);
+$("#sendDump").onclick = () => api("/api/bridge/send", { type: "DUMP_ELEMENTS" }).then(showBridge);
+$("#logFilter").oninput = renderLogs;
+$("#logClear").onclick = () => { logLines = []; renderLogs(); };
+$("#cmdSend").onclick = async () => {
+  let args = {};
+  try { args = $("#cmdArgs").value.trim() ? JSON.parse($("#cmdArgs").value) : {}; } catch (e) { $("#cmdResult").textContent = "Arguments are not JSON"; return; }
+  $("#cmdResult").textContent = "...";
+  const r = await api("/api/command", { cmd: $("#cmdName").value.trim(), args });
+  $("#cmdResult").textContent = r.status + (r.message ? ": " + r.message : "");
+};
+$("#stateSub").onclick = async () => {
+  const keys = $("#stateKeys").value.split(",").map((k) => k.trim()).filter(Boolean);
+  await api("/api/companion/subscribe", { keys }); setTimeout(showState, 300);
+};
+$("#tapSend").onclick = () => {
+  const [x, y] = $("#tapXY").value.split(",").map(Number);
+  api("/api/touch", { x, y, action: "tap" }).then(() => toast("Tapped " + x + ", " + y));
+};
+$("#checkRun").onclick = async () => {
+  $("#checkReport").textContent = ""; $("#checkRun").disabled = true;
+  try { await api("/api/check", {}); } catch (e) { toast("A check is already running"); }
+};
+
 // ---- chrome -------------------------------------------------------------------------------------------------
 
 function showTab(name) {
   document.querySelectorAll(".tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === name));
   document.querySelectorAll(".pane").forEach((p) => p.classList.toggle("show", p.id === "pane-" + name));
+  clearInterval(bridgeTimer);
+  if (name === "inspector") inspect();
+  if (name === "bridge") { showBridge(); bridgeTimer = setInterval(showBridge, 2000); }
+  if (name === "logs") renderLogs();
+  if (name === "console") showState();
+  if (name === "check") showCheck().catch(() => {});
 }
 document.querySelectorAll(".tabs button").forEach((b) => (b.onclick = () => showTab(b.dataset.tab)));
 $("#refresh").onclick = () => load(true).catch(() => {});
