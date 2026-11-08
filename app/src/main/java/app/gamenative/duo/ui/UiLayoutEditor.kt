@@ -79,6 +79,23 @@ internal class UiLayoutEditor(
     // that menu) keeps asking for a while before it gives up.
     private var unanswered = 0
 
+    private val refreshSoon = Runnable { if (isAttachedToWindow) refresh() }
+    private val elementsChanged: () -> Unit = {
+        removeCallbacks(refreshSoon)
+        postDelayed(refreshSoon, 120)
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        controller.elementsChangedListeners += elementsChanged
+    }
+
+    override fun onDetachedFromWindow() {
+        controller.elementsChangedListeners -= elementsChanged
+        removeCallbacks(refreshSoon)
+        super.onDetachedFromWindow()
+    }
+
     private fun refresh() {
         controller.requestElements { result ->
             if (result == null) {

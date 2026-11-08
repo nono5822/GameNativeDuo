@@ -2,8 +2,12 @@ package app.gamenative.duo
 
 import android.content.Context
 import android.hardware.display.DisplayManager
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.view.View
 import app.gamenative.duo.bridge.DuoBridge
 import app.gamenative.duo.companion.CompanionSession
@@ -169,6 +173,7 @@ class DualScreenSession internal constructor(
         report("session start (container ${container.id}, profile ${profile.id}, $settings)")
         if (screenSplit == null) LayoutFile.delete(container)
         LayoutFile.writeBridge(container, bridge?.port ?: 0)
+        bridge?.hapticListener = { ms, strength -> buzz(ms, strength) }
         bridge?.let { companion?.attachBridge(it) }
         try {
             uiLayout?.start()
@@ -189,6 +194,21 @@ class DualScreenSession internal constructor(
         }
         updateStatus { it }
         if (settings.screenSplit && gamescope) showGamescopeStatus()
+    }
+
+    /** A mod's HAPTIC (already capped by the bridge). */
+    private fun buzz(ms: Int, strength: Int) {
+        try {
+            val vibrator = if (Build.VERSION.SDK_INT >= 31) {
+                context.getSystemService(VibratorManager::class.java)?.defaultVibrator
+            } else {
+                @Suppress("DEPRECATION")
+                context.getSystemService(Vibrator::class.java)
+            }
+            vibrator?.vibrate(VibrationEffect.createOneShot(ms.toLong(), strength))
+        } catch (t: Throwable) {
+            Timber.tag(DualScreenHost.TAG).w(t, "Haptic failed")
+        }
     }
 
     private fun updateStatus(change: (SessionStatus) -> SessionStatus) {

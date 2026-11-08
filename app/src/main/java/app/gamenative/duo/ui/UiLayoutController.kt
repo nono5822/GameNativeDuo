@@ -160,8 +160,19 @@ class UiLayoutController(
     private var nextRequest = 1
     private val pending = mutableMapOf<Int, (UiElementList?) -> Unit>()
 
+    /** Told (main thread) when the mod says its element set changed (a scene change): open editors ask again. */
+    val elementsChangedListeners = mutableListOf<() -> Unit>()
+
+    /** Counts ELEMENTS_CHANGED this session, so the PC editor can tell when to ask again without polling the game. */
+    var elementsVersion = 0
+        private set
+
     init {
         bridge?.listener = this
+        bridge?.elementsChangedListeners?.add {
+            elementsVersion++
+            elementsChangedListeners.toList().forEach { it() }
+        }
     }
 
     /**
