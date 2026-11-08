@@ -406,18 +406,28 @@ class UiLayoutController(
         val file = UiLayoutStore.elementsFile(container)
         // Parsing a few hundred entries is quick, but keep file reads off the main thread.
         Thread({
-            val list = try {
-                UiElementList.parse(file)
-            } catch (t: Throwable) {
-                Timber.tag(DualScreenHost.TAG).w(t, "Failed to read the UI element list")
-                null
+            // Mods built on SDK 1.0 delete the file before moving the new one in: a read in between finds nothing,
+            // so try again briefly before giving up.
+            var list: UiElementList? = null
+            for (attempt in 1..READ_ATTEMPTS) {
+                list = try {
+                    UiElementList.parse(file)
+                } catch (t: Throwable) {
+                    if (attempt == READ_ATTEMPTS) Timber.tag(DualScreenHost.TAG).w(t, "Failed to read the UI element list")
+                    null
+                }
+                if (list != null) break
+                Thread.sleep(READ_RETRY_MS)
             }
-            main.post { callback(list) }
+            val result = list
+            main.post { callback(result) }
         }, "GNDuo-elements").start()
     }
 
     companion object {
         private const val ANY_CAPABILITY = -1
+        private const val READ_ATTEMPTS = 4
+        private const val READ_RETRY_MS = 25L
 
         /** A region's source element id: the region's id plus this. */
         const val SOURCE_SUFFIX = "#source"

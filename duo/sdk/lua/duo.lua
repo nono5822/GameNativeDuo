@@ -262,6 +262,17 @@ local function write_file(path, text)
     if not f then return false end
     f:write(text)
     f:close()
+    -- Replace in one step: between a remove and a rename, a reader would find no file at all. POSIX rename replaces;
+    -- Windows' does not, so use MoveFileExA there (LÖVE has ffi), and remove + rename only as a last resort.
+    if ok_ffi and ffi.os == "Windows" then
+        local ok, moved = pcall(function()
+            pcall(ffi.cdef, "int MoveFileExA(const char *from, const char *to, unsigned long flags);")
+            return ffi.C.MoveFileExA(tmp, path, 1) ~= 0
+        end)
+        if ok and moved then return true end
+    elseif os.rename(tmp, path) then
+        return true
+    end
     os.remove(path)
     return os.rename(tmp, path) and true or false
 end

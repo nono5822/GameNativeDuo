@@ -207,8 +207,12 @@ int duo_write_file(const char *name, const char *text) {
     if (!f) return 0;
     fputs(text, f);
     fclose(f);
-    remove(path);
+    /* Replace in one step: between a remove and a rename, a reader would find no file at all. */
+#ifdef _WIN32
+    return MoveFileExA(tmp, path, MOVEFILE_REPLACE_EXISTING) != 0;
+#else
     return rename(tmp, path) == 0;
+#endif
 }
 
 /* The number after "key": inside the object that follows "obj": (or anywhere when obj is NULL). */

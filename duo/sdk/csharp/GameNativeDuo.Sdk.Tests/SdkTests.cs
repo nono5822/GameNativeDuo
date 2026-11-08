@@ -94,6 +94,41 @@ public class ElementsTests
     }
 }
 
+public class FileTests
+{
+    /// <summary>The app reads elements.json while the mod rewrites it: it must never find the file missing.</summary>
+    [Fact]
+    public void RewritesNeverLeaveTheFileMissing()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "duo-sdk-file-" + Guid.NewGuid().ToString("N"));
+        string path = Path.Combine(dir, "elements.json");
+        DuoPaths.WriteAtomic(path, "{}");
+        int missing = 0, reads = 0;
+        var writer = new Thread(() =>
+        {
+            for (int i = 0; i < 2000; i++)
+                DuoPaths.WriteAtomic(path, "{\"n\":" + i + "}");
+        });
+        writer.Start();
+        while (writer.IsAlive)
+        {
+            reads++;
+            try
+            {
+                if (File.ReadAllText(path).Length == 0)
+                    missing++;
+            }
+            catch (FileNotFoundException)
+            {
+                missing++;
+            }
+        }
+        Directory.Delete(dir, true);
+        Assert.True(reads > 100, "reads " + reads);
+        Assert.Equal(0, missing);
+    }
+}
+
 /// <summary>The SDK against a fake app on loopback: hello, element dump, commands, state.</summary>
 public class FakeAppTests : IDisposable
 {

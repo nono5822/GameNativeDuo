@@ -148,7 +148,16 @@ public sealed class SimHost : IDisposable
         var done = await Task.WhenAny(tcs.Task, Task.Delay(timeout));
         lock (_dumps)
             _dumps.Remove(request);
-        return done == tcs.Task ? ReadJson("elements.json") : null;
+        if (done != tcs.Task)
+            return null;
+        // Mods built on SDK 1.0 delete the file before moving the new one in: a read in between finds nothing.
+        for (int attempt = 0; ; attempt++)
+        {
+            var json = ReadJson("elements.json");
+            if (json != null || attempt == 3)
+                return json;
+            await Task.Delay(25);
+        }
     }
 
     /// <summary>Runs a command on the mod: status name and message ("timeout" when it does not answer in 3 s).</summary>

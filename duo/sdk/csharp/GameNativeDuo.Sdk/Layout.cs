@@ -65,7 +65,19 @@ namespace GameNativeDuo.Sdk
             string tmp = path + ".tmp";
             File.WriteAllText(tmp, text);
             if (File.Exists(path))
-                File.Delete(path);
+            {
+                // Replace in one step: between a delete and a move, a reader would find no file at all.
+                try
+                {
+                    File.Replace(tmp, path, null);
+                    return;
+                }
+                catch (Exception)
+                {
+                    if (File.Exists(path))
+                        File.Delete(path);
+                }
+            }
             File.Move(tmp, path);
         }
     }
