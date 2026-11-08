@@ -10,41 +10,21 @@
 -- per frame.
 do
     local D = GNDuo
-    local ok_socket, socket = pcall(require, "socket")
-    local ok_ffi, ffi = pcall(require, "ffi")
-    if not ok_socket then D.log("luasocket unavailable, no bridge: %s", tostring(socket)) end
+    -- Packets, socket and parsing come from the Duo SDK (duo/sdk/lua/duo.lua); this file keeps Balatro's own parts.
+    local ok_duo, duo = pcall(require, "duo")
+    if not ok_duo then D.log("duo.lua unavailable, no bridge: %s", tostring(duo)) end
+    if ok_duo and not duo.open() then D.log("luasocket unavailable, no bridge") end
 
     local CAPS = 1 + 2 + 4 + 8 + 32
     local ENGINE = "balatro-love"
     local HELLO_EVERY = 2
 
-    local udp
     local next_hello = 0
-    local floats = ok_ffi and ffi.new("float[2]")
-    local u32 = ok_ffi and ffi.new("uint32_t[1]")
-
-    local function le32(n)
-        return string.char(n % 256, math.floor(n / 256) % 256, math.floor(n / 65536) % 256, math.floor(n / 16777216) % 256)
-    end
-    local function header(t) return "GD\1" .. string.char(t) end
-
-    local function open()
-        if udp or not ok_socket then return udp end
-        local s = socket.udp()
-        if not s then return nil end
-        s:settimeout(0)
-        local ok, err = s:setsockname("127.0.0.1", 0)
-        if not ok then
-            D.log("bridge socket: %s", tostring(err))
-            s:close()
-            return nil
-        end
-        udp = s
-        return udp
-    end
 
     local function send(packet)
-        if D.port and open() then udp:sendto(packet, "127.0.0.1", D.port) end
+        if not ok_duo then return end
+        duo.port = D.port or 0
+        duo.send(packet)
     end
 
     ---------------------------------------------------------------------------------------------------------------
@@ -146,7 +126,7 @@ do
         for _, def in ipairs(ELEMENTS) do element(list, def, nodes[def.id]) end
         local doc = { engine = ENGINE, screen = { w = D.full_w, h = D.full_h }, elements = list }
         if not D.write_file(D.dir .. "elements.json", D.json_encode(doc)) then D.log("elements.json not written") end
-        send(header(0x83) .. le32(request))
+        send(duo.packet(duo.ELEMENTS_WRITTEN, duo.le32(request)))
     end
 
     ---------------------------------------------------------------------------------------------------------------
@@ -220,31 +200,25 @@ do
     local dump_request
 
     local function receive()
-        if not udp then return end
-        for _ = 1, 64 do
-            local data, ip, port = udp:receivefrom()
-            if not data then return end
-            if ip == "127.0.0.1" and port == D.port and #data >= 4 and data:sub(1, 3) == "GD\1" then
-                local t = data:byte(4)
-                if t == 0x01 and #data >= 16 and ok_ffi then
-                    ffi.copy(floats, data:sub(9, 16), 8)
-                    local action, pointer = data:byte(5), data:byte(6)
-                    if action == 3 then action = 2 end
-                    -- Coalesce moves of the same finger.
-                    local last = queue[#queue]
-                    if action == 1 and last and last[1] == 1 and last[2] == pointer then
-                        last[3], last[4] = floats[0], floats[1]
-                    else
-                        queue[#queue + 1] = { action, pointer, floats[0], floats[1] }
-                    end
-                elseif t == 0x02 then
-                    D.safe("ui.json", D.read_ui, true)
-                elseif t == 0x03 and #data >= 8 and ok_ffi then
-                    ffi.copy(u32, data:sub(5, 8), 4)
-                    dump_request = tonumber(u32[0])
+        if not ok_duo then return end
+        duo.port = D.port or 0
+        duo.poll(function(m)
+            if m.type == duo.TOUCH then
+                local action, pointer = m.action, m.pointer
+                if action == duo.CANCEL then action = duo.UP end
+                -- Coalesce moves of the same finger.
+                local last = queue[#queue]
+                if action == duo.MOVE and last and last[1] == duo.MOVE and last[2] == pointer then
+                    last[3], last[4] = m.x, m.y
+                else
+                    queue[#queue + 1] = { action, pointer, m.x, m.y }
                 end
+            elseif m.type == duo.RULES_CHANGED then
+                D.safe("ui.json", D.read_ui, true)
+            elseif m.type == duo.DUMP_ELEMENTS then
+                dump_request = m.request
             end
-        end
+        end)
     end
 
     function D.bridge_update()
@@ -259,7 +233,7 @@ do
             D.safe("ui.json", D.read_ui)
             if D.active then
                 if not features_written then features_written = D.safe("features.json", write_features) ~= false end
-                send(header(0x81) .. le32(CAPS) .. ENGINE)
+                send(duo.hello_packet(CAPS, ENGINE .. "/sdk" .. duo.VERSION))
             end
         end
         receive()

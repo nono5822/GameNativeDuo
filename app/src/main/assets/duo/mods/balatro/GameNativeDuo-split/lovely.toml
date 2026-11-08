@@ -7,6 +7,13 @@ version = "0.2.0"
 dump_lua = false
 priority = 0
 
+# The Duo SDK (duo/sdk/lua/duo.lua, a copy), loadable with require("duo").
+[[patches]]
+[patches.module]
+source = "duo.lua"
+before = "main.lua"
+name = "duo"
+
 # Our code, after main.lua's requires and definitions (so it can wrap them) and before anything runs.
 [[patches]]
 [patches.copy]
