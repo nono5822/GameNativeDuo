@@ -10,6 +10,8 @@
     <RootNamespace>GameNativeDuo.HollowKnight</RootNamespace>
     <Version>0.1.0</Version>
     <TargetFramework>net46</TargetFramework>
+    <!-- Locked restore: the community CI builds this from source and compares hashes (duo/notes/2026-11-08-code-trust.md). -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
