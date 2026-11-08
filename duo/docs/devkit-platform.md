@@ -78,6 +78,11 @@ The bundled adapters (Unity, Stardew, Balatro) are rebuilt on the SDKs, so the S
 version goes in HELLO's engine string (`unity-ugui/sdk1.2`) so the status screen can say "mod built for an older
 GameNative Duo".
 
+**Status (2026-11-08, branch `duo/devkit-sdk`):** built. Bridge v2 app side; the C#, Lua and C SDKs with tests; the
+Unity, Hollow Knight, Stardew and Balatro adapters build on them (Thor: all four connect as `.../sdk1.0`, unchanged);
+50-line LÖVE and Unity examples. Not yet: `GameNativeDuo.Sdk.Unity` / `.Smapi` as separate packages; `duo.h`'s
+Windows build not compiled (no mingw where it was written).
+
 **Done when:** the three bundled adapters build on the SDKs with no behaviour change, and a new LÖVE or Unity mod
 needs about 50 lines to put one element on the bottom screen.
 
@@ -207,6 +212,10 @@ A setting in the GameNative Duo tab (global, off by default). It keeps the devic
 3. Developer mode: the Duo API on the device.
 4. VS Code extension.
 
+**Status (2026-11-08):** built: `duo` (sim with X11/Windows capture, Duo API, CLI, `duo test`, `duo check`, templates,
+`duo mcp`), the skill and `llms.txt`, developer mode on the device (Thor-tested: overlay, developer endpoints, check,
+dev-folder mods), the VS Code extension (not run in VS Code yet). The page's developer tabs still need a browser test.
+
 **Done when:** a developer without a Thor makes a Balatro-style mod for another LÖVE game in an afternoon, then
 `duo dev --device` runs it unchanged on a Thor; and an agent with `duo mcp` can build, test and screenshot a mod
 without help.
@@ -259,6 +268,10 @@ adapter reads, so a new Unity game is a JSON file, not a DLL.
 - Migration: Slime Rancher and Subnautica's camera and canvas quirks become profiles; Team Cherry's tk2d handling
   becomes a `tk2d` camera kind; whatever stays in `Quirks.cs` is real code (and a sign the adapter is missing a
   feature).
+
+**Status (2026-11-08):** built: format, schema, the adapter reads it (cameras, canvases, stay-on-top, elements, state),
+bundled profiles for Slime Rancher and Subnautica, the `game-profile` package kind (community branch
+`devkit/game-profiles`, not pushed). Subnautica keeps its Harmony quirks (code, not configuration).
 
 **Done when:** Slime Rancher and Subnautica ship as profiles on the shared adapter with no per-game C#, and the
 community repo accepts `game-profile` packages without code review.

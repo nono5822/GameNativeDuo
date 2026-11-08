@@ -90,7 +90,13 @@ the id: prebuilt `libkgslshim.so` matches on that substring.
 7. **Developer platform**: Bridge v2 + SDKs, dev tools (`duo` binary: sim, CLI, web UI, MCP; developer mode),
    game profiles, code trust, docs/templates (`duo/docs/devkit-platform.md`). Every editor surface follows
    `duo/docs/uniform-editing.md` (declared element features, one `EditCapabilities` model, regions as elements for
-   games without a mod).
+   games without a mod). **Built (items 1-3)**: SDKs in `duo/sdk/` (C# `GameNativeDuo.Sdk` compiled into each bundled
+   adapter as source with `DUO_SDK_EMBEDDED`, `duo.lua` (Balatro's copy must equal it: `SdkCopiesTest`), `duo.h`);
+   the `duo` tool in `duo/tools/duo` (.NET, AOT: sim, Duo API `duo/docs/duo-api.md`, CLI, `duo mcp`, templates;
+   tests run the sim against the real SDK); Claude skill `duo/tools/claude-skill/`; VS Code extension
+   `duo/tools/vscode`; developer mode (setting; `duo/dev/`, `pc/PcDevApi.kt`; dev-folder mods
+   `files/duo/mods/dev/<mod>/`); game profiles (`duo/docs/game-profiles.md`, Unity `GameProfile.cs`,
+   `profile.json` next to layout.json; community kind `game-profile`).
 
 Performance rules: the CPU is the bottleneck (Box64/FEX), so keep devkit work off it: low-priority threads,
 no CPU frame copies, data over pixels, idle at 0 fps when nothing changes.
@@ -203,7 +209,8 @@ edit); colours, icon geometry and the banner source: `duo/branding/README.md`.
 ./gradlew :app:assembleModernDebug          # APK: app/build/outputs/apk/modern/debug/
 ./gradlew :app:installModernDebug           # build + install on the connected device
 adb logcat -s GNDuo                         # devkit logs
-./gradlew :app:lintKotlinMain 2>&1 | grep duo/   # style check for our code (upstream has ~10k violations, so the full task always fails)
+./gradlew :app:lintKotlinMain 2>&1 | grep duo/   # NOT reliable: the run stops inside upstream files and never reaches duo/
+                                                 # (an empty result proves nothing); check line length (140) and sorted imports of changed files yourself
 ```
 
 - CI: `.github/workflows/duo-debug-build.yml` builds the APK on pushes to `devkit`/`duo/**` (artifact on the run);
