@@ -29,12 +29,12 @@ this file and starts at the first unchecked box.
 ### Community repo
 - [x] K1 Source packages: `build` in the package schema (folder or pinned repo + commit, project, engine); `loaders.json`
       (BepInEx 5.4.23.5, Lovely 0.10.0, per-file sha256); validator refuses other binaries in mod packages; tests
-- [x] K2 `duo stubs` (duo tool, Cecil): reference-only assemblies; `refs.json` format; HK set generated locally
-- [ ] K3 CI builder `tools/build_mods.py`: deterministic dotnet build (pinned SDK, PathMap), refs fetched and
+- [x] K2 `duo stubs` (duo tool, System.Reflection.Metadata): reference-only assemblies; `refs.json` format; HK set generated locally
+- [x] K3 CI builder `tools/build_mods.py`: deterministic dotnet build (pinned SDK, PathMap), refs fetched and
       checked by sha256, outputs hashed; publish builds and lists only built outputs; validate builds twice and compares
-- [ ] K4 Review flags `tools/review_flags.py` (network, process, P/Invoke, file access, reflection, obfuscation) as a PR
+- [x] K4 Review flags `tools/review_flags.py` (network, process, P/Invoke, file access, reflection, obfuscation) as a PR
       comment; optional AI review step (secret-gated)
-- [ ] K5 Author keys: `manifest.json.sig` (SSHSIG), key chain with rotation endorsements, checked against main's chain;
+- [x] K5 Author keys: `manifest.json.sig` (SSHSIG), key chain with rotation endorsements, checked against main's chain;
       index publishes `authorKey`/`authorKeys`; `duo keygen`, `duo pack --sign`
 - [ ] K6 Permissions: `bridge` declaration (capabilities, commands) in the schema; install target path rules
 - [ ] K7 Revocation: `revoked.json` (maintainer) -> signed `v1/revoked.json`; verify covers it
@@ -61,3 +61,25 @@ this file and starts at the first unchecked box.
   twice). Hollow Knight's whole Managed folder (134 assemblies, 36 MB -> 8.3 MB zip) and BepInEx (BepInEx.dll,
   0Harmony.dll) stubbed into the scratchpad: the Hollow Knight plugin built against the stubs is **byte-identical** to
   the build against the real game files (both DLLs). Stubs are not committed anywhere.
+- K3 (community `0944622`): `tools/build_mods.py` (src/ or `git fetch --depth 1` of the named commit, checked; reference
+  sets by sha256 from refs.json or `--refs-dir`; `dotnet build` with global.json pinning SDK 10.0.112 (rollForward
+  disable), Deterministic, ContinuousIntegrationBuild, PathMap of the work folder, RestoreLockedMode). publish.yml: a
+  `build-mods` job with a read-only token and no secrets hands `built.json` + files over as an artifact; the signing job
+  only hashes them (`duo_index.py build --built`, which refuses a mod not built for its version and adds `builtFrom`).
+  validate.yml builds every mod twice in different folders and compares. Tests: a scripts mod, a dotnet mod built
+  reproducibly in two folders, a missing output.
+- K4 (community `6a279ec`): `tools/review_flags.py` (base and head trees as data; per changed mod: diff since the
+  approved version, src/ or repo old...new commit with a compare link; flagged added lines in 7 categories; manifest
+  changes that widen access; Duo SDK copies exempt from the network flag) posted by `review.yml` on
+  pull_request_target, which never runs pull request code. `tools/ai_review.py` (anthropic SDK, claude-opus-5-5,
+  adaptive thinking, effort high, streaming, `fallbacks: "default"`; injection-aware system prompt; oversize diffs get
+  a note, never truncation) runs only with the ANTHROPIC_API_KEY secret. **ai_review.py is syntax-checked only**: the
+  anthropic package is not installed here. Tests: flag categories (incl. no false positive on `"Format:\n"`), a
+  changed package, SDK copies.
+- K5 (community `2ae85b0`, app this commit): `author` in the package schema (`key`: `ssh-ed25519 AAAAC3...`, `history`
+  of `{key, handover}`), `manifest.json.sig` (SSHSIG, namespace `gamenative-duo-package`), handovers in namespace
+  `gamenative-duo-key-handover` over `<next key>\n`. Validator: code mods need a key; signature; chain; with
+  `--base-ref` (PR base, or the previous commit on main) a changed key must be handed over by the approved one, history
+  only extends, a key cannot be removed. Index: `authorKey`, `authorKeys` (no signatures). `duo_index.py sign |
+  handover`; `duo keygen`, `duo pack --sign [--key]` (pack also verifies). 6 validator tests with real ssh-keygen keys
+  (incl. a forged handover); duo test; duo-signed packages verify in the validator and the other way round.

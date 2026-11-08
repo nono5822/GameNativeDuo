@@ -17,7 +17,10 @@ public static class Program
                 Talk to a running sim or device (--url http://HOST:8642 --code CODE; defaults: the last sim).
           duo test SCRIPT          Run a test script against the sim or device.
           duo new --engine love|unity|smapi|native ID    Start a mod from a template.
-          duo pack DIR             Check a package folder against the community schemas.
+          duo pack DIR [--write] [--sign [--key FILE]]
+                Check a package folder against the community schemas; --write fills in hashes, --sign
+                signs manifest.json with your author key (sets author.key the first time).
+          duo keygen [--out FILE]  A new author key (SSH ed25519), by default in ~/.config/gamenative-duo/.
           duo stubs DIR --out SET.zip [--only A.dll,B.dll]
                 Reference stubs of a game's assemblies (no code, no assets) for building mods in CI (refs.json).
           duo mcp                  MCP server (stdio) over the Duo API, for Claude Code and other agents.

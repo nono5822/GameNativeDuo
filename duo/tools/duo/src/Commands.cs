@@ -16,6 +16,7 @@ public static class Commands
             case "new": return Templates.New(a);
             case "pack": return Pack(a);
             case "stubs": return Stubs.Run(a);
+            case "keygen": return AuthorKeys.Keygen(a);
             case "build": return Build(a);
             case "submit": return Submit(a);
             case "dev": return await Dev(a);
@@ -158,9 +159,19 @@ public static class Commands
         if (!File.Exists(path))
             throw new DuoException("no manifest.json in " + Path.GetFullPath(dir) + " (duo new writes one)");
         var m = JsonNode.Parse(File.ReadAllText(path)) as JsonObject ?? throw new DuoException("manifest.json is not an object");
-        var problems = PackProblems(m, dir, a.Flag("write"));
-        if (a.Flag("write"))
+        bool sign = a.Flag("sign") || a["key"] != null;
+        var problems = PackProblems(m, dir, a.Flag("write") || sign);
+        string keyFile = a["key"] ?? AuthorKeys.DefaultKey;
+        bool adopted = sign && problems.Count == 0 && AuthorKeys.Adopt(m, keyFile);
+        if (a.Flag("write") || sign)
             File.WriteAllText(path, m.ToJsonString(Pretty) + "\n");
+        if (sign && problems.Count == 0)
+        {
+            AuthorKeys.Sign(dir, keyFile);
+            Console.WriteLine(adopted ? $"author.key set from {keyFile}.pub" : $"signed with {keyFile}");
+        }
+        if (problems.Count == 0 && AuthorKeys.Check(dir, m) is { } signature)
+            problems.Add(signature);
         foreach (var p in problems)
             Console.WriteLine("✗ " + p);
         Console.WriteLine(problems.Count == 0 ? $"✓ {m["id"]} {m["packageVersion"]}: ready (the community repo's validator runs on the PR)" : $"{problems.Count} problem(s)");
