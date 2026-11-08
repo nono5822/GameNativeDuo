@@ -115,7 +115,7 @@ everything lives in one local program, and every front-end is a thin skin over i
 
 ### Tech
 
-- .NET 8, native AOT, one self-contained binary per OS (win-x64, linux-x64, linux-arm64). Same language as the SDK
+- .NET (10, the current LTS; built: `duo/tools/duo`), native AOT, one self-contained binary per OS (win-x64, linux-x64, linux-arm64). Same language as the SDK
   and the C# mods, so `GameNativeDuo.Sdk`'s bridge and file code is shared, and developers install no runtime. Also
   published as a .NET global tool (`dotnet tool install -g gamenative-duo`) for those who have the SDK.
 - Window capture: Windows Graphics Capture on Windows; XComposite on Linux (Proton games run under Xwayland or X11).
