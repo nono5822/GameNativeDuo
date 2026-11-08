@@ -188,6 +188,7 @@
     <string name="duo_status_not_loaded">Last time, the game ran but its dual-screen mod never started.</string>
     <string name="duo_status_game_updated">The game was updated since the mod was installed.</string>
     <string name="duo_status_never">Not played with Dual screen yet. Launch the game: this shows whether the mod started.</string>
+    <string name="duo_status_old_sdk">The mod was built for an older GameNative Duo (SDK %1$s, this app has %2$s): some features may be missing until its author updates it.</string>
     <string name="duo_status_worked">Last session (%3$s): the mod started (%1$s) and connected after %2$d s.</string>
     <string name="duo_status_no_bridge">Last session (%1$s): screen split on. This mod does not report back, so there is nothing more to check.</string>
     <string name="duo_status_last_gamescope">Last session (%1$s) ran under Gamescope, so the bottom screen could not be used.</string>

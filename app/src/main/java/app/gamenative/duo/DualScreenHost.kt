@@ -187,6 +187,7 @@ class DualScreenSession internal constructor(
                         connected = true,
                         connectedAfterMs = System.currentTimeMillis() - it.startedAt,
                         engine = engine,
+                        sdk = bridge?.sdkVersion.orEmpty(),
                         capabilities = caps,
                     )
                 }

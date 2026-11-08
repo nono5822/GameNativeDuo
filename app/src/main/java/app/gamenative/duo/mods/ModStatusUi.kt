@@ -43,6 +43,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import app.gamenative.R
+import app.gamenative.duo.bridge.BridgePackets
 import kotlinx.coroutines.launch
 
 /** Amber for "needs a fix", green for "worked last time" (readable on the dark library background). */
@@ -167,6 +168,9 @@ private fun LastSession(report: ModStatusReport) {
                 StatusOk,
                 stringResource(R.string.duo_status_worked, engine, ((last.connectedAfterMs + 500) / 1000).toInt(), ago(last.startedAt)),
             )
+            if (BridgePackets.sdkIsOlder(last.sdk)) {
+                Line(Icons.Outlined.Info, null, stringResource(R.string.duo_status_old_sdk, last.sdk, BridgePackets.SDK_VERSION))
+            }
         }
         last.gamescope -> Line(Icons.Outlined.Info, null, stringResource(R.string.duo_status_last_gamescope, ago(last.startedAt)))
         !last.splitOn -> Line(Icons.Outlined.Info, null, stringResource(R.string.duo_status_last_no_split, ago(last.startedAt)))

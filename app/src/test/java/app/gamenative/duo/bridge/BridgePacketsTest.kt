@@ -42,4 +42,15 @@ class BridgePacketsTest {
         assertEquals(2, o.getJSONArray("keys").length())
         assertNull(BridgePackets.subscribe(List(2000) { "a.very.long.state.key.$it" }))
     }
+
+    @Test
+    fun helloCarriesTheSdkVersion() {
+        assertEquals("unity-ugui", BridgePackets.engineOf("unity-ugui/sdk1.0"))
+        assertEquals("1.0", BridgePackets.sdkOf("unity-ugui/sdk1.0"))
+        assertEquals("", BridgePackets.sdkOf("balatro-love"))
+        assertEquals(true, BridgePackets.sdkIsOlder("0.9"))
+        assertEquals(false, BridgePackets.sdkIsOlder(BridgePackets.SDK_VERSION))
+        assertEquals(false, BridgePackets.sdkIsOlder(""))
+        assertEquals(false, BridgePackets.sdkIsOlder("2.0"))
+    }
 }

@@ -154,7 +154,7 @@ namespace GameNativeDuo.UnitySplit
                 if (now >= _nextHello)
                 {
                     _nextHello = now + HelloSeconds;
-                    _bridge.SendHello(Bridge.CapTouch | Bridge.CapUiRules | Bridge.CapElements | Bridge.CapBgBasic, Engine);
+                    _bridge.SendHello(Bridge.CapTouch | Bridge.CapUiRules | Bridge.CapElements | Bridge.CapBgBasic, Engine + "/sdk" + Duo.SdkVersion);
                 }
                 _bridge.Drain(_messages);
                 if (_messages.Count == 0)

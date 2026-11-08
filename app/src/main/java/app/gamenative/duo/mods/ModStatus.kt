@@ -28,6 +28,8 @@ data class SessionStatus(
     val connectedAfterMs: Long = 0L,
     val engine: String = "",
     val capabilities: Int = 0,
+    /** The Duo SDK version the mod was built with, empty when it does not use the SDK. */
+    val sdk: String = "",
 ) {
     val durationMs: Long get() = if (endedAt > startedAt) endedAt - startedAt else 0L
 
@@ -45,6 +47,7 @@ data class SessionStatus(
         .put("connectedAfterMs", connectedAfterMs)
         .put("engine", engine)
         .put("capabilities", capabilities)
+        .put("sdk", sdk)
 
     companion object {
         fun fromJson(o: JSONObject) = SessionStatus(
@@ -61,6 +64,7 @@ data class SessionStatus(
             connectedAfterMs = o.optLong("connectedAfterMs"),
             engine = o.optString("engine"),
             capabilities = o.optInt("capabilities"),
+            sdk = o.optString("sdk"),
         )
     }
 }

@@ -59,7 +59,7 @@ public sealed class ModEntry : Mod
             if (e.IsMultipleOf(60))
                 Guard("UI layout reload", WatchRules);
             if (e.IsMultipleOf(120))
-                _bridge?.SendHello(Capabilities, "stardew-smapi");
+                _bridge?.SendHello(Capabilities, "stardew-smapi/sdk" + Duo.SdkVersion);
         };
         helper.Events.Display.Rendered += (_, _) =>
         {
@@ -94,7 +94,7 @@ public sealed class ModEntry : Mod
         try
         {
             _bridge = new Bridge(Layout.BridgePort);
-            _bridge.SendHello(Capabilities, "stardew-smapi");
+            _bridge.SendHello(Capabilities, "stardew-smapi/sdk" + Duo.SdkVersion);
             Monitor.Log($"GameNative Duo bridge: talking to the app on port {Layout.BridgePort}", LogLevel.Info);
         }
         catch (Exception ex)

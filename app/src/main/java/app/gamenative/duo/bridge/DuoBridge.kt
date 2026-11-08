@@ -72,7 +72,12 @@ class DuoBridge private constructor(private val socket: DatagramSocket) {
     @Volatile var capabilities = 0
         private set
 
+    /** The mod's engine id (`unity-ugui`), without the SDK suffix. */
     @Volatile var engine = ""
+        private set
+
+    /** The Duo SDK version the mod was built with (`1.0`), empty for a mod without the SDK. */
+    @Volatile var sdkVersion = ""
         private set
 
     private val main = Handler(Looper.getMainLooper())
@@ -240,14 +245,15 @@ class DuoBridge private constructor(private val socket: DatagramSocket) {
         val isNew = port != modPort || caps != capabilities || SystemClock.elapsedRealtime() - lastHelloAt >= MOD_TIMEOUT_MS
         modPort = port
         capabilities = caps
-        engine = name
+        engine = BridgePackets.engineOf(name)
+        sdkVersion = BridgePackets.sdkOf(name)
         lastHelloAt = SystemClock.elapsedRealtime()
         if (isNew) {
             Timber.tag(DualScreenHost.TAG).i("Bridge: %s mod connected from port %d (capabilities 0x%x)", name, port, caps)
             if (caps and CAP_STATE != 0) BridgePackets.subscribe(subscription)?.let { enqueue(it, coalesce = false) }
             main.post {
-                listener?.onModConnected(caps, name)
-                connectListeners.forEach { it(caps, name) }
+                listener?.onModConnected(caps, engine)
+                connectListeners.forEach { it(caps, engine) }
             }
         }
     }

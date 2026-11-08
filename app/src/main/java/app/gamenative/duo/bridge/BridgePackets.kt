@@ -31,6 +31,28 @@ object BridgePackets {
         }
     }
 
+    /** The SDK version this app knows best; mods built for an older one may miss features. */
+    const val SDK_VERSION = "1.0"
+
+    /** HELLO's engine string is `engine` or `engine/sdkX.Y`: the engine part. */
+    fun engineOf(hello: String): String = hello.substringBefore("/sdk")
+
+    /** The SDK part of HELLO's engine string, or "" for a mod without the SDK. */
+    fun sdkOf(hello: String): String = if ("/sdk" in hello) hello.substringAfter("/sdk") else ""
+
+    /** True when [sdk] (a mod's) is older than [SDK_VERSION]; false when unknown. */
+    fun sdkIsOlder(sdk: String): Boolean {
+        val mine = SDK_VERSION.split('.').map { it.toIntOrNull() ?: 0 }
+        val theirs = sdk.split('.').map { it.toIntOrNull() ?: return false }
+        if (sdk.isEmpty()) return false
+        for (i in 0 until maxOf(mine.size, theirs.size)) {
+            val a = theirs.getOrElse(i) { 0 }
+            val b = mine.getOrElse(i) { 0 }
+            if (a != b) return a < b
+        }
+        return false
+    }
+
     fun levelName(level: Int) = when (level) {
         DuoBridge.LOG_DEBUG -> "D"
         DuoBridge.LOG_WARN -> "W"
