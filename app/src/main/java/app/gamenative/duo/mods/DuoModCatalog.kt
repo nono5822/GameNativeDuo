@@ -83,8 +83,8 @@ object DuoModCatalog {
             launchExecutable = "StardewModdingAPI.exe",
             splitLayout = SplitLayout.NATIVE,
         ),
-        unityGame(id = "slime-rancher", appId = "STEAM_433340", title = "Slime Rancher"),
-        unityGame(id = "subnautica", appId = "STEAM_264710", title = "Subnautica"),
+        unityGame(id = "slime-rancher", appId = "STEAM_433340", title = "Slime Rancher", profile = true),
+        unityGame(id = "subnautica", appId = "STEAM_264710", title = "Subnautica", profile = true),
         // Plus a plugin of its own (source: duo/mods-src/unity/GameNativeDuo.HollowKnight): the map on the bottom
         // screen while you play.
         unityGame(
@@ -101,9 +101,16 @@ object DuoModCatalog {
      * A Unity game with the Mono backend and uGUI: BepInEx 5.4.23.5 (https://github.com/BepInEx/BepInEx, MIT,
      * unmodified; licence and notice alongside) loads through winhttp.dll, plus our generic plugin (source:
      * duo/mods-src/unity). Both are shared by every Unity game (`assets/duo/mods/shared/`); a game's own folder only
-     * holds its optional UI layout preset (`ui-layout.json`).
+     * holds its optional UI layout preset (`ui-layout.json`) and game profile (`profile.json`, duo/docs/game-profiles.md:
+     * copied next to layout.json in the prefix when [profile]).
      */
-    private fun unityGame(id: String, appId: String, title: String, extraGameFiles: Map<String, String> = emptyMap()) = DuoGameMod(
+    private fun unityGame(
+        id: String,
+        appId: String,
+        title: String,
+        extraGameFiles: Map<String, String> = emptyMap(),
+        profile: Boolean = false,
+    ) = DuoGameMod(
         id = id,
         appId = appId,
         title = title,
@@ -113,10 +120,14 @@ object DuoModCatalog {
             "$SHARED/BepInEx-NOTICE.txt" to "BepInEx/NOTICE-GameNativeDuo.txt",
             "$SHARED/unity-split" to "BepInEx/plugins/GameNativeDuo-split",
         ) + extraGameFiles,
+        prefixFiles = if (profile) mapOf("duo/mods/$id/profile.json" to PROFILE_IN_PREFIX) else emptyMap(),
         dllOverrides = listOf("winhttp=n,b"),
         splitLayout = SplitLayout.NATIVE,
         unity = true,
     )
+
+    /** Where the Unity adapter reads a game profile: next to layout.json. */
+    const val PROFILE_IN_PREFIX = "users/xuser/AppData/Roaming/GameNativeDuo/profile.json"
 
     private val byAppId = mods.associateBy { it.appId }
 
