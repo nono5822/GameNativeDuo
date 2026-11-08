@@ -1,0 +1,21 @@
+# GameNative Duo
+
+> GameNative Duo runs Windows PC games on dual-screen Android handhelds (AYN Thor first) and lets mods put a game's
+> UI, maps and companion apps on the bottom screen. This file indexes the developer documentation for language models.
+
+## Start here
+- [Devkit platform](devkit-platform.md): the three levels of mod (no code, game profile, code mod), the SDKs, the tools, trust.
+- [SDKs](../sdk/README.md): C# GameNativeDuo.Sdk, duo.lua, duo.h; one API in three languages; examples.
+- [Claude skill](../tools/claude-skill/gamenative-duo-dev/SKILL.md): the development loop, rules and known traps in one page.
+
+## Protocol and files
+- [Engine adapter contract](engine-adapter-contract.md): layout.json, ui.json, elements.json, features.json, the UDP bridge (all packet types and limits), native touch.
+- [Duo API](duo-api.md): the HTTP API of `duo sim` and of the device in developer mode (layout, inspector, bridge, console, logs, conformance).
+- [Uniform editing](uniform-editing.md): element features, editing levels, region view, the conformance check.
+- [Companions](companions.md): bottom-screen apps from JSON: cards, templates, conditions, bridge state and commands.
+- [Game profiles](game-profiles.md): Unity games as data (cameras, canvases, elements, state).
+- [Community packages](community-packages.md): the package format, signing, the index, consent for code.
+
+## Tools
+- `duo` (duo/tools/duo): `sim`, `new`, `build`, `dev`, `test`, `check`, `pack`, `submit`, `mcp`; one binary, AOT.
+- `duo mcp`: MCP server with tools info, elements, set_rule, tap, swipe, screenshot, logs, command, state, check, test, build, install_device.

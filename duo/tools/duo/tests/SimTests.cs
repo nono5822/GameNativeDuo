@@ -158,6 +158,31 @@ public class SimTests : IDisposable
     }
 
     [Fact]
+    public async Task McpServerDrivesTheSim()
+    {
+        await WaitConnected();
+        var args = new Args(new[] { "--url", _http.BaseAddress!.ToString(), "--code", "TOKEN1" });
+        async Task<JsonObject> Rpc(string method, JsonObject? p = null) =>
+            (await Mcp.Handle(new JsonObject { ["jsonrpc"] = "2.0", ["id"] = 1, ["method"] = method, ["params"] = p ?? new JsonObject() }, args))!;
+        var init = await Rpc("initialize", new JsonObject { ["protocolVersion"] = "2025-06-18" });
+        Assert.Equal("gamenative-duo", (string?)init["result"]!["serverInfo"]!["name"]);
+        var tools = init = await Rpc("tools/list");
+        Assert.Contains(tools["result"]!["tools"]!.AsArray(), t => (string?)t!["name"] == "screenshot");
+        Assert.Null(await Mcp.Handle(new JsonObject { ["jsonrpc"] = "2.0", ["method"] = "notifications/initialized" }, args));
+
+        var call = await Rpc("tools/call", new JsonObject { ["name"] = "elements", ["arguments"] = new JsonObject() });
+        Assert.Contains("\"Score\"", (string?)call["result"]!["content"]![0]!["text"]);
+        call = await Rpc("tools/call", new JsonObject { ["name"] = "tap", ["arguments"] = new JsonObject { ["x"] = 10, ["y"] = 10 } });
+        Assert.Null(call["result"]!["isError"]);
+        call = await Rpc("tools/call", new JsonObject { ["name"] = "command", ["arguments"] = new JsonObject { ["cmd"] = "test.ping" } });
+        Assert.Contains("pong", (string?)call["result"]!["content"]![0]!["text"]);
+        call = await Rpc("tools/call", new JsonObject { ["name"] = "screenshot", ["arguments"] = new JsonObject { ["screen"] = "top" } });
+        Assert.Equal(true, (bool?)call["result"]!["isError"]); // no game window to capture in a test: a clear error, not a crash
+        call = await Rpc("tools/call", new JsonObject { ["name"] = "check", ["arguments"] = new JsonObject() });
+        Assert.Contains("\"passed\": true", (string?)call["result"]!["content"]![0]!["text"]);
+    }
+
+    [Fact]
     public async Task ConformanceCheckPassesForAnHonestMod()
     {
         await WaitConnected();
