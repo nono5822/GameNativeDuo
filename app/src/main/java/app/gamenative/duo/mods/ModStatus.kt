@@ -30,6 +30,8 @@ data class SessionStatus(
     val capabilities: Int = 0,
     /** The Duo SDK version the mod was built with, empty when it does not use the SDK. */
     val sdk: String = "",
+    /** Developer mode: files from the dev folder that replaced the installed mod's this session. */
+    val devFiles: Int = 0,
 ) {
     val durationMs: Long get() = if (endedAt > startedAt) endedAt - startedAt else 0L
 
@@ -48,6 +50,7 @@ data class SessionStatus(
         .put("engine", engine)
         .put("capabilities", capabilities)
         .put("sdk", sdk)
+        .put("devFiles", devFiles)
 
     companion object {
         fun fromJson(o: JSONObject) = SessionStatus(
@@ -65,6 +68,7 @@ data class SessionStatus(
             engine = o.optString("engine"),
             capabilities = o.optInt("capabilities"),
             sdk = o.optString("sdk"),
+            devFiles = o.optInt("devFiles"),
         )
     }
 }

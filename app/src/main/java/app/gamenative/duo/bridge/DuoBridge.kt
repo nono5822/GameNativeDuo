@@ -156,7 +156,7 @@ class DuoBridge private constructor(private val socket: DatagramSocket) {
 
     /**
      * Developer mode's Bridge tab: told about every packet in and out (any thread; touch moves left out), decoded to a
-     * line by [BridgePackets.describe]. Null (the default) costs nothing.
+     * line by [BridgePackets.describe] ("" for a repeated HELLO: count it, do not list it). Null (the default) costs nothing.
      */
     @Volatile var recorder: ((incoming: Boolean, type: Byte, size: Int, text: String) -> Unit)? = null
 
@@ -213,8 +213,10 @@ class DuoBridge private constructor(private val socket: DatagramSocket) {
                 if (n < 4 || buffer[0] != 'G'.code.toByte() || buffer[1] != 'D'.code.toByte() || buffer[2] != VERSION) continue
                 val b = ByteBuffer.wrap(buffer, 0, n).order(ByteOrder.LITTLE_ENDIAN)
                 if (buffer[3] != HELLO && packet.port != modPort) continue
+                // A repeated HELLO (every 2 s) is counted but not listed: text "".
                 recorder?.let { r ->
-                    if (buffer[3] != HELLO || packet.port != modPort) r(true, buffer[3], n, BridgePackets.describe(buffer, n))
+                    val repeat = buffer[3] == HELLO && packet.port == modPort
+                    r(true, buffer[3], n, if (repeat) "" else BridgePackets.describe(buffer, n))
                 }
                 when (buffer[3]) {
                     HELLO -> if (n >= 8) onHello(packet.port, b.getInt(4), String(buffer, 8, n - 8, Charsets.US_ASCII))

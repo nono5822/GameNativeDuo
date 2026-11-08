@@ -641,7 +641,7 @@ private class SplitBottomPresentation(
         devOverlay = v
         // Index 2: after the game surface and the widgets, before the status card and any panel.
         val wrap = FrameLayout.LayoutParams.WRAP_CONTENT
-        root?.addView(v, minOf(2, root?.childCount ?: 0), FrameLayout.LayoutParams(wrap, wrap, Gravity.TOP or Gravity.END))
+        root?.addView(v, minOf(2, root?.childCount ?: 0), FrameLayout.LayoutParams(wrap, wrap, Gravity.TOP or Gravity.START))
     }
 
     private fun showEditor() {

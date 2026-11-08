@@ -127,6 +127,7 @@ class DualScreenSession internal constructor(
         gamescope = gamescope,
         xScreen = xServer?.screenInfo?.let { "${it.width}x${it.height}" }.orEmpty(),
         expectedScreen = DuoModInstaller.recordedScreenSize(context, container.id),
+        devFiles = DualScreenHost.devFiles.size,
     )
 
     // Talks to the game's mod (native touch, UI layout, companion state); only worth a socket when the game is split

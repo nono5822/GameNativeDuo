@@ -114,6 +114,7 @@ class DevSession(val bridge: DuoBridge, private val companion: CompanionSession?
     private fun record(incoming: Boolean, size: Int, text: String) {
         synchronized(recent) {
             if (incoming) packetsIn++ else packetsOut++
+            if (text.isEmpty()) return
             recent.addLast(
                 JSONObject().put("t", System.currentTimeMillis()).put("dir", if (incoming) "in" else "out")
                     .put("type", text.substringBefore(' ')).put("size", size).put("text", text.substringAfter(' ', "")),
@@ -165,6 +166,7 @@ class DevSession(val bridge: DuoBridge, private val companion: CompanionSession?
 
     /** Sends a command and waits (server thread) up to 3 s for its result: status name and message. */
     fun command(cmd: String, args: JSONObject?): Pair<String, String> {
+        if (!bridge.seenMod(DuoBridge.CAP_COMMANDS)) return "unknown" to "the mod takes no commands (no capability 128 in its HELLO)"
         val result = AtomicReference<Pair<String, String>>("timeout" to "the mod did not answer")
         val latch = CountDownLatch(1)
         main.post {

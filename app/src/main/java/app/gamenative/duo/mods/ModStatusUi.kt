@@ -172,6 +172,13 @@ private fun LastSession(report: ModStatusReport) {
                 Line(Icons.Outlined.Info, null, stringResource(R.string.duo_status_old_sdk, last.sdk, BridgePackets.SDK_VERSION))
             }
         }
+        else -> Unit
+    }
+    if (last != null && last.devFiles > 0) {
+        Line(Icons.Outlined.Info, null, stringResource(R.string.duo_status_dev_files, last.devFiles))
+    }
+    when {
+        last == null || last.modId == null || last.connected -> Unit
         last.gamescope -> Line(Icons.Outlined.Info, null, stringResource(R.string.duo_status_last_gamescope, ago(last.startedAt)))
         !last.splitOn -> Line(Icons.Outlined.Info, null, stringResource(R.string.duo_status_last_no_split, ago(last.startedAt)))
         !last.modExpected -> Line(Icons.Outlined.Info, null, stringResource(R.string.duo_status_no_bridge, ago(last.startedAt)))

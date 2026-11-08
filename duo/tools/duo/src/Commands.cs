@@ -232,9 +232,8 @@ public static class Commands
         string id = a["device"] ?? throw new DuoException("duo dev --device MOD-ID [DIR]   (duo sim: build, then run the game)");
         string dir = a.Positional.FirstOrDefault() ?? ".";
         string target = $"/sdcard/Android/data/app.gamenative.duo/files/duo/mods/dev/{id}/";
-        int rc = Shell("adb", $"shell mkdir -p {target}");
-        if (rc == 0)
-            rc = Shell("adb", $"push \"{Path.GetFullPath(dir)}/.\" {target}");
+        Shell("adb", $"shell mkdir -p {target}");
+        int rc = Shell("adb", $"push \"{Path.GetFullPath(dir)}/.\" {target}");
         Console.WriteLine(rc == 0 ? $"pushed to {target}: restart the game (developer mode on)" : "adb failed (is the device connected? duo/agents/thor-wifi.sh)");
         return Task.FromResult(rc);
     }
