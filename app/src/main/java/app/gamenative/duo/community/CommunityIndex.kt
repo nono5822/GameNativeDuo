@@ -293,6 +293,16 @@ data class BridgePermissions(val capabilities: Set<String>, val commands: List<S
     fun allowsCommand(name: String): Boolean =
         commands.any { p -> if (p.endsWith(".*")) name.startsWith(p.dropLast(1)) else name == p }
 
+    /** True when a mod -> app packet of [type] belongs to a declared feature (HELLO and LOG always do). */
+    fun allowsIncoming(type: Byte): Boolean = when (type) {
+        DuoBridge.STATE -> capabilityMask and DuoBridge.CAP_STATE != 0
+        DuoBridge.ELEMENTS_CHANGED -> capabilityMask and DuoBridge.CAP_ELEMENTS_CHANGED != 0
+        DuoBridge.ELEMENTS_WRITTEN -> capabilityMask and DuoBridge.CAP_ELEMENTS != 0
+        DuoBridge.COMMAND_RESULT -> capabilityMask and DuoBridge.CAP_COMMANDS != 0
+        DuoBridge.HAPTIC -> haptic
+        else -> true
+    }
+
     fun toJson(): JSONObject = JSONObject().put("capabilities", JSONArray(capabilities.sorted())).put("commands", JSONArray(commands))
 
     companion object {

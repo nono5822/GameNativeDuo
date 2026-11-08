@@ -42,6 +42,13 @@ object DuoModInstaller {
         null
     }
 
+    /** Where the installed mod came from (a community package: `{package, version, bridge?}`), or null. */
+    fun origin(context: Context, appId: String): JSONObject? = try {
+        stateFile(context, appId).takeIf { it.isFile }?.let { JSONObject(it.readText()).optJSONObject("origin") }
+    } catch (t: Throwable) {
+        null
+    }
+
     /** The screen size the installed mod set for [appId] (empty when none is installed or none was set). */
     fun recordedScreenSize(context: Context, appId: String): String = try {
         stateFile(context, appId).takeIf { it.isFile }?.let { JSONObject(it.readText()).optString("screenSize") }.orEmpty()

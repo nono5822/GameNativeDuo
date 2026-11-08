@@ -10,6 +10,7 @@ import android.os.Vibrator
 import android.os.VibratorManager
 import android.view.View
 import app.gamenative.duo.bridge.DuoBridge
+import app.gamenative.duo.community.BridgePermissions
 import app.gamenative.duo.community.GameProfileStore
 import app.gamenative.duo.companion.CompanionSession
 import app.gamenative.duo.dev.DevMods
@@ -133,7 +134,10 @@ class DualScreenSession internal constructor(
 
     // Talks to the game's mod (native touch, UI layout, companion state); only worth a socket when the game is split
     // or its companion reads a mod's state.
-    private val bridge = if (splitOn || companion?.manifest?.api != null) DuoBridge.open() else null
+    // A community mod built from source gets only the bridge features its manifest declared (set before any HELLO).
+    private val bridge = (if (splitOn || companion?.manifest?.api != null) DuoBridge.open() else null)?.also {
+        it.permissions = DuoModInstaller.origin(context, container.id)?.optJSONObject("bridge")?.let(BridgePermissions::fromJson)
+    }
     /** Developer mode (setting), with the dev-folder files [DualScreenHost.attach] loaded. */
     private val dev = DevSession.open(settings.developerMode, bridge, companion, DualScreenHost.devFiles)
 

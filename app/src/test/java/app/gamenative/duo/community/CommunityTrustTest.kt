@@ -47,6 +47,18 @@ class CommunityTrustTest {
         assertFalse(b.allowsCommand("other.map.zoom"))
         assertEquals(b, BridgePermissions.fromJson(b.toJson()))
     }
+
+    @Test
+    fun undeclaredPacketsAreDropped() {
+        val b = BridgePermissions(setOf("touch", "elements"), emptyList())
+        assertTrue(b.allowsIncoming(DuoBridge.HELLO))
+        assertTrue(b.allowsIncoming(DuoBridge.LOG))
+        assertTrue(b.allowsIncoming(DuoBridge.ELEMENTS_WRITTEN))
+        assertFalse(b.allowsIncoming(DuoBridge.STATE))
+        assertFalse(b.allowsIncoming(DuoBridge.HAPTIC))
+        assertFalse(b.allowsIncoming(DuoBridge.COMMAND_RESULT))
+        assertFalse(b.allowsIncoming(DuoBridge.ELEMENTS_CHANGED))
+    }
 }
 
 class AuthorKeyPinsTest {

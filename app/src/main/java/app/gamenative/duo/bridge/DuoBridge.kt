@@ -6,6 +6,7 @@ import android.os.Looper
 import android.os.Process
 import android.os.SystemClock
 import app.gamenative.duo.DualScreenHost
+import app.gamenative.duo.community.BridgePermissions
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
@@ -139,9 +140,11 @@ class DuoBridge private constructor(private val socket: DatagramSocket) {
 
     /**
      * Asks the mod to run [command] (`{"cmd": ..., "args": {...}}`, see duo/docs/companions.md); the mod answers with
-     * COMMAND_RESULT for [request] ([commandListeners]). False when the JSON is too big for one datagram.
+     * COMMAND_RESULT for [request] ([commandListeners]). False when the JSON is too big for one datagram, or when
+     * [permissions] do not list [command].
      */
     fun sendCommand(request: Int, command: String, args: org.json.JSONObject? = null): Boolean {
+        if (permissions?.allowsCommand(command) == false) return false
         val json = org.json.JSONObject().put("cmd", command).apply { if (args != null) put("args", args) }.toString().toByteArray()
         if (json.size > MAX_COMMAND_BYTES) return false
         val p = packet(COMMAND, 8 + json.size)
@@ -150,6 +153,13 @@ class DuoBridge private constructor(private val socket: DatagramSocket) {
         enqueue(p, coalesce = false)
         return true
     }
+
+    /**
+     * What a community mod built from source declared it does over the bridge (its manifest's `bridge`), or null for
+     * bundled and official mods. Set, HELLO capabilities are masked to it, packets of other features are dropped and
+     * only listed commands are sent (devkit-platform.md, "Permissions and consent").
+     */
+    @Volatile var permissions: BridgePermissions? = null
 
     /** Told (main thread) when the mod answers a command: request, status ([RESULT_OK]...), message. */
     val commandListeners = CopyOnWriteArrayList<(request: Int, status: Int, message: String) -> Unit>()
@@ -213,6 +223,7 @@ class DuoBridge private constructor(private val socket: DatagramSocket) {
                 if (n < 4 || buffer[0] != 'G'.code.toByte() || buffer[1] != 'D'.code.toByte() || buffer[2] != VERSION) continue
                 val b = ByteBuffer.wrap(buffer, 0, n).order(ByteOrder.LITTLE_ENDIAN)
                 if (buffer[3] != HELLO && packet.port != modPort) continue
+                if (permissions?.allowsIncoming(buffer[3]) == false) continue
                 // A repeated HELLO (every 2 s) is counted but not listed: text "".
                 recorder?.let { r ->
                     val repeat = buffer[3] == HELLO && packet.port == modPort
@@ -278,7 +289,8 @@ class DuoBridge private constructor(private val socket: DatagramSocket) {
         main.post { l(ms.coerceAtMost(HAPTIC_MAX_MS), strength.coerceIn(1, 255)) }
     }
 
-    private fun onHello(port: Int, caps: Int, name: String) {
+    private fun onHello(port: Int, announced: Int, name: String) {
+        val caps = permissions?.let { announced and it.capabilityMask } ?: announced
         val isNew = port != modPort || caps != capabilities || SystemClock.elapsedRealtime() - lastHelloAt >= MOD_TIMEOUT_MS
         modPort = port
         capabilities = caps

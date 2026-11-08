@@ -43,7 +43,7 @@ this file and starts at the first unchecked box.
 ### App
 - [x] A1 Package model: author keys, review status, bridge permissions, built-from-source; parser tests
 - [x] A2 Author key pinning at install; an update signed by another key needs consent again ("changed owner"); tests
-- [ ] A3 Installer path hardening; bridge masks undeclared capabilities and drops their packets for community mods; tests
+- [x] A3 Installer path hardening; bridge masks undeclared capabilities and drops their packets for community mods; tests
 - [ ] A4 Consent screen: author and key, review status, what it writes, bridge features; changed-owner variant
 - [ ] A5 Revocation: fetch and verify `revoked.json` (ETag) with the catalog; revoked mod turned off through the undo
       record, reason in the status; tests
@@ -108,3 +108,11 @@ this file and starts at the first unchecked box.
   earlier in the CI-checked chain) / CHANGED_OWNER (another key or none); pinned after a successful install. The
   consent key now includes the author key's fingerprint, so a version republished under another key asks again;
   `ModHubState.Consent` carries the owner check for the dialog (A4).
+- A3: `CommunityModInstaller.checkTargets` repeats the validator's rules (relative paths without `..`, `\\` or `:`;
+  prefix files only under the user's AppData/Documents, never GameNative Duo's folder; DLL overrides only for DLLs at
+  the game root or `winhttp` from shared `bepinex`), so a bad index entry cannot write elsewhere. A built mod's
+  `bridge` goes into the undo record's `origin` (an empty declaration when it has none); `DualScreenHost` sets
+  `DuoBridge.permissions` from it before any HELLO: HELLO capabilities masked, STATE / ELEMENTS_CHANGED /
+  ELEMENTS_WRITTEN / COMMAND_RESULT / HAPTIC dropped unless declared (HELLO and LOG always pass), `sendCommand` refuses
+  undeclared commands. Bundled and non-built mods: no permissions, unchanged. Tests: install rules, packet gating.
+  **Not device-tested** (needs a built community mod installed on the Thor).

@@ -57,8 +57,32 @@ object CommunityModInstaller {
         }
         val game = resolve(install.gameFiles)
         val prefix = resolve(install.prefixFiles)
+        checkTargets(game.keys, prefix.keys, install)
         val download = pkg.files.sumOf { maxOf(it.size, 0) }
         return Plan(game, prefix, install.sharedAssets, install.dllOverrides, install.launchExecutable, download)
+    }
+
+    /** Where a mod may write in the prefix (drive_c): the user's own folders, never Windows, programs or our files. */
+    private val PREFIX_ALLOWED = listOf("users/xuser/AppData/", "users/xuser/Documents/")
+    private const val PREFIX_RESERVED = "users/xuser/AppData/Roaming/GameNativeDuo/"
+
+    /** DLLs a shared asset puts at the game folder's root. */
+    private val SHARED_DLLS = mapOf("bepinex" to setOf("winhttp"))
+
+    /**
+     * The community validator's install rules again (tools/duo_index.py check_install), so a broken or tampered index
+     * entry cannot write outside them: relative paths only, prefix files in the user's folders, DLL overrides only for
+     * DLLs the package installs at the game root.
+     */
+    internal fun checkTargets(game: Set<String>, prefix: Set<String>, install: CommunityInstall) {
+        (game + prefix).firstOrNull { t -> t.startsWith("/") || t.contains('\\') || t.contains(':') || t.split('/').any { it == ".." } }
+            ?.let { throw IOException("the package writes outside its folders ($it)") }
+        prefix.firstOrNull { t -> PREFIX_ALLOWED.none { t.startsWith(it) } || t.startsWith(PREFIX_RESERVED) }
+            ?.let { throw IOException("the package writes where mods may not ($it)") }
+        val rootDlls = game.filter { '/' !in it && it.endsWith(".dll", ignoreCase = true) }.map { it.dropLast(4).lowercase() }.toSet() +
+            install.sharedAssets.keys.flatMap { SHARED_DLLS[it].orEmpty() }
+        install.dllOverrides.map { it.substringBefore('=').lowercase() }.firstOrNull { it !in rootDlls }
+            ?.let { throw IOException("the package overrides $it.dll without installing it") }
     }
 
     /** Downloads, checks and installs [pkg] for the game at [gameDir]. Throws [IOException] with a user-facing reason. */
@@ -91,7 +115,10 @@ object CommunityModInstaller {
             gameFiles = plan.gameFiles.mapValues { bytes.getValue(it.value.sha256) },
             prefixFiles = plan.prefixFiles.mapValues { bytes.getValue(it.value.sha256) },
             sharedAssets = plan.sharedAssets,
-            origin = JSONObject().put("package", pkg.id).put("version", pkg.version),
+            origin = JSONObject().put("package", pkg.id).put("version", pkg.version).apply {
+                // Built from source by the community CI: the bridge enforces what its manifest declared (none: nothing).
+                if (pkg.builtFrom != null) put("bridge", (pkg.bridge ?: BridgePermissions(emptySet(), emptyList())).toJson())
+            },
         )
         if (!ok) throw IOException("installing failed (see logs); nothing is left half-installed after removing it")
         CommunityPackages.markApplied(context, containerId, pkg)
