@@ -235,6 +235,7 @@ class ModHubState(
             when (pkg.kind) {
                 CommunityKind.UI_LAYOUT -> CommunityPackages.removeLayout(context, containerId)
                 CommunityKind.DUO_SETTINGS -> CommunityPackages.removeSettings(context, containerId)
+                CommunityKind.GAME_PROFILE -> CommunityPackages.removeProfile(context, containerId)
                 else -> Unit
             }
         }) { context.getString(R.string.duo_community_removed, pkg.title) }

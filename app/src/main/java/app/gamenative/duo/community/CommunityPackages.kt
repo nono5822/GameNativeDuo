@@ -156,6 +156,13 @@ object CommunityPackages {
                     ),
                 )
             }
+            CommunityKind.GAME_PROFILE -> {
+                val file = pkg.file("profile.json") ?: throw IOException("the package has no profile.json")
+                val bytes = download(context, file)
+                JSONObject(String(bytes, Charsets.UTF_8)) // must at least be JSON; the adapter ignores what it does not know
+                GameProfileStore.save(context, containerId, bytes)
+                GameProfileStore.clearRemoved(context, containerId)
+            }
             CommunityKind.MOD -> throw IOException("code mods are installed with CommunityModInstaller, after consent")
             else -> throw IOException("${pkg.kind.id} packages cannot be installed by this version of the app")
         }
@@ -193,6 +200,12 @@ object CommunityPackages {
         undo.delete()
         forget(context, containerId, CommunityKind.DUO_SETTINGS)
         Timber.tag(DualScreenHost.TAG).i("Community: settings package removed from %s", containerId)
+    }
+
+    /** Undoes an applied game profile: the bundled one (or none) is used from the next session start. */
+    fun removeProfile(context: Context, containerId: String) {
+        GameProfileStore.remove(context, containerId)
+        forget(context, containerId, CommunityKind.GAME_PROFILE)
     }
 
     /** Undoes an applied layout (back to the bundled preset or nothing). Settings stay as they are. */

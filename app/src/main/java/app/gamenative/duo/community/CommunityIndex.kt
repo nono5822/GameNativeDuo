@@ -15,7 +15,7 @@ object CommunityIndex {
     const val PUBLIC_KEY = "VDgt6QeCefGECccRBbtFePnNoPLAmUhPlN0jyswkpoo="
 
     /** Kinds this app version can apply. */
-    val APPLICABLE_KINDS = setOf(CommunityKind.UI_LAYOUT, CommunityKind.DUO_SETTINGS, CommunityKind.MOD)
+    val APPLICABLE_KINDS = setOf(CommunityKind.UI_LAYOUT, CommunityKind.DUO_SETTINGS, CommunityKind.MOD, CommunityKind.GAME_PROFILE)
 
     /** APK asset folders (under assets/duo/mods/shared/) a community mod may reuse instead of shipping its own copy. */
     val SHARED_ASSETS = setOf("bepinex", "unity-split", "BepInEx-LICENSE.txt", "BepInEx-NOTICE.txt")
@@ -51,6 +51,7 @@ enum class CommunityKind(val id: String) {
     DUO_SETTINGS("duo-settings"),
     DEVICE_PROFILE("device-profile"),
     MOD("mod"),
+    GAME_PROFILE("game-profile"),
     UNKNOWN(""),
     ;
 

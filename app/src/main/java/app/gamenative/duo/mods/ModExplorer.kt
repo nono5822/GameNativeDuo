@@ -435,6 +435,7 @@ private fun kindLabel(kind: CommunityKind) = when (kind) {
     CommunityKind.DUO_SETTINGS -> R.string.duo_community_kind_settings
     CommunityKind.DEVICE_PROFILE -> R.string.duo_community_kind_device
     CommunityKind.MOD -> R.string.duo_community_kind_mod
+    CommunityKind.GAME_PROFILE -> R.string.duo_community_kind_profile
     CommunityKind.UNKNOWN -> R.string.duo_community_kind_other
 }
 
@@ -508,6 +509,7 @@ private fun changes(entry: HubEntry): List<Int> = when (entry) {
         )
         CommunityKind.DUO_SETTINGS -> listOf(R.string.duo_hub_change_settings)
         CommunityKind.UI_LAYOUT -> listOf(R.string.duo_hub_change_layout)
+        CommunityKind.GAME_PROFILE -> listOf(R.string.duo_hub_change_profile)
         else -> emptyList()
     }
 }
@@ -551,7 +553,7 @@ private fun EntryActions(state: ModHubState, entry: HubEntry, compact: Boolean) 
                         Text(stringResource(R.string.duo_community_reapply))
                     }
                 }
-                if (pkg.kind == CommunityKind.UI_LAYOUT || pkg.kind == CommunityKind.DUO_SETTINGS) {
+                if (pkg.kind in setOf(CommunityKind.UI_LAYOUT, CommunityKind.DUO_SETTINGS, CommunityKind.GAME_PROFILE)) {
                     OutlinedButton(onClick = { state.removeAddOn(pkg) }, enabled = enabled, modifier = buttonModifier) {
                         Text(stringResource(R.string.duo_community_remove))
                     }

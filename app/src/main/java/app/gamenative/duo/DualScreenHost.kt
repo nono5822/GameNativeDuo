@@ -10,6 +10,7 @@ import android.os.Vibrator
 import android.os.VibratorManager
 import android.view.View
 import app.gamenative.duo.bridge.DuoBridge
+import app.gamenative.duo.community.GameProfileStore
 import app.gamenative.duo.companion.CompanionSession
 import app.gamenative.duo.dev.DevMods
 import app.gamenative.duo.dev.DevSession
@@ -185,6 +186,7 @@ class DualScreenSession internal constructor(
         report("session start (container ${container.id}, profile ${profile.id}, $settings)")
         if (screenSplit == null) LayoutFile.delete(container)
         LayoutFile.writeBridge(container, bridge?.port ?: 0)
+        GameProfileStore.writeToPrefix(context, container)
         bridge?.hapticListener = { ms, strength -> buzz(ms, strength) }
         bridge?.let { companion?.attachBridge(it) }
         try {
