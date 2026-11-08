@@ -46,6 +46,7 @@ namespace GameNativeDuo.UnitySplit
         private const float StatsSeconds = 30f;
         private const float WatchSeconds = 2f;
         private const float HelloSeconds = 2f;
+        private const float StateSeconds = 0.1f;
 
         private static ManualLogSource Log => Plugin.Log;
         internal static Split Instance;
@@ -67,7 +68,10 @@ namespace GameNativeDuo.UnitySplit
 
         /// <summary>Something new may need placing (a canvas was enabled, a scene loaded): scan before this frame renders.</summary>
         internal static void RequestScan() => _scanRequested = true;
-        private DateTime _layoutTime, _rulesTime;
+        private DateTime _layoutTime, _rulesTime, _profileTime;
+        private readonly StatePublisher _state = new StatePublisher();
+        private float _nextState;
+        private bool _stateBuildOk;
         private bool _dumpPending;
         private uint _dumpRequest;
         private bool _scaleErrorLogged;
@@ -76,6 +80,7 @@ namespace GameNativeDuo.UnitySplit
         {
             Instance = this;
             _touch = new TouchInjector(Router);
+            ReloadProfile();
             ReloadLayout();
             ReloadRules();
             var harmony = new Harmony("app.gamenative.duo.unitysplit");
@@ -154,8 +159,17 @@ namespace GameNativeDuo.UnitySplit
                 if (now >= _nextHello)
                 {
                     _nextHello = now + HelloSeconds;
-                    _bridge.SendHello(Bridge.CapTouch | Bridge.CapUiRules | Bridge.CapElements | Bridge.CapBgBasic, Engine + "/sdk" + Duo.SdkVersion);
+                    uint caps = Bridge.CapTouch | Bridge.CapUiRules | Bridge.CapElements | Bridge.CapBgBasic;
+                    if (GameProfile.Current.State.Count > 0)
+                        caps |= Bridge.CapState;
+                    _bridge.SendHello(caps, Engine + "/sdk" + Duo.SdkVersion);
                 }
+                if (_state.HasSubscribers && now >= _nextState)
+                {
+                    _nextState = now + StateSeconds;
+                    PublishState();
+                }
+                _state.Flush(_bridge, DateTime.UtcNow);
                 _bridge.Drain(_messages);
                 if (_messages.Count == 0)
                     return;
@@ -173,6 +187,9 @@ namespace GameNativeDuo.UnitySplit
                         case Bridge.DumpElements:
                             _dumpPending = true;
                             _dumpRequest = m.Request;
+                            break;
+                        case Bridge.Subscribe:
+                            _state.OnSubscribe(m.Text);
                             break;
                     }
                 }
@@ -294,6 +311,42 @@ namespace GameNativeDuo.UnitySplit
                 ReloadLayout();
             if (Modified(UiRules.FilePath, ref _rulesTime))
                 ReloadRules();
+            if (Modified(GameProfile.FilePath, ref _profileTime))
+            {
+                ReloadProfile();
+                ReloadRules(); // canvas screens and stay-on-top names come in as implicit rules
+                RequestScan();
+            }
+        }
+
+        private void ReloadProfile()
+        {
+            _profileTime = File.Exists(GameProfile.FilePath) ? File.GetLastWriteTimeUtc(GameProfile.FilePath) : DateTime.MinValue;
+            string error;
+            GameProfile.Current = GameProfile.Load(out error);
+            if (error.Length > 0)
+                Log.LogWarning(error);
+            _stateBuildOk = GameProfile.Current.BuildMatches(Application.version);
+            if (!GameProfile.Current.IsEmpty)
+            {
+                Log.LogInfo("Game profile " + GameProfile.Current.Game + ": " + GameProfile.Current.State.Count + " state key(s)" +
+                    (_stateBuildOk ? "" : "; built for " + string.Join(", ", GameProfile.Current.Builds.ToArray()) + ", this is " + Application.version + ": no state"));
+            }
+        }
+
+        /// <summary>The profile's state entries a visible companion card reads (read-only reflection, ~10 times a second).</summary>
+        private void PublishState()
+        {
+            if (!_stateBuildOk)
+                return;
+            foreach (GameProfile.StateEntry e in GameProfile.Current.State)
+            {
+                if (!_state.Wants(e.Key))
+                    continue;
+                object v;
+                if (StateReader.TryRead(e, out v))
+                    _state.Publish(e.Key, v);
+            }
         }
 
         private static bool Modified(string path, ref DateTime last)

@@ -179,6 +179,8 @@ namespace GameNativeDuo.UnitySplit
             _cameras.SetOurs(_bottomCam, _topCam, _hiddenCam, _background.Camera);
             foreach (string id in _aimIds)
                 _rules.AddImplicit(id, DuoScreen.Top);
+            foreach (RootState root in _roots.Values)
+                AddProfileScreen(root.Id);
             if (_layout == null || _bottomCam == null)
                 return;
             foreach (RootState root in _roots.Values)
@@ -285,6 +287,7 @@ namespace GameNativeDuo.UnitySplit
                 ScaleForScreen = boundToGameUi,
                 Camera = passive ? gameUiCamera : null,
             };
+            AddProfileScreen(root.Id);
             UiRule rule = _rules.Get(root.Id);
             root.Screen = root.Passive ? DuoScreen.Bottom : RootScreen(rule);
             root.Scale = rule != null && (!root.Passive || root.ScaleForScreen) ? rule.Scale : 1f;
@@ -312,6 +315,14 @@ namespace GameNativeDuo.UnitySplit
             Plugin.Log.LogInfo("UI under camera '" + root.Id + "' is editable (sprite HUD)");
         }
 
+        /// <summary>The game profile's screen for a canvas, as a default the user's rule can override.</summary>
+        private void AddProfileScreen(string id)
+        {
+            DuoScreen? s = GameProfile.Current.CanvasScreen(id);
+            if (s.HasValue)
+                _rules.AddImplicit(id, s.Value);
+        }
+
         private Camera GameUiCameraFor(Canvas canvas)
         {
             if (canvas.renderMode == RenderMode.ScreenSpaceCamera && _cameras.IsGameUiCamera(canvas.worldCamera))
@@ -332,7 +343,7 @@ namespace GameNativeDuo.UnitySplit
         {
             foreach (Transform t in root.Root.GetComponentsInChildren<Transform>(true))
             {
-                if (t == root.Root || !UiRules.IsAimElement(t.name) || !(t is RectTransform))
+                if (t == root.Root || !(t is RectTransform) || !(UiRules.IsAimElement(t.name) || GameProfile.Current.StaysOnTop(PathOf(t))))
                     continue;
                 string id = PathOf(t);
                 bool insideAnother = false;
@@ -991,8 +1002,9 @@ namespace GameNativeDuo.UnitySplit
                     sb.Append(',');
                 sb.Append("{\"id\":");
                 MiniJson.Quote(sb, e.Id);
+                GameProfile.ElementInfo pe = GameProfile.Current.Element(e.Id);
                 sb.Append(",\"name\":");
-                MiniJson.Quote(sb, e.Name);
+                MiniJson.Quote(sb, pe?.Name ?? e.Name);
                 sb.Append(",\"parent\":").Append(e.Parent);
                 sb.Append(",\"screen\":\"").Append(UiRule.ScreenId(e.Screen)).Append('"');
                 sb.Append(",\"x\":").Append(Mathf.RoundToInt(e.Rect.x));
@@ -1001,7 +1013,9 @@ namespace GameNativeDuo.UnitySplit
                 sb.Append(",\"h\":").Append(Mathf.RoundToInt(e.Rect.height));
                 sb.Append(",\"graphic\":").Append(e.Graphic ? "true" : "false");
                 // Contract "Element features": only what differs from "everything" (see Apply: sprites keep their camera).
-                if (e.FixedScreen && e.Home != DuoScreen.Hidden)
+                if (pe?.FeaturesJson != null)
+                    sb.Append(",\"features\":").Append(pe.FeaturesJson);
+                else if (e.FixedScreen && e.Home != DuoScreen.Hidden)
                     sb.Append(",\"features\":{\"screens\":[\"").Append(UiRule.ScreenId(e.Home)).Append("\",\"hidden\"]}");
                 sb.Append('}');
             }

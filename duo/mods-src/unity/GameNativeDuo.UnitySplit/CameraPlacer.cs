@@ -164,6 +164,7 @@ namespace GameNativeDuo.UnitySplit
         /// "HudCamera", "UI Camera": Risk of Rain 2, Hollow Knight, Silksong), or one a game quirk names.
         /// </summary>
         private bool IsUiCamera(Camera cam) =>
+            GameProfile.Current.IsUiCamera(cam.name, cam.cullingMask) ??
             Quirks.IsGameUiCamera(cam) ||
             UiCameraName.IsMatch(cam.name) ||
             (_uiLayerMask != 0 && cam.cullingMask != 0 && (cam.cullingMask & ~_uiLayerMask) == 0);

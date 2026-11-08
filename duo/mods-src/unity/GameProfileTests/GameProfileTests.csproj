@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- GameProfile (data-only profiles) without Unity running: Unity's assembly is referenced to compile, never called. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <IsPackable>false</IsPackable>
+    <DefineConstants>$(DefineConstants);DUO_SDK_EMBEDDED</DefineConstants>
+    <ManagedPath Condition="'$(ManagedPath)' == ''">$(HOME)/dev/GameNativeDuo/duo/agents/runs/2026-10-28-0119/sr-managed</ManagedPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../GameNativeDuo.UnitySplit/GameProfile.cs" Link="GameProfile.cs" />
+    <Compile Include="../GameNativeDuo.UnitySplit/GlobalUsings.cs" Link="GlobalUsings.cs" />
+    <Compile Include="../../../sdk/csharp/GameNativeDuo.Sdk/*.cs" Link="Sdk/%(Filename)%(Extension)" />
+    <Reference Include="UnityEngine"><HintPath>$(ManagedPath)/UnityEngine.dll</HintPath></Reference>
+    <Reference Include="UnityEngine.CoreModule" Condition="Exists('$(ManagedPath)/UnityEngine.CoreModule.dll')"><HintPath>$(ManagedPath)/UnityEngine.CoreModule.dll</HintPath></Reference>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+</Project>
