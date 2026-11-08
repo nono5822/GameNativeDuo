@@ -44,6 +44,12 @@ data class DuoContainerSettings(
      * Without a screen split it is the bottom screen; with one it opens from the bottom screen's menu.
      */
     val companion: String = "auto",
+    /**
+     * Developer mode (duo/docs/devkit-platform.md): the PC editor also serves the developer endpoints of the Duo API
+     * (duo/docs/duo-api.md), the bottom screen can show a developer overlay, and mods pushed with `duo dev --device`
+     * (files/duo/mods/dev/<mod>/) replace the installed mod's files at session start. Off by default.
+     */
+    val developerMode: Boolean = false,
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("bottomPanelEnabled", bottomPanelEnabled)
@@ -53,6 +59,7 @@ data class DuoContainerSettings(
         put("splitScale", splitScale.toDouble())
         put("region", region)
         put("companion", companion)
+        put("developerMode", developerMode)
     }
 
     companion object {
@@ -69,6 +76,7 @@ data class DuoContainerSettings(
                     .takeIf { it in SPLIT_SCALES } ?: fallback.splitScale,
                 region = json.optString("region", fallback.region),
                 companion = json.optString("companion", fallback.companion).ifBlank { fallback.companion },
+                developerMode = json.optBoolean("developerMode", fallback.developerMode),
             )
         }
     }

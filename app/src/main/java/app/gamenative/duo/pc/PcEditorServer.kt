@@ -4,8 +4,11 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.os.Process
+import app.gamenative.BuildConfig
 import app.gamenative.duo.DualScreenHost
+import app.gamenative.duo.bridge.BridgePackets
 import app.gamenative.duo.community.ShareLayout
+import app.gamenative.duo.dev.DevSession
 import app.gamenative.duo.ui.EditCapabilities
 import app.gamenative.duo.ui.UiBackground
 import app.gamenative.duo.ui.UiBackgroundMode
@@ -50,6 +53,9 @@ internal interface PcEditorHost {
 
     /** A JPEG of what [top] (else the bottom) screen shows now, or null. */
     fun snapshot(top: Boolean, done: (ByteArray?) -> Unit)
+
+    /** Developer mode for this session, or null when it is off (the developer endpoints then answer 403). */
+    val dev: DevSession? get() = null
 }
 
 /**
@@ -195,7 +201,17 @@ internal class PcEditorServer(private val context: Context, private val host: Pc
             }
             return send(out, 403, "application/json", """{"error":"wrong code"}""".toByteArray())
         }
-        when ("${req.method} ${req.path}") {
+        val route = "${req.method} ${req.path}"
+        if (route == "GET /api/info") return sendJson(out, info())
+        if (route in DEV_ROUTES) {
+            val dev = onMain(1_000) { done: (DevSession?) -> Unit -> done(host.dev) }
+                ?: return send(out, 403, "application/json", JSONObject().put("error", "developer mode is off").toString().toByteArray())
+            val api = PcDevApi(context, host, dev) { ms, block -> onMain(ms) { done: (Any?) -> Unit -> block(done) } }
+            api.handle(route, req.query, String(req.body))?.let { (status, o) ->
+                return send(out, status, "application/json", o.toString().toByteArray())
+            }
+        }
+        when (route) {
             "GET /api/state" -> sendJson(out, state())
             "GET /api/snapshot/top.jpg", "GET /api/snapshot/bottom.jpg" -> {
                 val jpeg = onMain(5_000) { done: (ByteArray?) -> Unit -> host.snapshot(req.path.contains("top"), done) }
@@ -264,6 +280,22 @@ internal class PcEditorServer(private val context: Context, private val host: Pc
             else -> send(out, 404, "text/plain", "not found".toByteArray())
         }
     }
+
+    /** `GET /api/info` (duo/docs/duo-api.md): which server, the game and the mod; `dev` says whether the developer tabs work. */
+    private fun info(): JSONObject = onMain(2_000) { done: (JSONObject?) -> Unit ->
+        val c = host.controller
+        val dev = host.dev
+        done(
+            JSONObject().put("api", 1).put("server", "device").put("app", BuildConfig.VERSION_NAME).put("sdk", BridgePackets.SDK_VERSION)
+                .put("dev", dev != null).put("game", c.layout.game).put("title", c.gameName)
+                .put(
+                    "mod",
+                    JSONObject().put("engine", c.engine).put("sdk", dev?.bridge?.sdkVersion.orEmpty())
+                        .put("caps", dev?.bridge?.capabilities ?: 0).put("connected", c.capabilities.source.name == "MOD"),
+                )
+                .apply { dev?.devFiles?.takeIf { it.isNotEmpty() }?.let { put("devFiles", JSONArray(it)) } },
+        )
+    } ?: JSONObject().put("error", "busy")
 
     private fun state(): JSONObject {
         val elements = onMain(4_000) { done: (UiElementList?) -> Unit -> host.controller.requestElements { done(it) } }
@@ -377,6 +409,13 @@ internal class PcEditorServer(private val context: Context, private val host: Pc
 
     companion object {
         const val PORT_FIRST = 8642
+
+        /** Developer endpoints: 403 unless developer mode is on (duo/docs/duo-api.md). */
+        private val DEV_ROUTES = setOf(
+            "GET /api/elements", "POST /api/elements/refresh", "GET /api/bridge", "POST /api/bridge/send", "POST /api/command",
+            "GET /api/companion/state", "POST /api/companion/subscribe", "POST /api/touch", "GET /api/events", "GET /api/logs",
+            "POST /api/check", "GET /api/check",
+        )
         private const val MAX_BODY = 16 * 1024 * 1024
         private const val MAX_BAD_CODES = 20
         private const val ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"

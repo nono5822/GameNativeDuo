@@ -160,6 +160,9 @@ class UiLayoutController(
     private var nextRequest = 1
     private val pending = mutableMapOf<Int, (UiElementList?) -> Unit>()
 
+    /** The mod's elements.json in the prefix (developer mode reads it as the mod wrote it). */
+    val elementsFile: java.io.File get() = UiLayoutStore.elementsFile(container)
+
     /** Told (main thread) when the mod says its element set changed (a scene change): open editors ask again. */
     val elementsChangedListeners = mutableListOf<() -> Unit>()
 

@@ -28,6 +28,9 @@ internal class DuoMenuPanel(
     pcRunning: Boolean = false,
     /** Opens the game's companion (null when it has none). */
     onCompanion: (() -> Unit)? = null,
+    /** Developer mode: shows or hides the developer overlay (null when developer mode is off). */
+    onDevOverlay: (() -> Unit)? = null,
+    devOverlayOn: Boolean = false,
 ) : FrameLayout(context) {
     init {
         setBackgroundColor(Color.argb(120, 0, 0, 0))
@@ -53,6 +56,7 @@ internal class DuoMenuPanel(
         onEditOnPc?.let { item(if (pcRunning) "PC editor (on)" else "Edit on PC", editUiOff == null) { it() } }
         if (editUiOff != null) card.addView(DuoUi.label(context, editUiOff, 12f, DuoUi.MUTED))
         onCalibrate?.let { item("Line up screens") { it() } }
+        onDevOverlay?.let { item(if (devOverlayOn) "Hide developer overlay" else "Developer overlay") { it() } }
         card.addView(View(context), LinearLayout.LayoutParams(1, dp(4)))
         item("Close") { onClose() }
         addView(card, LayoutParams(dp(320), LayoutParams.WRAP_CONTENT, Gravity.CENTER))

@@ -673,7 +673,8 @@ internal class UiLayoutEditor(
                     report.passed -> "Every declared feature works (${report.results.size} checks)."
                     else -> {
                         val failed = report.results.count { !it.passed }
-                        "$failed of ${report.results.size} checks failed: the editor offers what the mod declares, so fix the mod or its declaration."
+                        "$failed of ${report.results.size} checks failed: the editor offers what the mod declares, " +
+                            "so fix the mod or its declaration."
                     }
                 }
                 text.text = (listOf(head, "") + report.lines()).joinToString("\n")

@@ -53,6 +53,33 @@ object BridgePackets {
         return false
     }
 
+    /** One packet as a line for the Bridge tab: its type and what it carries. */
+    fun describe(p: ByteArray, n: Int): String {
+        if (n < 4) return "?"
+        val b = java.nio.ByteBuffer.wrap(p, 0, n).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        fun text(from: Int) = if (n > from) String(p, from, n - from, Charsets.UTF_8).take(200) else ""
+        return when (p[3]) {
+            DuoBridge.TOUCH -> if (n >= 16) {
+                val action = listOf("down", "move", "up", "cancel").getOrElse(p[4].toInt()) { "?" }
+                "TOUCH $action #${p[5]} ${b.getFloat(8).toInt()},${b.getFloat(12).toInt()}"
+            } else {
+                "TOUCH"
+            }
+            DuoBridge.RULES_CHANGED -> "RULES_CHANGED"
+            DuoBridge.DUMP_ELEMENTS -> "DUMP_ELEMENTS ${if (n >= 8) b.getInt(4) else ""}"
+            DuoBridge.SUBSCRIBE -> "SUBSCRIBE ${text(4)}"
+            DuoBridge.COMMAND -> "COMMAND #${if (n >= 8) b.getInt(4) else 0} ${text(8)}"
+            DuoBridge.HELLO -> "HELLO caps 0x${if (n >= 8) Integer.toHexString(b.getInt(4)) else "?"} ${text(8)}"
+            DuoBridge.ELEMENTS_WRITTEN -> "ELEMENTS_WRITTEN ${if (n >= 8) b.getInt(4) else ""}"
+            DuoBridge.STATE -> "STATE ${if (n > 4 && p[4].toInt() and 1 != 0) "full " else ""}${text(8)}"
+            DuoBridge.COMMAND_RESULT -> "COMMAND_RESULT #${if (n >= 8) b.getInt(4) else 0} ${if (n >= 9) p[8] else ""} ${text(9)}"
+            DuoBridge.ELEMENTS_CHANGED -> "ELEMENTS_CHANGED"
+            DuoBridge.LOG -> "LOG ${text(5)}"
+            DuoBridge.HAPTIC -> "HAPTIC ${if (n >= 7) b.getShort(4) else 0} ms"
+            else -> "0x" + Integer.toHexString(p[3].toInt() and 0xFF)
+        }
+    }
+
     fun levelName(level: Int) = when (level) {
         DuoBridge.LOG_DEBUG -> "D"
         DuoBridge.LOG_WARN -> "W"

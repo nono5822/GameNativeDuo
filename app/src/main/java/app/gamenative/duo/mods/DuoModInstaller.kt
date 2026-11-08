@@ -659,6 +659,27 @@ object DuoModInstaller {
     private fun sha256(bytes: ByteArray): String =
         MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
 
+    /**
+     * The installed mod's id and where each of its asset folders went (asset path, target in the game or prefix), from
+     * the undo record; null when no mod is installed. Used by developer mode's dev-folder mods ([app.gamenative.duo.dev.DevMods]).
+     */
+    internal fun installedSources(context: Context, appId: String): Pair<String, List<Pair<String, File>>>? {
+        val file = stateFile(context, appId)
+        if (!file.isFile) return null
+        val state = JSONObject(file.readText())
+        val gameDir = File(state.getString("gameDir"))
+        val driveC = File(state.getString("driveC"))
+        val sources = mutableListOf<Pair<String, File>>()
+        DuoModCatalog.mods.firstOrNull { it.id == state.optString("mod") }?.let { mod ->
+            mod.gameFiles.forEach { (asset, rel) -> sources += asset to File(gameDir, rel) }
+            mod.prefixFiles.forEach { (asset, rel) -> sources += asset to File(driveC, rel) }
+        }
+        state.optJSONObject("origin")?.optJSONObject("sharedAssets")?.let { shared ->
+            shared.keys().forEach { asset -> sources += "$SHARED_ASSETS/$asset" to inside(gameDir, shared.getString(asset)) }
+        }
+        return state.optString("mod") to sources
+    }
+
     private fun stateFile(context: Context, appId: String) =
         File(context.filesDir, "duo/mods/" + appId.replace(Regex("[^A-Za-z0-9_.-]"), "_") + ".json")
 }

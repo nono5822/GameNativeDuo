@@ -75,9 +75,20 @@ class CompanionSession(
         b.subscribe(subscribed)
     }
 
+    private var shownKeys: Collection<String> = emptyList()
+
+    /** Keys developer mode's Console asks for, sent along with the shown cards' (any key, not only the api's). */
+    var extraKeys: Set<String> = emptySet()
+        set(value) {
+            field = value
+            subscribed = emptyList()
+            showKeys(shownKeys)
+        }
+
     /** The store keys shown cards and conditions read now; empty when the companion is hidden (the mod then sends nothing). */
     fun showKeys(keys: Collection<String>) {
-        val list = ModState.subscription(keys, manifest.api?.first)
+        shownKeys = keys
+        val list = (ModState.subscription(keys, manifest.api?.first) + extraKeys).distinct().sorted()
         if (list == subscribed) return
         subscribed = list
         bridge?.subscribe(list)

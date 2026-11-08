@@ -25,6 +25,8 @@ import app.gamenative.duo.companion.CompanionHost
 import app.gamenative.duo.companion.CompanionPickers
 import app.gamenative.duo.companion.CompanionSession
 import app.gamenative.duo.companion.CompanionView
+import app.gamenative.duo.dev.DevOverlay
+import app.gamenative.duo.dev.DevSession
 import app.gamenative.duo.display.DeviceProfile
 import app.gamenative.duo.display.ScreenCalibration
 import app.gamenative.duo.display.ScreenCalibrationStore
@@ -74,6 +76,8 @@ class SplitScreenController(
     private val modExpected: Boolean = false,
     /** The bottom screen output is running (for the session's status record). */
     private val onOutputAttached: () -> Unit = {},
+    /** Developer mode for this session, or null (see [DevSession]). */
+    private val dev: DevSession? = null,
     /** The game's companion: opens from the bottom screen's menu over the game's bottom part. */
     private val companion: CompanionSession? = null,
 ) {
@@ -145,6 +149,7 @@ class SplitScreenController(
                 modConnected = modConnected,
                 onOutputAttached = onOutputAttached,
                 companion = companion,
+                dev = dev,
             ).also { it.show() }
             Timber.tag(DualScreenHost.TAG).i(
                 "Screen split on: X screen %dx%d, top %s, bottom %s on display %d",
@@ -274,6 +279,7 @@ private class SplitBottomPresentation(
     private var modConnected: Boolean,
     private val onOutputAttached: () -> Unit,
     private val companion: CompanionSession?,
+    override val dev: DevSession?,
 ) : Presentation(outerContext, display),
     SurfaceHolder.Callback,
     PcEditorHost,
@@ -611,11 +617,31 @@ private class SplitBottomPresentation(
                     onEditOnPc = if (uiLayout != null) ::showPc else null,
                     pcRunning = pc != null,
                     onCompanion = if (companion != null) ::showCompanion else null,
+                    onDevOverlay = if (dev != null) ::toggleDevOverlay else null,
+                    devOverlayOn = devOverlay != null,
                 ),
             )
         } catch (t: Throwable) {
             Timber.tag(DualScreenHost.TAG).e(t, "Failed to open the bottom screen menu")
         }
+    }
+
+    private var devOverlay: DevOverlay? = null
+
+    /** Developer mode's overlay at the top of the bottom screen, above the game, below menus and panels. */
+    private fun toggleDevOverlay() {
+        hideOverlay()
+        val d = dev ?: return
+        devOverlay?.let {
+            root?.removeView(it)
+            devOverlay = null
+            return
+        }
+        val v = DevOverlay(context, d)
+        devOverlay = v
+        // Index 2: after the game surface and the widgets, before the status card and any panel.
+        val wrap = FrameLayout.LayoutParams.WRAP_CONTENT
+        root?.addView(v, minOf(2, root?.childCount ?: 0), FrameLayout.LayoutParams(wrap, wrap, Gravity.TOP or Gravity.END))
     }
 
     private fun showEditor() {

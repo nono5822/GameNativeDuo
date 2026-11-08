@@ -191,5 +191,12 @@ fun DuoSettingsTabContent(draft: DuoSettingsDraft) {
             subtitle = { Text(text = stringResource(R.string.duo_settings_companion_description)) },
             onClick = { draft.settings = settings.copy(companion = choices[(choices.indexOf(choice) + 1) % choices.size]) },
         )
+        SettingsSwitch(
+            colors = settingsTileColorsAlt(),
+            title = { Text(text = stringResource(R.string.duo_settings_developer_mode)) },
+            subtitle = { Text(text = stringResource(R.string.duo_settings_developer_mode_description)) },
+            state = settings.developerMode,
+            onCheckedChange = { draft.settings = settings.copy(developerMode = it) },
+        )
     }
 }

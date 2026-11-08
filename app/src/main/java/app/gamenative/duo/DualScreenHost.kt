@@ -11,6 +11,8 @@ import android.os.VibratorManager
 import android.view.View
 import app.gamenative.duo.bridge.DuoBridge
 import app.gamenative.duo.companion.CompanionSession
+import app.gamenative.duo.dev.DevMods
+import app.gamenative.duo.dev.DevSession
 import app.gamenative.duo.display.DeviceProfile
 import app.gamenative.duo.display.DisplayInventory
 import app.gamenative.duo.display.DisplaySnapshot
@@ -46,6 +48,10 @@ object DualScreenHost {
     var current: DualScreenSession? = null
         private set
 
+    /** Dev-folder files loaded for the session being attached (developer mode). */
+    internal var devFiles: List<String> = emptyList()
+        private set
+
     /**
      * Starts a dual-screen session for the game that is launching. The session ends by itself when
      * [lifecycleView] (the game screen's root view) is detached from its window.
@@ -53,6 +59,7 @@ object DualScreenHost {
     @JvmStatic
     fun attach(context: Context, lifecycleView: View, container: Container, xServer: XServer?): DualScreenSession? = try {
         DuoModInstaller.refreshIfUpdated(context, container.id)
+        devFiles = if (DuoSettingsStore.load(context, container.id).developerMode) DevMods.apply(context, container.id) else emptyList()
         if (!Container.isX11Display(container.containerVariant, container.displayServer)) {
             Timber.tag(TAG).w("Gamescope display server: screen split and bottom-screen views need X11 (Graphics tab)")
         }
@@ -125,6 +132,9 @@ class DualScreenSession internal constructor(
     // Talks to the game's mod (native touch, UI layout, companion state); only worth a socket when the game is split
     // or its companion reads a mod's state.
     private val bridge = if (splitOn || companion?.manifest?.api != null) DuoBridge.open() else null
+    /** Developer mode (setting), with the dev-folder files [DualScreenHost.attach] loaded. */
+    private val dev = DevSession.open(settings.developerMode, bridge, companion, DualScreenHost.devFiles)
+
     private val uiLayout = if (splitOn) {
         val regions = SplitLayout.fromId(settings.splitLayout) == SplitLayout.REGION
         UiLayoutController(context, container, bridge, regionMode = regions, legacyRegion = settings.region)
@@ -142,6 +152,7 @@ class DualScreenSession internal constructor(
             modExpected = sessionStatus.modExpected,
             onOutputAttached = { updateStatus { it.copy(secondScreen = true) } },
             companion = companion,
+            dev = dev,
         )
     } else {
         null
@@ -246,6 +257,7 @@ class DualScreenSession internal constructor(
         bottomPanel.stop()
         screenSplit?.stop()
         companion?.stop()
+        dev?.stop()
         try {
             gamescopeStatus?.dismiss()
         } catch (t: Throwable) {

@@ -137,6 +137,29 @@ class DuoBridge private constructor(private val socket: DatagramSocket) {
 
     @Volatile private var subscription: List<String> = emptyList()
 
+    /**
+     * Asks the mod to run [command] (`{"cmd": ..., "args": {...}}`, see duo/docs/companions.md); the mod answers with
+     * COMMAND_RESULT for [request] ([commandListeners]). False when the JSON is too big for one datagram.
+     */
+    fun sendCommand(request: Int, command: String, args: org.json.JSONObject? = null): Boolean {
+        val json = org.json.JSONObject().put("cmd", command).apply { if (args != null) put("args", args) }.toString().toByteArray()
+        if (json.size > MAX_COMMAND_BYTES) return false
+        val p = packet(COMMAND, 8 + json.size)
+        ByteBuffer.wrap(p).order(ByteOrder.LITTLE_ENDIAN).putInt(4, request)
+        System.arraycopy(json, 0, p, 8, json.size)
+        enqueue(p, coalesce = false)
+        return true
+    }
+
+    /** Told (main thread) when the mod answers a command: request, status ([RESULT_OK]...), message. */
+    val commandListeners = CopyOnWriteArrayList<(request: Int, status: Int, message: String) -> Unit>()
+
+    /**
+     * Developer mode's Bridge tab: told about every packet in and out (any thread; touch moves left out), decoded to a
+     * line by [BridgePackets.describe]. Null (the default) costs nothing.
+     */
+    @Volatile var recorder: ((incoming: Boolean, type: Byte, size: Int, text: String) -> Unit)? = null
+
     fun close() {
         closed = true
         try {
@@ -168,6 +191,9 @@ class DuoBridge private constructor(private val socket: DatagramSocket) {
             if (port == 0 || closed) continue
             try {
                 socket.send(DatagramPacket(p, p.size, InetSocketAddress(LOOPBACK, port)))
+                recorder?.let { r ->
+                    if (!(p[3] == TOUCH && p[4] == TOUCH_MOVE.toByte())) r(false, p[3], p.size, BridgePackets.describe(p, p.size))
+                }
             } catch (t: Throwable) {
                 if (!closed) Timber.tag(DualScreenHost.TAG).w(t, "Bridge send failed")
             }
@@ -187,6 +213,9 @@ class DuoBridge private constructor(private val socket: DatagramSocket) {
                 if (n < 4 || buffer[0] != 'G'.code.toByte() || buffer[1] != 'D'.code.toByte() || buffer[2] != VERSION) continue
                 val b = ByteBuffer.wrap(buffer, 0, n).order(ByteOrder.LITTLE_ENDIAN)
                 if (buffer[3] != HELLO && packet.port != modPort) continue
+                recorder?.let { r ->
+                    if (buffer[3] != HELLO || packet.port != modPort) r(true, buffer[3], n, BridgePackets.describe(buffer, n))
+                }
                 when (buffer[3]) {
                     HELLO -> if (n >= 8) onHello(packet.port, b.getInt(4), String(buffer, 8, n - 8, Charsets.US_ASCII))
                     STATE -> BridgePackets.state(buffer, n)?.let { (flags, changes) ->
@@ -195,6 +224,12 @@ class DuoBridge private constructor(private val socket: DatagramSocket) {
                     ELEMENTS_CHANGED -> main.post { elementsChangedListeners.forEach { it() } }
                     LOG -> if (n >= 5) onLog(buffer[4].toInt() and 0xFF, String(buffer, 5, n - 5, Charsets.UTF_8))
                     HAPTIC -> if (n >= 7) onHaptic(b.getShort(4).toInt() and 0xFFFF, buffer[6].toInt() and 0xFF)
+                    COMMAND_RESULT -> if (n >= 9) {
+                        val request = b.getInt(4)
+                        val status = buffer[8].toInt() and 0xFF
+                        val message = String(buffer, 9, n - 9, Charsets.UTF_8)
+                        main.post { commandListeners.forEach { it(request, status, message) } }
+                    }
                     ELEMENTS_WRITTEN -> if (n >= 8) {
                         val request = b.getInt(4)
                         main.post { listener?.onElementsWritten(request) }
@@ -273,6 +308,16 @@ class DuoBridge private constructor(private val socket: DatagramSocket) {
         const val HELLO: Byte = 0x81.toByte()
         const val ELEMENTS_WRITTEN: Byte = 0x83.toByte()
         const val SUBSCRIBE: Byte = 0x04
+        const val COMMAND: Byte = 0x05
+        const val COMMAND_RESULT: Byte = 0x85.toByte()
+
+        const val RESULT_OK = 0
+        const val RESULT_REFUSED = 1
+        const val RESULT_UNKNOWN = 2
+        const val RESULT_FAILED = 3
+
+        /** A command and its arguments fit one small datagram; anything bigger is a mistake. */
+        const val MAX_COMMAND_BYTES = 1200
         const val STATE: Byte = 0x84.toByte()
         const val ELEMENTS_CHANGED: Byte = 0x86.toByte()
         const val LOG: Byte = 0x87.toByte()
