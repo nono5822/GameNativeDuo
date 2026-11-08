@@ -22,8 +22,10 @@ import timber.log.Timber
  *
  * Wire format (little-endian): `'G' 'D' version type`, then per type:
  * - app -> mod: [TOUCH] `action u8, pointer u8, 0, 0, x f32, y f32` (window pixels, origin top-left);
- *   [RULES_CHANGED]; [DUMP_ELEMENTS] `request u32`.
- * - mod -> app: [HELLO] `capabilities u32, engine ascii`; [ELEMENTS_WRITTEN] `request u32`.
+ *   [RULES_CHANGED]; [DUMP_ELEMENTS] `request u32`; [SUBSCRIBE] `json {"keys": [prefix...]}`.
+ * - mod -> app: [HELLO] `capabilities u32, engine ascii`; [ELEMENTS_WRITTEN] `request u32`;
+ *   [STATE] `flags u8, 0, 0, 0, json object` (companion state deltas); [ELEMENTS_CHANGED]; [LOG] `level u8, text`;
+ *   [HAPTIC] `ms u16, strength u8`. Everything after HELLO is accepted only from the port that said hello.
  *
  * Costs: the receive thread sleeps in the kernel; sends go through one background thread (Android forbids socket
  * I/O on the main thread, even on loopback), and touch moves are coalesced per finger so a slow game frame never
@@ -35,6 +37,26 @@ class DuoBridge private constructor(private val socket: DatagramSocket) {
 
         fun onElementsWritten(request: Int) {}
     }
+
+    /** Companion state from the mod (main thread): [STATE_FULL] in flags means drop the mod's old keys first. */
+    val stateListeners = CopyOnWriteArrayList<(flags: Int, changes: Map<String, Any?>) -> Unit>()
+
+    /** The mod's element set changed (a scene change): open editors refresh their list (main thread). */
+    val elementsChangedListeners = CopyOnWriteArrayList<() -> Unit>()
+
+    /** A mod log line (main thread), after logcat. */
+    val logListeners = CopyOnWriteArrayList<(level: Int, text: String) -> Unit>()
+
+    /** A short buzz the mod asked for (main thread): milliseconds (capped), strength 1-255. */
+    @Volatile var hapticListener: ((ms: Int, strength: Int) -> Unit)? = null
+
+    /** The last [LOG_HISTORY] mod log lines, oldest first, for the dev overlay and the Duo API. */
+    val recentLogs: List<String> get() = synchronized(logs) { logs.toList() }
+
+    private val logs = ArrayDeque<String>()
+    private var logWindowStart = 0L
+    private var logsInWindow = 0
+    private var lastHapticAt = 0L
 
     @Volatile var listener: Listener? = null
 
@@ -97,6 +119,19 @@ class DuoBridge private constructor(private val socket: DatagramSocket) {
         enqueue(p, coalesce = false)
     }
 
+    /**
+     * Tells the mod which state key prefixes a visible card reads; empty when no companion shows (the mod then sends
+     * nothing). Sent again with every HELLO from a new mod, so a restarted game picks it up.
+     */
+    fun subscribe(prefixes: Collection<String>) {
+        val list = prefixes.distinct().sorted()
+        subscription = list
+        val p = BridgePackets.subscribe(list) ?: return Timber.tag(DualScreenHost.TAG).w("Bridge: subscription too big, not sent")
+        enqueue(p, coalesce = false)
+    }
+
+    @Volatile private var subscription: List<String> = emptyList()
+
     fun close() {
         closed = true
         try {
@@ -136,7 +171,7 @@ class DuoBridge private constructor(private val socket: DatagramSocket) {
 
     private fun receiveLoop() {
         Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND)
-        val buffer = ByteArray(512)
+        val buffer = ByteArray(BridgePackets.MAX_DATAGRAM)
         val packet = DatagramPacket(buffer, buffer.size)
         while (!closed) {
             try {
@@ -146,8 +181,15 @@ class DuoBridge private constructor(private val socket: DatagramSocket) {
                 val n = packet.length
                 if (n < 4 || buffer[0] != 'G'.code.toByte() || buffer[1] != 'D'.code.toByte() || buffer[2] != VERSION) continue
                 val b = ByteBuffer.wrap(buffer, 0, n).order(ByteOrder.LITTLE_ENDIAN)
+                if (buffer[3] != HELLO && packet.port != modPort) continue
                 when (buffer[3]) {
                     HELLO -> if (n >= 8) onHello(packet.port, b.getInt(4), String(buffer, 8, n - 8, Charsets.US_ASCII))
+                    STATE -> BridgePackets.state(buffer, n)?.let { (flags, changes) ->
+                        main.post { stateListeners.forEach { it(flags, changes) } }
+                    }
+                    ELEMENTS_CHANGED -> main.post { elementsChangedListeners.forEach { it() } }
+                    LOG -> if (n >= 5) onLog(buffer[4].toInt() and 0xFF, String(buffer, 5, n - 5, Charsets.UTF_8))
+                    HAPTIC -> if (n >= 7) onHaptic(b.getShort(4).toInt() and 0xFFFF, buffer[6].toInt() and 0xFF)
                     ELEMENTS_WRITTEN -> if (n >= 8) {
                         val request = b.getInt(4)
                         main.post { listener?.onElementsWritten(request) }
@@ -161,6 +203,39 @@ class DuoBridge private constructor(private val socket: DatagramSocket) {
         }
     }
 
+    /** Receive thread. Capped at [LOG_PER_SECOND] lines a second, so a chatty mod cannot flood logcat. */
+    private fun onLog(level: Int, raw: String) {
+        val now = SystemClock.elapsedRealtime()
+        if (now - logWindowStart >= 1000) {
+            if (logsInWindow > LOG_PER_SECOND) Timber.tag(DualScreenHost.TAG).w("mod: %d log lines dropped", logsInWindow - LOG_PER_SECOND)
+            logWindowStart = now
+            logsInWindow = 0
+        }
+        if (++logsInWindow > LOG_PER_SECOND) return
+        val text = raw.take(MAX_LOG_CHARS).trimEnd()
+        val line = "${BridgePackets.levelName(level)} $text"
+        when (level) {
+            LOG_ERROR -> Timber.tag(DualScreenHost.TAG).e("mod: %s", text)
+            LOG_WARN -> Timber.tag(DualScreenHost.TAG).w("mod: %s", text)
+            LOG_DEBUG -> Timber.tag(DualScreenHost.TAG).d("mod: %s", text)
+            else -> Timber.tag(DualScreenHost.TAG).i("mod: %s", text)
+        }
+        synchronized(logs) {
+            logs.addLast(line)
+            while (logs.size > LOG_HISTORY) logs.removeFirst()
+        }
+        main.post { logListeners.forEach { it(level, text) } }
+    }
+
+    /** Receive thread. At most one buzz every [HAPTIC_GAP_MS], never longer than [HAPTIC_MAX_MS]. */
+    private fun onHaptic(ms: Int, strength: Int) {
+        val now = SystemClock.elapsedRealtime()
+        if (ms <= 0 || now - lastHapticAt < HAPTIC_GAP_MS) return
+        lastHapticAt = now
+        val l = hapticListener ?: return
+        main.post { l(ms.coerceAtMost(HAPTIC_MAX_MS), strength.coerceIn(1, 255)) }
+    }
+
     private fun onHello(port: Int, caps: Int, name: String) {
         val isNew = port != modPort || caps != capabilities || SystemClock.elapsedRealtime() - lastHelloAt >= MOD_TIMEOUT_MS
         modPort = port
@@ -169,6 +244,7 @@ class DuoBridge private constructor(private val socket: DatagramSocket) {
         lastHelloAt = SystemClock.elapsedRealtime()
         if (isNew) {
             Timber.tag(DualScreenHost.TAG).i("Bridge: %s mod connected from port %d (capabilities 0x%x)", name, port, caps)
+            if (caps and CAP_STATE != 0) BridgePackets.subscribe(subscription)?.let { enqueue(it, coalesce = false) }
             main.post {
                 listener?.onModConnected(caps, name)
                 connectListeners.forEach { it(caps, name) }
@@ -190,6 +266,19 @@ class DuoBridge private constructor(private val socket: DatagramSocket) {
         const val DUMP_ELEMENTS: Byte = 0x03
         const val HELLO: Byte = 0x81.toByte()
         const val ELEMENTS_WRITTEN: Byte = 0x83.toByte()
+        const val SUBSCRIBE: Byte = 0x04
+        const val STATE: Byte = 0x84.toByte()
+        const val ELEMENTS_CHANGED: Byte = 0x86.toByte()
+        const val LOG: Byte = 0x87.toByte()
+        const val HAPTIC: Byte = 0x88.toByte()
+
+        /** STATE flag: a full snapshot, the mod's keys not in it are gone. */
+        const val STATE_FULL = 1
+
+        const val LOG_DEBUG = 0
+        const val LOG_INFO = 1
+        const val LOG_WARN = 2
+        const val LOG_ERROR = 3
 
         const val CAP_TOUCH = 1
         const val CAP_UI_RULES = 2
@@ -204,6 +293,15 @@ class DuoBridge private constructor(private val socket: DatagramSocket) {
         /** Bottom-screen background: the game itself (the world continues on the bottom screen). */
         const val CAP_BG_GAME = 32
 
+        /** The mod publishes companion state (STATE) and honours SUBSCRIBE. */
+        const val CAP_STATE = 64
+
+        /** The mod runs commands (COMMAND / COMMAND_RESULT): companion buttons, hotkeys. */
+        const val CAP_COMMANDS = 128
+
+        /** The mod sends ELEMENTS_CHANGED, so editors need not poll its element list. */
+        const val CAP_ELEMENTS_CHANGED = 256
+
         const val TOUCH_DOWN = 0
         const val TOUCH_MOVE = 1
         const val TOUCH_UP = 2
@@ -217,6 +315,12 @@ class DuoBridge private constructor(private val socket: DatagramSocket) {
 
         /** Mods say hello every 2 s, but a loading screen can stall a game for seconds; this much silence means it is gone. */
         private const val MOD_TIMEOUT_MS = 15_000L
+
+        const val LOG_HISTORY = 200
+        private const val LOG_PER_SECOND = 50
+        private const val MAX_LOG_CHARS = 500
+        private const val HAPTIC_GAP_MS = 50L
+        private const val HAPTIC_MAX_MS = 200
 
         /** Opens a bridge on a free loopback port, or null (logged) when that fails. */
         fun open(): DuoBridge? = try {
