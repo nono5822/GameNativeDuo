@@ -36,9 +36,9 @@ this file and starts at the first unchecked box.
       comment; optional AI review step (secret-gated)
 - [x] K5 Author keys: `manifest.json.sig` (SSHSIG), key chain with rotation endorsements, checked against main's chain;
       index publishes `authorKey`/`authorKeys`; `duo keygen`, `duo pack --sign`
-- [ ] K6 Permissions: `bridge` declaration (capabilities, commands) in the schema; install target path rules
-- [ ] K7 Revocation: `revoked.json` (maintainer) -> signed `v1/revoked.json`; verify covers it
-- [ ] K8 Hollow Knight plugin as a source package; built with local stubs; site built and verified locally
+- [x] K6 Permissions: `bridge` declaration (capabilities, commands) in the schema; install target path rules
+- [x] K7 Revocation: `revoked.json` (maintainer) -> signed `v1/revoked.json`; verify covers it
+- [x] K8 Hollow Knight plugin as a source package; built with local stubs; site built and verified locally
 
 ### App
 - [ ] A1 Package model: author keys, review status, bridge permissions, built-from-source; parser tests
@@ -83,3 +83,21 @@ this file and starts at the first unchecked box.
   only extends, a key cannot be removed. Index: `authorKey`, `authorKeys` (no signatures). `duo_index.py sign |
   handover`; `duo keygen`, `duo pack --sign [--key]` (pack also verifies). 6 validator tests with real ssh-keygen keys
   (incl. a forged handover); duo test; duo-signed packages verify in the validator and the other way round.
+- K6 (community `752f925`): `bridge` (capabilities by name incl. `haptic`; commands with `.*` prefixes) in the schema,
+  required with `build` (as is `author`). `check_install`: prefixFiles only under `users/xuser/AppData/` or
+  `.../Documents/`, never `AppData/Roaming/GameNativeDuo/`; gameFiles may not write the app's own files; a DLL override
+  must name a DLL the package installs at the game root (or `winhttp` via shared `bepinex`). Targets resolve like
+  `CommunityModInstaller.plan`. 3 tests.
+- K7 (community `aab63b6`): `revoked.json` (CODEOWNERS; `{id, versions | ["*"], reason, date}`) checked by validate,
+  published signed as `v1/revoked.json`; index entries of revoked versions carry `revoked: <reason>`. 2 tests.
+- K8 (community `7eb82f8`; app `cc6ea25fe` adds NuGet lock files to the two
+  Unity plugin projects): `gamenative-duo.hollow-knight-dual-screen` 0.4.0 builds the HK plugin from
+  `nono5822/GameNativeDuo@cc6ea25fe` against `hollow-knight-1.5.12620` and `bepinex-5.4.23.5` (refs.json: sha256 only,
+  **no url: stubs not hosted**). `build_mods.py --repo-mirror URL=PATH` (unpushed commits); repository sources build
+  in their checkout. End to end in a throwaway clone signed with a throwaway key: validate OK, built twice
+  reproducibly (`754102d7...`), index built and verified, entry has `builtFrom`, `authorKey(s)`, `bridge`, the built
+  DLL as a blob; publishing without built outputs is refused.
+  **Before merging the community branch**: (1) sign the HK package with the maintainer's author key (`duo keygen`, then
+  `duo pack --sign games/steam-367520/gamenative-duo.hollow-knight-dual-screen`; validation fails until then);
+  (2) decide on hosting the two stub sets (a release asset, `url` in refs.json), or CI cannot build it; (3) push
+  `cc6ea25fe` (or the merged equivalent) to GitHub, or point the manifest at the commit that lands.
