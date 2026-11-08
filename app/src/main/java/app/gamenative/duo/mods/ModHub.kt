@@ -2,6 +2,7 @@ package app.gamenative.duo.mods
 
 import android.content.Context
 import app.gamenative.duo.DualScreenHost
+import app.gamenative.duo.community.AuthorKeyPins
 import app.gamenative.duo.community.CommunityGame
 import app.gamenative.duo.community.CommunityIndex
 import app.gamenative.duo.community.CommunityKind
@@ -176,7 +177,9 @@ object ModHub {
         writeSelection(context, containerId, o.put("consent", list))
     }
 
-    private fun consentKey(pkg: CommunityPackage) = "${pkg.id}@${pkg.version}"
+    /** Per version, and per author key: the same version republished under another key asks again. */
+    private fun consentKey(pkg: CommunityPackage) =
+        "${pkg.id}@${pkg.version}" + (pkg.authorKey?.let { "#" + AuthorKeyPins.fingerprint(it) } ?: "")
 
     // --- Switching -------------------------------------------------------------------------------------------------
 

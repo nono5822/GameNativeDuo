@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import app.gamenative.R
 import app.gamenative.duo.DualScreenHost
+import app.gamenative.duo.community.AuthorKeyPins
 import app.gamenative.duo.community.CommunityCatalog
 import app.gamenative.duo.community.CommunityGame
 import app.gamenative.duo.community.CommunityIndex
@@ -88,7 +89,14 @@ class ModHubState(
     var consent by mutableStateOf<Consent?>(null)
     var confirmLayout by mutableStateOf<CommunityPackage?>(null)
 
-    class Consent(val pkg: CommunityPackage, val plan: CommunityModInstaller.Plan, val replacesMod: Boolean, val then: () -> Unit)
+    class Consent(
+        val pkg: CommunityPackage,
+        val plan: CommunityModInstaller.Plan,
+        val replacesMod: Boolean,
+        /** How the package's author key compares with the one it was installed with ([AuthorKeyPins]). */
+        val owner: AuthorKeyPins.Check,
+        val then: () -> Unit,
+    )
 
     /** Whether Dual screen will work for this game, and what to fix (see [ModStatusReport]). */
     var status by mutableStateOf<ModStatusReport?>(null)
@@ -250,7 +258,8 @@ class ModHubState(
                     if (ModHub.hasConsent(context, containerId, entry)) {
                         null
                     } else {
-                        Consent(pkg, CommunityModInstaller.plan(pkg), DuoModInstaller.isEnabled(context, containerId)) {
+                        val owner = AuthorKeyPins.check(context, pkg)
+                        Consent(pkg, CommunityModInstaller.plan(pkg), DuoModInstaller.isEnabled(context, containerId), owner) {
                             scope.launch(Dispatchers.IO) { ModHub.recordConsent(context, containerId, pkg) }
                             block()
                         }

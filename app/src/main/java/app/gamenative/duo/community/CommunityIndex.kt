@@ -1,5 +1,6 @@
 package app.gamenative.duo.community
 
+import app.gamenative.duo.bridge.DuoBridge
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -213,6 +214,19 @@ data class CommunityPackage(
      * never from anything in the package's own entry.
      */
     val official: Boolean = false,
+    /**
+     * The author's SSH ed25519 key ("ssh-ed25519 AAAA..."). The index CI checked the manifest's signature with it; the
+     * app remembers it at install ([AuthorKeyPins]) so an update signed by someone else needs consent again.
+     */
+    val authorKey: String? = null,
+    /** Every key of the package, oldest first ([authorKey] last): each one handed over to the next, checked by CI. */
+    val authorKeys: List<String> = emptyList(),
+    /** "repo@commit" or "package": the code was built from this source by the community CI (not uploaded as a binary). */
+    val builtFrom: String? = null,
+    /** What a built mod may do over the bridge; enforced for [builtFrom] mods. */
+    val bridge: BridgePermissions? = null,
+    /** Why a maintainer revoked this version; such a version is never installed. */
+    val revoked: String? = null,
 ) {
     fun file(path: String): CommunityFile? = files.firstOrNull { it.path == path }
 
@@ -250,9 +264,55 @@ data class CommunityPackage(
                             ?.takeIf { c -> c.notes.isNotBlank() }
                     }
                 }.orEmpty(),
+                authorKey = o.optString("authorKey").takeIf { it.startsWith(SSH_ED25519) },
+                authorKeys = o.optJSONArray("authorKeys").strings().filter { it.startsWith(SSH_ED25519) },
+                builtFrom = o.optString("builtFrom").ifEmpty { null },
+                bridge = BridgePermissions.fromJson(o.optJSONObject("bridge")),
+                revoked = o.optString("revoked").ifBlank { null },
             )
         } catch (e: Exception) {
             null
+        }
+
+        private const val SSH_ED25519 = "ssh-ed25519 "
+    }
+}
+
+/**
+ * A mod's declared bridge use (manifest `bridge`, devkit-platform.md "Permissions and consent"). For mods built from
+ * source the bridge masks the HELLO capabilities to [capabilityMask], drops packets of undeclared features and sends
+ * only [allowsCommand] commands.
+ */
+data class BridgePermissions(val capabilities: Set<String>, val commands: List<String>) {
+    /** HELLO capability bits the declared names allow. */
+    val capabilityMask: Int get() = capabilities.fold(0) { mask, name -> mask or (CAPABILITIES[name] ?: 0) }
+
+    val haptic: Boolean get() = HAPTIC in capabilities
+
+    /** True when [name] is listed, or falls under a listed "prefix.*". */
+    fun allowsCommand(name: String): Boolean =
+        commands.any { p -> if (p.endsWith(".*")) name.startsWith(p.dropLast(1)) else name == p }
+
+    fun toJson(): JSONObject = JSONObject().put("capabilities", JSONArray(capabilities.sorted())).put("commands", JSONArray(commands))
+
+    companion object {
+        const val HAPTIC = "haptic"
+
+        /** Manifest names of the HELLO capability bits (`haptic` has no bit: it gates HAPTIC packets). */
+        val CAPABILITIES = mapOf(
+            "touch" to DuoBridge.CAP_TOUCH,
+            "ui-rules" to DuoBridge.CAP_UI_RULES,
+            "elements" to DuoBridge.CAP_ELEMENTS,
+            "background-basic" to DuoBridge.CAP_BG_BASIC,
+            "background-blur" to DuoBridge.CAP_BG_BLUR,
+            "background-game" to DuoBridge.CAP_BG_GAME,
+            "state" to DuoBridge.CAP_STATE,
+            "commands" to DuoBridge.CAP_COMMANDS,
+            "elements-changed" to DuoBridge.CAP_ELEMENTS_CHANGED,
+        )
+
+        fun fromJson(o: JSONObject?): BridgePermissions? = o?.let {
+            BridgePermissions(it.optJSONArray("capabilities").strings().toSet(), it.optJSONArray("commands").strings())
         }
     }
 }

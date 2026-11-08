@@ -41,8 +41,8 @@ this file and starts at the first unchecked box.
 - [x] K8 Hollow Knight plugin as a source package; built with local stubs; site built and verified locally
 
 ### App
-- [ ] A1 Package model: author keys, review status, bridge permissions, built-from-source; parser tests
-- [ ] A2 Author key pinning at install; an update signed by another key needs consent again ("changed owner"); tests
+- [x] A1 Package model: author keys, review status, bridge permissions, built-from-source; parser tests
+- [x] A2 Author key pinning at install; an update signed by another key needs consent again ("changed owner"); tests
 - [ ] A3 Installer path hardening; bridge masks undeclared capabilities and drops their packets for community mods; tests
 - [ ] A4 Consent screen: author and key, review status, what it writes, bridge features; changed-owner variant
 - [ ] A5 Revocation: fetch and verify `revoked.json` (ETag) with the catalog; revoked mod turned off through the undo
@@ -101,3 +101,10 @@ this file and starts at the first unchecked box.
   `duo pack --sign games/steam-367520/gamenative-duo.hollow-knight-dual-screen`; validation fails until then);
   (2) decide on hosting the two stub sets (a release asset, `url` in refs.json), or CI cannot build it; (3) push
   `cc6ea25fe` (or the merged equivalent) to GitHub, or point the manifest at the commit that lands.
+- A1: `CommunityPackage` gains `authorKey`, `authorKeys` (ed25519 only), `builtFrom`, `bridge` (`BridgePermissions`:
+  names -> HELLO capability mask, `haptic`, command patterns), `revoked`. `CommunityModInstaller.plan` refuses a revoked
+  version. Tests in `CommunityTrustTest`.
+- A2: `AuthorKeyPins` (`files/duo/community/author-keys.json`, per device): FIRST / SAME / HANDED_OVER (pinned key
+  earlier in the CI-checked chain) / CHANGED_OWNER (another key or none); pinned after a successful install. The
+  consent key now includes the author key's fingerprint, so a version republished under another key asks again;
+  `ModHubState.Consent` carries the owner check for the dialog (A4).

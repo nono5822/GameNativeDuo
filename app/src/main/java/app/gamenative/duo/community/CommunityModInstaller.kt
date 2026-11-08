@@ -32,6 +32,7 @@ object CommunityModInstaller {
 
     /** Resolves the package's install map into target paths. Throws [IOException] for a package this app cannot install. */
     fun plan(pkg: CommunityPackage): Plan {
+        pkg.revoked?.let { throw IOException("this version was withdrawn: $it") }
         val install = pkg.install ?: throw IOException("the package says nothing about where its files go")
         fun resolve(map: Map<String, String>): Map<String, CommunityFile> {
             val out = LinkedHashMap<String, CommunityFile>()
@@ -94,6 +95,7 @@ object CommunityModInstaller {
         )
         if (!ok) throw IOException("installing failed (see logs); nothing is left half-installed after removing it")
         CommunityPackages.markApplied(context, containerId, pkg)
+        AuthorKeyPins.pin(context, pkg)
         Timber.tag(DualScreenHost.TAG).i("Community: installed mod %s %s for %s", pkg.id, pkg.version, containerId)
     }
 
