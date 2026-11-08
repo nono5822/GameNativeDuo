@@ -148,3 +148,18 @@ public class SimTests : IDisposable
         Assert.Equal(new[] { "hide", "move" }, report["results"]!.AsArray().Select(r => (string)r!["feature"]!).ToArray());
     }
 }
+
+public class CaptureTests
+{
+    [Fact]
+    public void PngIsWellFormed()
+    {
+        var bgra = new byte[4 * 4 * 4];
+        for (int i = 0; i < bgra.Length; i += 4)
+            bgra[i + 2] = 255; // red
+        var png = Capture.Png(bgra, 4, 1, 1, 2, 2);
+        Assert.Equal(new byte[] { 137, 80, 78, 71 }, png[..4]);
+        Assert.Equal(0xAE426082u, (uint)(png[^4] << 24 | png[^3] << 16 | png[^2] << 8 | png[^1])); // IEND's CRC
+        Assert.Equal(0xCBF43926u, Capture.Crc32(System.Text.Encoding.ASCII.GetBytes("123456789")));
+    }
+}
