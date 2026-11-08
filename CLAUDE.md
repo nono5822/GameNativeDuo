@@ -80,6 +80,8 @@ the id: prebuilt `libkgslshim.so` matches on that substring.
    messages, state capped ~30/s, commands back to the game; native panels from a JSON schema, WebView optional.
    **Started**: UDP on 127.0.0.1 (`duo/bridge/DuoBridge.kt`) carrying native touch, UI-layout reloads and element
    lists; spec in `duo/docs/engine-adapter-contract.md` (what every engine adapter implements).
+   Bridge v2 (app side): STATE/SUBSCRIBE into companions, ELEMENTS_CHANGED, LOG (logcat "mod:"), HAPTIC;
+   `bridge.json` whenever a bridge is open (also companion-only sessions).
 5. **Engine adapters**: Ren'Py, RPG Maker MV/MZ, Unity (uGUI/UI Toolkit; uGUI started, see below), Godot, Unreal (UMG); later a DXVK
    "UI split" that sends UI draws to a separate layer.
 6. **Community packages**: Git-based index, per-game presets that auto-apply (data-only by default, code mods

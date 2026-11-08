@@ -68,9 +68,32 @@ packets only from 127.0.0.1:`bridge.port`. Little-endian; every packet starts wi
 | `0x03` DUMP_ELEMENTS | app → adapter | `request u32`: write `elements.json`, then answer ELEMENTS_WRITTEN |
 | `0x81` HELLO | adapter → app | `capabilities u32` (1 touch, 2 UI rules, 4 element list, 8 background color and image, 16 blur, 32 game), engine name (ASCII) |
 | `0x83` ELEMENTS_WRITTEN | adapter → app | `request u32` |
+| `0x04` SUBSCRIBE | app → adapter | UTF-8 JSON `{"keys": [...]}`: the state keys visible companion cards read; `[]` = send nothing |
+| `0x05` COMMAND | app → adapter | `request u32`, UTF-8 JSON `{"cmd": "hk.map.zoom", "args": {...}}` |
+| `0x84` STATE | adapter → app | `flags u8` (1 = full snapshot), 3 bytes padding, UTF-8 JSON object of changed keys (`null` deletes) |
+| `0x85` COMMAND_RESULT | adapter → app | `request u32`, `status u8` (0 ok, 1 refused now, 2 unknown, 3 failed), UTF-8 message |
+| `0x86` ELEMENTS_CHANGED | adapter → app | none: the element set changed (scene change, a menu opened); an open editor asks again |
+| `0x87` LOG | adapter → app | `level u8` (0 debug, 1 info, 2 warn, 3 error), UTF-8 text: shown in logcat (`GNDuo`, "mod:") and the dev tools |
+| `0x88` HAPTIC | adapter → app | `ms u16`, `strength u8` (1-255): a short buzz, e.g. for a tap on a bottom-screen button |
+
+HELLO capabilities: 1 touch, 2 UI rules, 4 element list, 8 background color and image, 16 blur, 32 game, 64 state
+(STATE + SUBSCRIBE), 128 commands (COMMAND), 256 ELEMENTS_CHANGED (the app's editors then stop polling). A new
+feature is a new bit, never a new protocol version, so older adapters keep working.
 
 The app treats the adapter as gone after 15 s without a HELLO (loading screens stall games) and then falls back to
-mouse clicks. Moves are coalesced per finger; a receive thread must only queue, the game thread applies.
+mouse clicks. Moves are coalesced per finger; a receive thread must only queue, the game thread applies. Everything
+but HELLO is accepted only from the port that said hello.
+
+Limits the app enforces: one datagram per packet (STATE JSON at most 8 KB: split bigger states into several deltas),
+state applied at most 10 times a second (send at most 30 deltas a second, only subscribed keys), 50 log lines a
+second, one buzz every 50 ms of at most 200 ms. State keys go under the companion api's name (`hk.`); the app drops
+anything under `user.`, `static.`, `session.` or `file.`. A subscription entry `s` matches key `k` when `k == s` or
+`k` starts with `s.`. The app resends SUBSCRIBE after each new HELLO, so a restarted game picks it up.
+
+`bridge.json` (`{"port": N}`) sits next to `layout.json` whenever a bridge is open, including sessions without a
+split (a companion-only mod has no `layout.json`). Commands are specified in `companions.md`.
+
+The SDKs (`duo/sdk/`) implement all of this; an adapter built on them never packs a packet by hand.
 
 ## 4. Native touch
 

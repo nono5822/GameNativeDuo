@@ -141,9 +141,12 @@ keys; nothing reads a source directly. Prefixes say where a value came from:
 
 ### Bridge additions (protocol version stays 1, new types)
 
+Built on the app side (STATE into `CompanionData`, SUBSCRIBE from the shown page, `bridge.json`); full table and
+limits in `engine-adapter-contract.md`.
+
 | Type | Direction | Payload after the 4-byte header |
 |---|---|---|
-| `0x04` SUBSCRIBE | app → mod | UTF-8 JSON `{"keys": ["hk.map.", "hk.charms."]}`: the prefixes visible cards need; `[]` when the companion is hidden |
+| `0x04` SUBSCRIBE | app → mod | UTF-8 JSON `{"keys": ["hk.map", "hk.charms"]}`: the keys visible cards read (a key also covers `key.*`); `[]` when the companion is hidden |
 | `0x05` COMMAND | app → mod | `request u32`, UTF-8 JSON `{"cmd": "hk.equip", "args": {...}}` |
 | `0x84` STATE | mod → app | `flags u8` (1 = full snapshot: drop the api's old keys), 3 bytes padding, UTF-8 JSON object of changed keys (`null` deletes) |
 | `0x85` COMMAND_RESULT | mod → app | `request u32`, `status u8` (0 ok, 1 refused now, 2 unknown, 3 failed), UTF-8 JSON message |

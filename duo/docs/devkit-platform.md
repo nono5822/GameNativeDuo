@@ -34,14 +34,14 @@ need. Every addition is a new capability bit, so v1 mods keep working.
 
 | Addition | Direction | Status |
 |---|---|---|
-| `STATE` deltas (cap 64) + `companion-api.json` | mod → app | Specified in `companions.md`, app side not built |
-| `COMMAND` / `COMMAND_RESULT` (cap 128) | both | Built (hotkeys, companion buttons) |
-| `SUBSCRIBE` `keys` | app → mod | New: the mod sends only keys a visible card uses (idle cost 0) |
-| `ELEMENTS_CHANGED` | mod → app | New: the mod's element set changed (scene change), the editor refreshes without polling |
+| `STATE` deltas (cap 64) + `companion-api.json` | mod → app | Built (app side: companion cards) |
+| `COMMAND` / `COMMAND_RESULT` (cap 128) | both | Built with the hotkeys work (branch not merged yet) |
+| `SUBSCRIBE` `keys` | app → mod | Built: the mod sends only keys a visible card uses (idle cost 0) |
+| `ELEMENTS_CHANGED` (0x86, cap 256) | mod → app | Built: the mod's element set changed (scene change), the editor refreshes without polling |
 | `FEATURES` (`features.json` next to `elements.json`) | mod → app | New: what the mod supports, see `uniform-editing.md` |
-| `LOG` `level u8, text` | mod → app | New: mod log lines reach logcat and the dev overlay, no file pulling |
-| `HAPTIC` `ms u16, strength u8` | mod → app | New, small: a tap on a bottom-screen card can buzz |
-| Key/button injection by the app | app → X server | New: hotkeys and companions drive games with **no mod** (keys go through the X server like a keyboard) |
+| `LOG` (0x87) `level u8, text` | mod → app | Built: mod log lines reach logcat and the dev tools, no file pulling |
+| `HAPTIC` (0x88) `ms u16, strength u8` | mod → app | Built: a tap on a bottom-screen card can buzz |
+| Key/button injection by the app | app → X server | Built with the hotkeys work: hotkeys and companions drive games with **no mod** |
 
 Rules carried over: IPv4 127.0.0.1 only, accept only from the session's port, receive threads only queue, the game
 thread applies, state capped ~30/s, commands go through the game's own UI paths (never memory or save writes).
