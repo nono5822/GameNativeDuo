@@ -1,3 +1,5 @@
+#nullable disable
+#pragma warning disable CS0649 // a mod that embeds the SDK need not use every field
 using System;
 using System.Collections.Generic;
 using System.Net;

@@ -1,6 +1,4 @@
 using System;
-using System.Collections.Generic;
-using System.IO;
 using UnityEngine;
 
 namespace GameNativeDuo.UnitySplit
@@ -19,38 +17,23 @@ namespace GameNativeDuo.UnitySplit
         public RectInt Top, Bottom;
         public int BridgePort;
 
-        public static string Dir =>
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "GameNativeDuo");
+        public static string Dir => DuoPaths.Dir;
 
-        public static string FilePath => Path.Combine(Dir, "layout.json");
+        public static string FilePath => DuoPaths.LayoutFile;
 
         public static Layout Load(out string error)
         {
-            error = "";
-            try
-            {
-                if (!File.Exists(FilePath))
-                {
-                    error = FilePath + " not found";
-                    return null;
-                }
-                object json = MiniJson.Parse(File.ReadAllText(FilePath));
-                var screen = Need(json, "screen");
-                var bridge = MiniJson.Obj(json, "bridge");
-                return new Layout
-                {
-                    ScreenW = (int)MiniJson.Num(screen, "w", 0),
-                    ScreenH = (int)MiniJson.Num(screen, "h", 0),
-                    Top = Rect(Need(json, "top")),
-                    Bottom = Rect(Need(json, "bottom")),
-                    BridgePort = (int)MiniJson.Num(bridge, "port", 0),
-                };
-            }
-            catch (Exception ex)
-            {
-                error = "could not read " + FilePath + ": " + ex.Message;
+            var d = DuoLayout.Load(out error);
+            if (d == null)
                 return null;
-            }
+            return new Layout
+            {
+                ScreenW = d.ScreenW,
+                ScreenH = d.ScreenH,
+                Top = new RectInt(d.Top.X, d.Top.Y, d.Top.W, d.Top.H),
+                Bottom = new RectInt(d.Bottom.X, d.Bottom.Y, d.Bottom.W, d.Bottom.H),
+                BridgePort = d.BridgePort,
+            };
         }
 
         /// <summary>True when the game window is the tall window this layout was made for.</summary>
@@ -67,16 +50,5 @@ namespace GameNativeDuo.UnitySplit
 
         public override string ToString() =>
             string.Format("screen {0}x{1}, top {2}, bottom {3}, bridge port {4}", ScreenW, ScreenH, Top, Bottom, BridgePort);
-
-        private static Dictionary<string, object> Need(object json, string key)
-        {
-            var o = MiniJson.Obj(json, key);
-            if (o == null)
-                throw new FormatException("no \"" + key + "\" object");
-            return o;
-        }
-
-        private static RectInt Rect(Dictionary<string, object> o) =>
-            new RectInt((int)MiniJson.Num(o, "x", 0), (int)MiniJson.Num(o, "y", 0), (int)MiniJson.Num(o, "w", 0), (int)MiniJson.Num(o, "h", 0));
     }
 }

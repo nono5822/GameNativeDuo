@@ -14,7 +14,12 @@
     <EnableHarmony>true</EnableHarmony>
     <EnableModDeploy>false</EnableModDeploy>
     <EnableModZip>false</EnableModZip>
+    <DefineConstants>$(DefineConstants);DUO_SDK_EMBEDDED</DefineConstants>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- The Duo SDK, as source: duo/sdk/csharp/GameNativeDuo.Sdk -->
+    <Compile Include="../../../sdk/csharp/GameNativeDuo.Sdk/*.cs" Link="Sdk/%(Filename)%(Extension)" />
+  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Pathoschild.Stardew.ModBuildConfig" Version="4.4.0" />
   </ItemGroup>
