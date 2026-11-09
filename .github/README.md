@@ -232,7 +232,7 @@ screen size and restores everything when switched off. After an app update, inst
 
 The Unity adapter is generic. Most Unity games that use the Mono backend and Unity's standard UI can be added with a
 single catalog entry, with per-game adjustments only where a game needs them. The list of games to support next is
-ranked from GameNative's own play data for the AYN Thor ([`duo/futuregames.md`](https://github.com/nono5822/GameNativeDuo/blob/duo/slime-rancher/duo/futuregames.md)).
+ranked from GameNative's own play data for the AYN Thor ([`duo/futuregames.md`](https://github.com/nono5822/GameNativeDuo/blob/devkit/duo/futuregames.md)).
 
 ## Devices
 
@@ -283,10 +283,10 @@ engine adapter, and the app share a small, engine-neutral contract:
   element list for the editor.
 
 Implement those three things for an engine and the editor, storage, touch and community presets work unchanged. The
-specification is [`duo/docs/engine-adapter-contract.md`](https://github.com/nono5822/GameNativeDuo/blob/duo/slime-rancher/duo/docs/engine-adapter-contract.md).
-The Unity adapter ([`duo/mods-src/unity`](https://github.com/nono5822/GameNativeDuo/tree/duo/slime-rancher/duo/mods-src/unity))
+specification is [`duo/docs/engine-adapter-contract.md`](https://github.com/nono5822/GameNativeDuo/blob/devkit/duo/docs/engine-adapter-contract.md).
+The Unity adapter ([`duo/mods-src/unity`](https://github.com/nono5822/GameNativeDuo/tree/devkit/duo/mods-src/unity))
 is the reference implementation, and the Stardew Valley adapter
-([`duo/mods-src/stardew`](https://github.com/nono5822/GameNativeDuo/tree/duo/slime-rancher/duo/mods-src/stardew)) is a
+([`duo/mods-src/stardew`](https://github.com/nono5822/GameNativeDuo/tree/devkit/duo/mods-src/stardew)) is a
 second, complete example for a non-Unity engine.
 
 ### Roadmap
@@ -301,14 +301,33 @@ second, complete example for a non-Unity engine.
 ./gradlew :app:assembleModernDebug     # APK in app/build/outputs/apk/modern/debug/
 ```
 The newest work is on the `devkit` branch and the `duo/*` feature branches. Architecture, conventions and debugging
-notes are in [`CLAUDE.md`](https://github.com/nono5822/GameNativeDuo/blob/duo/slime-rancher/CLAUDE.md) and
-[`duo/notes/`](https://github.com/nono5822/GameNativeDuo/tree/duo/slime-rancher/duo/notes).
+notes are in [`CLAUDE.md`](https://github.com/nono5822/GameNativeDuo/blob/devkit/CLAUDE.md) and
+[`duo/notes/`](https://github.com/nono5822/GameNativeDuo/tree/devkit/duo/notes).
 
 ## Staying close to GameNative
 
 This fork follows upstream closely. New code lives in its own package (`app.gamenative.duo`), and upstream files are
 only touched with small, documented hooks, so GameNative's improvements arrive here quickly. Fixes that help upstream
 are offered back.
+
+## How it's built
+
+GameNative Duo is a one-person project, and I build it with AI coding tools. I'd rather say that plainly than leave
+you to guess from the commit trailers.
+
+- **I set the direction.** I choose what gets built, the architecture, and the rules the code follows: new code in its
+  own package, one-line hooks into upstream files, no extra work on the CPU each frame. Those rules are written down
+  in [`CLAUDE.md`](https://github.com/nono5822/GameNativeDuo/blob/devkit/CLAUDE.md), and planned work is in the [issues](https://github.com/nono5822/GameNativeDuo/issues).
+- **Claude Code writes much of the code.** Commits it helped with carry a `Co-Authored-By: Claude` line.
+- **Nothing counts until it works on the device.** Changes have to build and pass the unit tests, and I check them on
+  an AYN Thor with real games, both screens, and frame rates and GPU logs when performance matters. Changes come in as
+  pull requests that I review.
+- **Some tasks run overnight.** A script in [`duo/agents/`](https://github.com/nono5822/GameNativeDuo/tree/devkit/duo/agents) takes issues one at a time,
+  runs an agent against the Thor over adb, and leaves the work on its own branch for me to review in the morning. A
+  local model on my PC reads the long logs, so the main model doesn't have to.
+- **Most of the time goes into testing and debugging.** GPU hangs, a crash that only showed up after a clean build,
+  game cameras fighting over the screen: each one was tracked down with kernel and system logs from the device and by
+  switching features off one at a time. What was found is written up in [`duo/notes/`](https://github.com/nono5822/GameNativeDuo/tree/devkit/duo/notes).
 
 ## Credits and licence
 
