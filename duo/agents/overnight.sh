@@ -2,7 +2,7 @@
 # Unattended Claude Code run on GameNative Duo, with the local Qwen worker and the Thor on adb.
 #
 #   duo/agents/overnight.sh duo/agents/tasks/regression-pass.md
-#   duo/agents/overnight.sh duo/agents/tasks/queue/*.md      several tasks, in order, on one branch
+#   duo/agents/overnight.sh 8 9 10                           GitHub issues (label `agent task`), in order, on one branch
 #
 # What it does, in order:
 #   1. refuses to start on a dirty working tree, then creates a fresh branch agent/<date-time>
@@ -22,11 +22,11 @@
 #   THOR_WIFI=1           reach the Thor over Wi-Fi (thor-wifi.sh) instead of the USB cable
 #   MIN_BATTERY=10        stop before a task or a resume when the Thor is below this
 #   MAX_LIMIT_WAITS=12    usage-limit resets to wait through in one run
-# Detached and keeping the PC awake: duo/agents/start-queue.sh <task.md>...
+# Detached and keeping the PC awake: duo/agents/start-queue.sh <issue number | task.md>...
 
 set -euo pipefail
 
-[ $# -ge 1 ] || { echo "usage: overnight.sh <task.md>..." >&2; exit 2; }
+[ $# -ge 1 ] || { echo "usage: overnight.sh <issue number | task.md>..." >&2; exit 2; }
 TASK_FILES=("$@")
 REPO="$(git rev-parse --show-toplevel)"
 AGENTS="$REPO/duo/agents"
@@ -36,6 +36,18 @@ RUN_DIR="$AGENTS/runs/$STAMP"
 QWEN_URL="${QWEN_URL:-http://127.0.0.1:9931}"
 cd "$REPO"
 mkdir -p "$RUN_DIR"
+
+# Issue numbers become task files: the issue's title and body, plus the rules every task follows.
+GH_REPO="$(git remote get-url origin | sed -E 's#^.*github\.com[:/]##; s#\.git$##')"
+for i in "${!TASK_FILES[@]}"; do
+  n="${TASK_FILES[$i]#\#}"
+  [[ "$n" =~ ^[0-9]+$ ]] || continue
+  f="$RUN_DIR/issue-$n.md"
+  gh issue view "$n" -R "$GH_REPO" --json number,title,body \
+    --jq '"# Issue #\(.number): \(.title)\n\nRead duo/agents/tasks/RULES.md first. Mention the issue in commits (Refs #\(.number)).\n\n\(.body)"' >"$f" ||
+    { echo "Could not read issue #$n (gh auth status?)" >&2; exit 2; }
+  TASK_FILES[$i]="$f"
+done
 
 # 1. clean tree, own branch
 if [ -n "$(git status --porcelain --untracked-files=no)" ]; then

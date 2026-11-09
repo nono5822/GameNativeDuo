@@ -19,7 +19,12 @@ claude -p (Opus) ── MCP ──> qwen_mcp.py ──> llama serve (Qwen, 127.0
 | `overnight.sh` | Unattended run: fresh branch, Qwen and Thor checks, `claude -p`, cost and Qwen usage summary |
 | `start-queue.sh` | Starts `overnight.sh` detached, PC kept awake; the run waits through usage limits and resumes each task's session every 5 h window (`tail -f duo/agents/runs/queue.log`) |
 | `thor-wifi.sh` | adb to the Thor over Wi-Fi: `tcpip` while plugged in, remembered IP, or Wireless debugging (mDNS) |
-| `tasks/regression-pass.md` | Example task: regression pass across the bundled games |
+| `tasks/RULES.md` | Rules every unattended task follows (quality bar, token economy) |
+| `tasks/regression-pass.md` | Example task file: regression pass across the bundled games |
+| `tasks/done/` | Finished task files from before tasks moved to GitHub issues |
+
+Tasks live in [GitHub issues](https://github.com/nono5822/GameNativeDuo/issues?q=is%3Aopen+label%3A%22agent+task%22)
+labelled `agent task`. Run some with `duo/agents/start-queue.sh 8 9` (issue numbers).
 
 ## Setup (once per PC)
 

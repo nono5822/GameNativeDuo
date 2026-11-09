@@ -55,6 +55,7 @@ Upstream lands ~4-5 commits/day; `XServerScreen.kt` (~6,800 lines) changes almos
 | `ui/model/LibraryViewModel.kt` | one filter line for the `DUAL_SCREEN` tab |
 | `ui/screen/library/LibraryAppScreen.kt` | `DualScreenToggle(...)` next to the Play button |
 | `.github/workflows/{app-release-signed,tagged-release,issues-contributors-only}.yml` | jobs guarded to run only in upstream repo |
+| `.github/pull_request_template.md` | replaced with our template (what and why, upstream files, testing, screenshots, not tested) |
 
 ## Why `app.gamenative.duo` and `AppPaths`
 
@@ -205,6 +206,8 @@ edit); colours, icon geometry and the banner source: `duo/branding/README.md`.
   log at every entry point.
 - Branches: `master` mirrors upstream untouched; `devkit` is the working branch; features go in `duo/<name>`
   branches with a PR into `devkit`.
+- Work items are GitHub issues (label `agent task` when written for an unattended run). Every change lands as a small PR
+  into `devkit` using the template, written plainly; it says `Closes #N`.
 - Kotlin style is enforced by kotlinter (`.editorconfig`, android_studio style, 140 cols, trailing commas).
 
 ## Build, install, debug
