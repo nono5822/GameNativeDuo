@@ -6,6 +6,7 @@ import app.gamenative.BuildConfig
 import app.gamenative.MainActivity
 import app.gamenative.PrefManager
 import app.gamenative.data.GameSource
+import app.gamenative.display.GamescopeSettings
 import app.gamenative.enums.Marker
 import app.gamenative.inputcontrols.ControlProfileService
 import app.gamenative.service.SteamService
@@ -25,6 +26,7 @@ import com.winlator.core.WineThemeManager
 import com.winlator.winhandler.WinHandler.PreferredInputApi
 import com.winlator.xenvironment.ImageFs
 import java.io.File
+import java.util.concurrent.ExecutionException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -51,7 +53,7 @@ object ContainerUtils {
         // Override default driver and DXVK version based on Turnip capability
         if (GPUInformation.isTurnipCapable(context)) {
             DefaultVersion.VARIANT = Container.BIONIC
-            DefaultVersion.WINE_VERSION = "proton-11.0-2-arm64ec-7"
+            DefaultVersion.WINE_VERSION = "proton-11.0-2-arm64ec-9"
             DefaultVersion.DEFAULT_GRAPHICS_DRIVER = "Wrapper"
             DefaultVersion.DXVK = if (GPUInformation.isAdreno6xx(context)) "1.11.1-sarek" else "2.4.1-gplasync"
             DefaultVersion.VKD3D = "2.14.1"
@@ -63,7 +65,7 @@ object ContainerUtils {
             DefaultVersion.ASYNC_CACHE = "1"
         } else if (GPUInformation.isAdrenoA12(context)) {
             DefaultVersion.VARIANT = Container.BIONIC
-            DefaultVersion.WINE_VERSION = "proton-11.0-2-arm64ec-7"
+            DefaultVersion.WINE_VERSION = "proton-11.0-2-arm64ec-9"
             DefaultVersion.DEFAULT_GRAPHICS_DRIVER = "Wrapper"
             DefaultVersion.DXVK = "2.4.1-gplasync"
             DefaultVersion.VKD3D = "2.14.1"
@@ -72,7 +74,7 @@ object ContainerUtils {
             DefaultVersion.ASYNC_CACHE = "1"
         } else if (GPUInformation.isAdreno8EliteGen5(context)) {
             DefaultVersion.VARIANT = Container.BIONIC
-            DefaultVersion.WINE_VERSION = "proton-11.0-2-arm64ec-7"
+            DefaultVersion.WINE_VERSION = "proton-11.0-2-arm64ec-9"
             DefaultVersion.DEFAULT_GRAPHICS_DRIVER = "Wrapper"
             DefaultVersion.DXVK = "2.4.1-gplasync"
             DefaultVersion.VKD3D = "2.14.1"
@@ -81,7 +83,7 @@ object ContainerUtils {
             DefaultVersion.ASYNC_CACHE = "1"
         } else if (GPUInformation.isAdreno8Elite(context)) {
             DefaultVersion.VARIANT = Container.BIONIC
-            DefaultVersion.WINE_VERSION = "proton-11.0-2-arm64ec-7"
+            DefaultVersion.WINE_VERSION = "proton-11.0-2-arm64ec-9"
             DefaultVersion.DEFAULT_GRAPHICS_DRIVER = "Wrapper"
             DefaultVersion.DXVK = "2.4.1-gplasync"
             DefaultVersion.VKD3D = "2.14.1"
@@ -90,7 +92,7 @@ object ContainerUtils {
             DefaultVersion.ASYNC_CACHE = "1"
         } else {
             DefaultVersion.VARIANT = Container.BIONIC
-            DefaultVersion.WINE_VERSION = "proton-11.0-2-arm64ec-7"
+            DefaultVersion.WINE_VERSION = "proton-11.0-2-arm64ec-9"
             DefaultVersion.DEFAULT_GRAPHICS_DRIVER =
                 if (GPUInformation.isAdrenoGPU(context)) "Wrapper" else "Wrapper-gamenative"
             DefaultVersion.DXVK = "async-1.10.3"
@@ -98,6 +100,10 @@ object ContainerUtils {
             DefaultVersion.STEAM_TYPE = Container.STEAM_TYPE_HEADLESS
             DefaultVersion.ASYNC_CACHE = "0"
         }
+        DefaultVersion.DISPLAY_SERVER = Container.defaultDisplayServer(
+            GPUInformation.getRenderer(context).orEmpty().contains("adreno", ignoreCase = true),
+            Build.VERSION.SDK_INT,
+        )
     }
 
     fun getGPUCards(context: Context): Map<Int, GpuInfo> {
@@ -174,6 +180,7 @@ object ContainerUtils {
             mouseWarpOverride = PrefManager.mouseWarpOverride,
             useDRI3 = PrefManager.useDRI3,
             hdrEnabled = PrefManager.hdrEnabled,
+            gamescopeOutputResolution = PrefManager.gamescopeOutputResolution,
             useSteamInput = PrefManager.useSteamInput,
             enableXInput = PrefManager.xinputEnabled,
 			enableDInput = PrefManager.dinputEnabled,
@@ -227,6 +234,7 @@ object ContainerUtils {
         PrefManager.mouseWarpOverride = containerData.mouseWarpOverride
         PrefManager.useDRI3 = containerData.useDRI3
         PrefManager.hdrEnabled = containerData.hdrEnabled
+        PrefManager.gamescopeOutputResolution = containerData.gamescopeOutputResolution
         PrefManager.disableMouseInput = containerData.disableMouseInput
         PrefManager.externalDisplayInputMode = containerData.externalDisplayMode
         PrefManager.externalDisplaySwap = containerData.externalDisplaySwap
@@ -389,6 +397,10 @@ object ContainerUtils {
             strictShaderMath = strictShaderMath,
             useDRI3 = container.isUseDRI3(),
             hdrEnabled = container.isHdrEnabled(),
+            gamescopeOutputResolution = container.getExtra(
+                GamescopeSettings.EXTRA_OUTPUT_RESOLUTION,
+                GamescopeSettings.OUTPUT_RESOLUTION_DEFAULT,
+            ),
             videoMemorySize = videoMemorySize,
             mouseWarpOverride = mouseWarpOverride,
             sharpnessEffect = container.getExtra("sharpnessEffect", "None"),
@@ -485,6 +497,7 @@ object ContainerUtils {
                 "launchBionicSteam" -> value?.let { updatedData.copy(launchBionicSteam = it as? Boolean ?: updatedData.launchBionicSteam) } ?: updatedData
                 "launchRealSteam" -> value?.let { updatedData.copy(launchRealSteam = it as? Boolean ?: updatedData.launchRealSteam) } ?: updatedData
                 "steamType" -> value?.let { updatedData.copy(steamType = (it as? String)?.takeIf { s -> s.isNotBlank() } ?: updatedData.steamType) } ?: updatedData
+                "displayServer" -> value?.let { updatedData.copy(displayServer = it as? String ?: updatedData.displayServer) } ?: updatedData
                 else -> updatedData
             }
         }
@@ -601,6 +614,7 @@ object ContainerUtils {
             container.setNeedsUnpacking(true)
         }
         container.putExtra("sharpnessEffect", containerData.sharpnessEffect)
+        container.putExtra(GamescopeSettings.EXTRA_OUTPUT_RESOLUTION, containerData.gamescopeOutputResolution)
         container.putExtra("sharpnessLevel", containerData.sharpnessLevel.toString())
         container.putExtra("sharpnessDenoise", containerData.sharpnessDenoise.toString())
         container.putExtra("vibrationIntensity", containerData.vibrationIntensity.coerceIn(0, 100).toString())
@@ -710,6 +724,27 @@ object ContainerUtils {
             containerManager.getContainerById(appId)
         } else {
             throw Exception("Container does not exist for game $appId")
+        }
+    }
+
+    /** Thrown when the on-disk container could not be created; the message names the cause. */
+    class ContainerCreationException(message: String, cause: Throwable? = null) : IllegalStateException(message, cause)
+
+    // Serialises container creation: two callers racing for the same id made the loser's
+    // mkdirs() fail, after which it deleted the winner's fresh directory or threw.
+    private val containerCreateLock = Any()
+
+    private fun createOrReuseContainer(
+        context: Context,
+        appId: String,
+        customConfig: ContainerData? = null,
+    ): Container = synchronized(containerCreateLock) {
+        // Re-read the home directory under the lock: another caller may have created it meanwhile.
+        val containerManager = ContainerManager(context)
+        if (containerManager.hasContainer(appId)) {
+            containerManager.getContainerById(appId)
+        } else {
+            createNewContainer(context, appId, appId, containerManager, customConfig)
         }
     }
 
@@ -829,22 +864,29 @@ object ContainerUtils {
         data.put("name", "container_$containerId")
 
         // Create the actual container
-        var container = containerManager.createContainerFuture(containerId, data).get()
+        val rootDir = ImageFs.find(context).getRootDir()
+        val containerDir = File(File(rootDir, "home"), ImageFs.USER + "-" + containerId)
+        val create: () -> Container? = {
+            try {
+                containerManager.createContainerFuture(containerId, data).get()
+            } catch (e: ExecutionException) {
+                val cause = e.cause ?: e
+                throw ContainerCreationException("Container creation failed for $containerId: $cause", cause)
+            }
+        }
+        var container = create()
         // If container creation failed, it might be because directory already exists but is corrupted
         // Try to clean it up and retry once
         if (container == null) {
             Timber.w("Container creation failed for $containerId, checking for corrupted directory...")
-            // Get the container directory path
-            val rootDir = ImageFs.find(context).getRootDir()
-            val homeDir = File(rootDir, "home")
-            val containerDir = File(homeDir, ImageFs.USER + "-" + containerId)
-
             if (containerDir.exists() && !containerManager.hasContainer(containerId)) {
                 Timber.w("Found orphaned/corrupted container directory, deleting and retrying: $containerId")
                 try {
                     FileUtils.delete(containerDir)
                     // Retry container creation after cleanup
-                    container = containerManager.createContainerFuture(containerId, data).get()
+                    container = create()
+                } catch (e: ContainerCreationException) {
+                    throw e
                 } catch (e: Exception) {
                     Timber.e(e, "Failed to clean up corrupted container directory: $containerId")
                 }
@@ -852,8 +894,12 @@ object ContainerUtils {
 
             // If still null after retry, throw exception
             if (container == null) {
-                Timber.e("Failed to create container for $containerId after cleanup attempt")
-                throw IllegalStateException("Failed to create container: $containerId")
+                val freeMb = rootDir.usableSpace / (1024 * 1024)
+                Timber.e("Failed to create container for $containerId after cleanup attempt (free space $freeMb MB)")
+                throw ContainerCreationException(
+                    "Failed to create container $containerId: directory ${containerDir.absolutePath} " +
+                        "exists=${containerDir.exists()}, writable root=${rootDir.canWrite()}, free space $freeMb MB",
+                )
             }
         }
 
@@ -876,6 +922,7 @@ object ContainerUtils {
 
         // Check for cached best config (store-backed games only, only if no custom config provided)
         var bestConfigMap: Map<String, Any?>? = null
+        var bestConfigMatch: BestConfigService.BestConfigMatch? = null
 
         if (supportsKnownConfigAutoApply(gameSource) && customConfig == null && PrefManager.autoApplyKnownConfig) {
             try {
@@ -906,6 +953,7 @@ object ContainerUtils {
                                 )
                                 if (parsedConfig != null && parsedConfig.isNotEmpty()) {
                                     bestConfigMap = parsedConfig
+                                    bestConfigMatch = bestConfig.toMatch()
                                 }
                             }
                         } catch (e: Exception) {
@@ -974,6 +1022,7 @@ object ContainerUtils {
                 strictShaderMath = PrefManager.strictShaderMath,
                 useDRI3 = PrefManager.useDRI3,
                 hdrEnabled = PrefManager.hdrEnabled,
+                gamescopeOutputResolution = PrefManager.gamescopeOutputResolution,
                 videoMemorySize = PrefManager.videoMemorySize,
                 mouseWarpOverride = PrefManager.mouseWarpOverride,
                 enableXInput = PrefManager.xinputEnabled,
@@ -1032,7 +1081,7 @@ object ContainerUtils {
         // If custom config is provided, just apply it and return
         if (customConfig?.dxwrapper != null) {
             applyToContainer(context, container, containerData)
-            SessionReport.markConfigApplied(container, if (bestConfigMap.isNullOrEmpty()) "default" else "known")
+            SessionReport.markConfigApplied(container, if (bestConfigMap.isNullOrEmpty()) "default" else "known", bestConfigMatch)
             return container
         }
 
@@ -1081,7 +1130,7 @@ object ContainerUtils {
 
         // Apply container data with the determined DX wrapper
         applyToContainer(context, container, containerData)
-        SessionReport.markConfigApplied(container, if (bestConfigMap.isNullOrEmpty()) "default" else "known")
+        SessionReport.markConfigApplied(container, if (bestConfigMap.isNullOrEmpty()) "default" else "known", bestConfigMatch)
         return container
     }
 
@@ -1091,7 +1140,7 @@ object ContainerUtils {
         val container = if (containerManager.hasContainer(appId)) {
             containerManager.getContainerById(appId)
         } else {
-            createNewContainer(context, appId, appId, containerManager)
+            createOrReuseContainer(context, appId)
         }
 
         // Ensure Custom Games have the A: drive mapped to the game folder
@@ -1207,12 +1256,12 @@ object ContainerUtils {
         } else {
             // Create new container with override config if present
             val overrideConfig = if (IntentLaunchManager.hasTemporaryOverride(appId)) {
-                IntentLaunchManager.getTemporaryOverride(appId)
+                IntentLaunchManager.getEffectiveContainerConfig(context, appId)
             } else {
                 null
             }
 
-            createNewContainer(context, appId, appId, containerManager, overrideConfig)
+            createOrReuseContainer(context, appId, overrideConfig)
         }
     }
 

@@ -1,6 +1,7 @@
 package app.gamenative
 
 import android.content.Context
+import android.content.pm.ActivityInfo
 import androidx.compose.runtime.mutableStateOf
 import androidx.datastore.core.DataStore
 import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
@@ -18,6 +19,7 @@ import app.gamenative.data.EulaInfo
 import app.gamenative.data.GameSource
 import app.gamenative.data.SteamApp
 import app.gamenative.data.filterForCountry
+import app.gamenative.display.GamescopeSettings
 import app.gamenative.powercontrol.autotuning.DeviceGate
 import app.gamenative.enums.AppTheme
 import app.gamenative.ui.enums.AppFilter
@@ -229,9 +231,16 @@ object PrefManager {
 
     private val DISPLAY_SERVER = stringPreferencesKey("display_server")
     var displayServer: String
-        get() = getPref(DISPLAY_SERVER, Container.DEFAULT_DISPLAY_SERVER)
+        get() = getPref(DISPLAY_SERVER, DefaultVersion.DISPLAY_SERVER)
         set(value) {
             setPref(DISPLAY_SERVER, value)
+        }
+
+    private val GAMESCOPE_OUTPUT_RESOLUTION = stringPreferencesKey("gamescopeOutputResolution")
+    var gamescopeOutputResolution: String
+        get() = getPref(GAMESCOPE_OUTPUT_RESOLUTION, GamescopeSettings.OUTPUT_RESOLUTION_DEFAULT)
+        set(value) {
+            setPref(GAMESCOPE_OUTPUT_RESOLUTION, value)
         }
 
     private val DISPLAY_RENDERER_MODE = stringPreferencesKey("display_renderer_mode")
@@ -481,6 +490,13 @@ object PrefManager {
         get() = getPref(PERFORMANCE_HUD_SHOW_GPU_TEMPERATURE, true)
         set(value) {
             setPref(PERFORMANCE_HUD_SHOW_GPU_TEMPERATURE, value)
+        }
+
+    private val PERFORMANCE_HUD_SHOW_BOTTLENECK = booleanPreferencesKey("performance_hud_show_bottleneck")
+    var performanceHudShowBottleneck: Boolean
+        get() = getPref(PERFORMANCE_HUD_SHOW_BOTTLENECK, true)
+        set(value) {
+            setPref(PERFORMANCE_HUD_SHOW_BOTTLENECK, value)
         }
 
     private val PERFORMANCE_HUD_SHOW_FAN = booleanPreferencesKey("performance_hud_show_fan")
@@ -1096,6 +1112,18 @@ object PrefManager {
             setPref(ALLOWED_ORIENTATION, Orientation.toInt(value))
         }
 
+    /**
+     * Last orientation chosen with the System menu's rotate button, stored as an
+     * [android.content.pm.ActivityInfo] screen orientation value so it can be
+     * re-applied when the launcher starts.
+     */
+    private val LAUNCHER_ORIENTATION = intPreferencesKey("launcher_orientation")
+    var launcherOrientation: Int
+        get() = getPref(LAUNCHER_ORIENTATION, ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED)
+        set(value) {
+            setPref(LAUNCHER_ORIENTATION, value)
+        }
+
     private val TIPPED = booleanPreferencesKey("tipped")
     var tipped: Boolean
         get() {
@@ -1179,13 +1207,6 @@ object PrefManager {
         get() = getPref(SUPPORT_LAST_SEEN, "")
         set(value) {
             setPref(SUPPORT_LAST_SEEN, value)
-        }
-
-    private val AI_HELP_PREFERRED_PATH = stringPreferencesKey("ai_help_preferred_path")
-    var aiHelpPreferredPath: String
-        get() = getPref(AI_HELP_PREFERRED_PATH, "")
-        set(value) {
-            setPref(AI_HELP_PREFERRED_PATH, value)
         }
 
     private val GAMENATIVE_ACCESS_TOKEN_ENC = byteArrayPreferencesKey("gamenative_access_token_enc")

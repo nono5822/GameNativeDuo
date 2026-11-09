@@ -2,6 +2,7 @@ package com.winlator.container
 
 import androidx.compose.runtime.saveable.mapSaver
 import app.gamenative.PluviaApp
+import app.gamenative.display.GamescopeSettings
 import com.winlator.box86_64.Box86_64Preset
 import com.winlator.core.DefaultVersion
 import com.winlator.core.WineInfo
@@ -18,7 +19,7 @@ data class ContainerData(
     val graphicsDriverConfig: String = "",
     val rendererPresentMode: String = "fifo",
     val displayRenderer: String = Container.DEFAULT_DISPLAY_RENDERER,
-    val displayServer: String = Container.DEFAULT_DISPLAY_SERVER,
+    val displayServer: String = DefaultVersion.DISPLAY_SERVER,
     val xrRefreshRate: Int = 72,
     val xrRenderScale: Int = 100,
     val sfCompatMode: Boolean = true,
@@ -68,6 +69,8 @@ data class ContainerData(
     val strictShaderMath: Boolean = true,
     val useDRI3: Boolean = true,
     val hdrEnabled: Boolean = false,
+    /** Gamescope output (`-W`/`-H`) resolution; [GamescopeSettings.OUTPUT_RESOLUTION_OFF] follows the container's General-tab screen size. */
+    val gamescopeOutputResolution: String = GamescopeSettings.OUTPUT_RESOLUTION_DEFAULT,
     val videoMemorySize: String = "2048",
     val mouseWarpOverride: String = "disable",
     val shaderBackend: String = "glsl",
@@ -184,6 +187,7 @@ data class ContainerData(
                     "externalDisplaySwap" to state.externalDisplaySwap,
                     "useDRI3" to state.useDRI3,
                     "hdrEnabled" to state.hdrEnabled,
+                    "gamescopeOutputResolution" to state.gamescopeOutputResolution,
                     "language" to state.language,
                     "forceDlc" to state.forceDlc,
                     "localSavesOnly" to state.localSavesOnly,
@@ -214,7 +218,7 @@ data class ContainerData(
                     graphicsDriverConfig = (savedMap["graphicsDriverConfig"] as? String) ?: "",
                     rendererPresentMode = (savedMap["rendererPresentMode"] as? String) ?: "fifo",
                     displayRenderer = (savedMap["displayRenderer"] as? String) ?: "vulkan",
-                    displayServer = (savedMap["displayServer"] as? String) ?: Container.DEFAULT_DISPLAY_SERVER,
+                    displayServer = (savedMap["displayServer"] as? String) ?: DefaultVersion.DISPLAY_SERVER,
                     xrRefreshRate = (savedMap["xrRefreshRate"] as? Int) ?: 72,
                     xrRenderScale = (savedMap["xrRenderScale"] as? Int) ?: 100,
                     sfCompatMode = (savedMap["sfCompatMode"] as? Boolean) ?: true,
@@ -266,6 +270,8 @@ data class ContainerData(
                     externalDisplaySwap = (savedMap["externalDisplaySwap"] as? Boolean) ?: false,
                     useDRI3 = (savedMap["useDRI3"] as? Boolean) ?: true,
                     hdrEnabled = (savedMap["hdrEnabled"] as? Boolean) ?: false,
+                    gamescopeOutputResolution = (savedMap["gamescopeOutputResolution"] as? String)
+                        ?: GamescopeSettings.OUTPUT_RESOLUTION_DEFAULT,
                     language = (savedMap["language"] as? String) ?: "english",
                     forceDlc = (savedMap["forceDlc"] as? Boolean) ?: false,
                     localSavesOnly = (savedMap["localSavesOnly"] as? Boolean) ?: false,

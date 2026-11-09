@@ -20,6 +20,7 @@ import androidx.annotation.NonNull;
 import com.winlator.PrefManager;
 
 import app.gamenative.PluviaApp;
+import app.gamenative.display.GameNativeDrm;
 import app.gamenative.display.GamescopeSettings;
 import app.gamenative.utils.LsfgQuickMenuHelper;
 import app.gamenative.utils.LsfgVkManager;
@@ -60,6 +61,7 @@ import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 import app.gamenative.BuildConfig;
 import app.gamenative.PluviaApp;
@@ -98,13 +100,32 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
     // back to the W^X-only minimal shim (still required to run Wine on a strict
     // W^X kernel) and legacy preloads nothing. Returns null to preload nothing.
     private String resolveLibredirectPreload(ImageFs imageFs) {
-        if (container != null && container.isDisableLibredirect()) {
+        if ((container != null && container.isDisableLibredirect()) || isColorOs17()) {
             if (BuildConfig.MODERN_ANDROID) {
                 return imageFs.getLibDir() + "/libredirect-bionic-wx-minimal.so";
             }
             return null;
         }
         return imageFs.getLibDir() + "/" + BuildConfig.PRELOAD_BIONIC_SO;
+    }
+
+    static boolean isColorOs17() {
+        String rom = systemProperty("ro.build.version.oplusrom");
+        if (rom != null && rom.startsWith("V17")) return true;
+        if (Build.VERSION.SDK_INT < 37) return false;
+        String maker = Build.MANUFACTURER == null ? "" : Build.MANUFACTURER.toLowerCase(Locale.ROOT);
+        return maker.equals("oneplus") || maker.equals("oppo") || maker.equals("realme");
+    }
+
+    private static String systemProperty(String name) {
+        try {
+            Class<?> cls = Class.forName("android.os.SystemProperties");
+            Object value = cls.getMethod("get", String.class).invoke(null, name);
+            return value instanceof String && !((String) value).isEmpty() ? (String) value : null;
+        }
+        catch (Exception e) {
+            return null;
+        }
     }
 
     /** Numeric Steam appid for the game in this container (e.g. "221380").
@@ -518,8 +539,9 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
         envVars.put("LD_PRELOAD", preload.isEmpty()
                 ? gsDir + "/lib/libgndrm_shim.so"
                 : preload + ":" + gsDir + "/lib/libgndrm_shim.so");
+        String gamescopeLibPath = gsDir + "/lib";
         String libPath = envVars.get("LD_LIBRARY_PATH");
-        envVars.put("LD_LIBRARY_PATH", libPath.isEmpty() ? gsDir + "/lib" : gsDir + "/lib:" + libPath);
+        envVars.put("LD_LIBRARY_PATH", libPath.isEmpty() ? gamescopeLibPath : gamescopeLibPath + ":" + libPath);
         // gamescope execvp's gamescopereaper and wlroots spawns xkbcomp.
         String path = envVars.get("PATH");
         envVars.put("PATH", path.isEmpty() ? gsDir + "/bin" : gsDir + "/bin:" + path);
@@ -529,6 +551,8 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
         FileUtils.chmod(xdgRunDir, 0700);
         envVars.put("XDG_RUNTIME_DIR", xdgRunDir.getPath());
         envVars.put("GAMENATIVE_DRM_SOCKET", "gndrm");
+        if (!envVars.has("GNDRM_SCANOUT_LAYOUT"))
+            envVars.put("GNDRM_SCANOUT_LAYOUT", scanoutLayout(context));
 
         envVars.put("XKB_CONFIG_ROOT", gsDir + "/share/xkeyboard-config-2");
         envVars.put("GAMESCOPE_PNP_IDS_PATH", gsDir + "/share/hwdata/pnp.ids");
@@ -553,26 +577,34 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
         if (container != null && container.getGraphicsDriver() != null)
             envVars.put("GNDRM_DRIVER_TYPE", container.getGraphicsDriver());
 
-        // The guest image name for the session reaper's game-exit watch.
-        String gameExecutable = container != null ? container.getExecutablePath() : "";
-        if (gameExecutable != null && !gameExecutable.isEmpty()) {
-            int separator = Math.max(gameExecutable.lastIndexOf('/'), gameExecutable.lastIndexOf('\\'));
-            String gameImage = separator >= 0 ? gameExecutable.substring(separator + 1) : gameExecutable;
-            if (!gameImage.isEmpty())
-                envVars.put("GAMENATIVE_GAME_PROCESS", gameImage);
-        }
-
-        // Same source as gamescope's -W/-H, so the two cannot drift.
-        int[] scanoutOutput = displaySize();
+        // Same source as gamescope's -W/-H and the daemon's mode; the panel is the fallback when the resolution is unreadable.
+        int[] scanoutOutput = GamescopeSettings.scanoutSize(container);
         if (scanoutOutput == null)
-            scanoutOutput = AppUtils.parseScreenSize(container != null ? container.getScreenSize() : null);
+            scanoutOutput = displaySize();
+        if (scanoutOutput == null)
+            scanoutOutput = gamescopeNestedSize();
         if (scanoutOutput != null)
             envVars.put("GNDRM_SCANOUT", scanoutOutput[0] + "x" + scanoutOutput[1]);
+
+        // The nested (-w/-h) geometry, seeded the same way: Xwayland's first window-sized allocations
+        // reach the daemon as a bare length, and without this it learns that size only from a later
+        // commit, so those early buffers stay kernel-owned and get copied in.
+        int[] nested = gamescopeNestedSize();
+        if (nested != null)
+            envVars.put("GNDRM_SCANOUT_NESTED", nested[0] + "x" + nested[1]);
 
         Log.i("BionicProgramLauncherComponent", "Gamescope display server active; bin="
                 + new File(gsDir, "bin/gamescope").exists() + " shim="
                 + new File(gsDir, "lib/libgndrm_shim.so").exists() + " xwayland="
                 + new File(gsDir, "bin/Xwayland").exists() + " xdg=" + xdgRunDir.getPath());
+    }
+
+    private static String scanoutLayout(Context context) {
+        try {
+            return GameNativeDrm.nativeScanoutLayout();
+        } catch (LinkageError e) {
+            return "bgra";
+        }
     }
 
     /** Mirrors XServerScreen.resolveGamescopeMode; a session override (setGamescopeModeOverride) wins to force X11 for the open-container session (the setup/pre-install session has no separate arm and follows the game arm). */
@@ -629,7 +661,6 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
                 + (hdr ? " --hdr-enabled" : "")
                 + (reshade.isEmpty() ? "" : " --reshade-effect " + reshade)
                 + GamescopeSettings.scalerArg(container)
-                + GamescopeSettings.gridArg()
                 + gamescopeModeGeometry() + " -- " + command;
     }
 
@@ -728,22 +759,20 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
         }
     }
 
-    /** " -W <w> -H <h> -w <w> -h <h>": -W/-H from the real display (matches the panel, no resample), -w/-h from the container screen size; either pair omitted if unknown. */
+    /** " -W <w> -H <h> -w <w> -h <h>": -W/-H from the container's output resolution (the container screen size when Off, the panel when Device's), -w/-h from the container screen size; either pair omitted if unknown. */
     private String gamescopeModeGeometry() {
-        int[] containerSize = AppUtils.parseScreenSize(container != null ? container.getScreenSize() : null);
-        int[] output = displaySize();
-        if (output == null) output = containerSize;
-        StringBuilder args = new StringBuilder();
-        if (output != null) args.append(" -W ").append(output[0]).append(" -H ").append(output[1]);
+        int[] containerSize = gamescopeNestedSize();
+        StringBuilder args = new StringBuilder(GamescopeSettings.outputGeometryArg(container));
         if (containerSize != null) args.append(" -w ").append(containerSize[0]).append(" -h ").append(containerSize[1]);
         return args.toString();
     }
 
-    /**
-     * The panel's real pixel size, or null if unreadable. This is what scanout needs: the
-     * container's screen size is an internal desktop resolution, so using it here would make
-     * gamescope present at 720p (or whatever preset) and resample onto the panel.
-     */
+    /** The container's screen size — the nested (-w/-h) geometry of a gamescope session — or null if unreadable. */
+    private int[] gamescopeNestedSize() {
+        return AppUtils.parseScreenSize(container != null ? container.getScreenSize() : null);
+    }
+
+    /** The panel's real pixel size, or null if unreadable; only the shim seed's last-resort fallback. */
     private static int[] displaySize() {
         int[] nativeSize = AppUtils.parseScreenSize(PluviaApp.getNativeDisplaySize());
         if (nativeSize != null) return nativeSize;

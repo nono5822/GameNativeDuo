@@ -229,6 +229,7 @@ private fun applyPerformanceHudPreset(
             showClockTime = false,
             showCpuTemperature = false,
             showGpuTemperature = false,
+            showBottleneck = false,
             showFrameRateGraph = false,
             showCpuUsageGraph = false,
             showGpuUsageGraph = false,
@@ -246,6 +247,7 @@ private fun applyPerformanceHudPreset(
             showClockTime = false,
             showCpuTemperature = false,
             showGpuTemperature = false,
+            showBottleneck = true,
             showFrameRateGraph = false,
             showCpuUsageGraph = false,
             showGpuUsageGraph = false,
@@ -263,6 +265,7 @@ private fun applyPerformanceHudPreset(
             showClockTime = false,
             showCpuTemperature = false,
             showGpuTemperature = false,
+            showBottleneck = false,
             showFrameRateGraph = true,
             showCpuUsageGraph = false,
             showGpuUsageGraph = false,
@@ -280,6 +283,7 @@ private fun applyPerformanceHudPreset(
             showClockTime = true,
             showCpuTemperature = true,
             showGpuTemperature = true,
+            showBottleneck = true,
             showFrameRateGraph = true,
             showCpuUsageGraph = true,
             showGpuUsageGraph = true,
@@ -303,6 +307,7 @@ private fun matchesPerformanceHudPreset(
         currentConfig.showClockTime == presetConfig.showClockTime &&
         currentConfig.showCpuTemperature == presetConfig.showCpuTemperature &&
         currentConfig.showGpuTemperature == presetConfig.showGpuTemperature &&
+        currentConfig.showBottleneck == presetConfig.showBottleneck &&
         currentConfig.showFrameRateGraph == presetConfig.showFrameRateGraph &&
         currentConfig.showCpuUsageGraph == presetConfig.showCpuUsageGraph &&
         currentConfig.showGpuUsageGraph == presetConfig.showGpuUsageGraph
@@ -1798,6 +1803,16 @@ private fun PerformanceHudQuickMenuTab(
             onToggle = {
                 onPerformanceHudConfigChanged(
                     performanceHudConfig.copy(showGpuTemperature = !performanceHudConfig.showGpuTemperature),
+                )
+            },
+            accentColor = accentColor,
+        )
+        QuickMenuToggleRow(
+            title = stringResource(R.string.performance_hud_bottleneck),
+            enabled = performanceHudConfig.showBottleneck,
+            onToggle = {
+                onPerformanceHudConfigChanged(
+                    performanceHudConfig.copy(showBottleneck = !performanceHudConfig.showBottleneck),
                 )
             },
             accentColor = accentColor,
