@@ -20,7 +20,7 @@ internal static class Patches
     public static void Apply(Harmony harmony)
     {
         Patch(harmony, nameof(Game1.updateViewportForScreenSizeChange), prefix: nameof(UpdateViewport_Prefix));
-        Patch(harmony, nameof(Game1.SetWindowSize), postfix: nameof(SetWindowSize_Postfix));
+        Patch(harmony, nameof(Game1.SetWindowSize), prefix: nameof(SetWindowSize_Prefix), postfix: nameof(SetWindowSize_Postfix));
         Patch(harmony, nameof(Game1.PushUIMode), postfix: nameof(PushUIMode_Postfix));
         // Not Game1.ShouldDrawOnBuffer: forcing it on the title and loading screens hung the GPU (kgsl "GPU hang
         // detected" within a minute of launch, every time); SMAPI already turns it on once a save is loaded.
@@ -33,11 +33,15 @@ internal static class Patches
             finalizer: new HarmonyMethod(typeof(Patches), nameof(DrawWorld_Finalizer))
         );
         Patch(harmony, nameof(Game1.drawMouseCursor), prefix: nameof(DrawMouseCursor_Prefix));
+        // Menus draw their own cursor (the inventory showed it next to a dragged item).
+        harmony.Patch(AccessTools.Method(typeof(IClickableMenu), nameof(IClickableMenu.drawMouse)),
+            prefix: new HarmonyMethod(typeof(Patches), nameof(MenuDrawMouse_Prefix)));
         foreach (string name in new[] { nameof(Game1.getMouseX), nameof(Game1.getOldMouseX) })
             Patch(harmony, name, postfix: nameof(MouseX_Postfix), args: new[] { typeof(bool) });
         foreach (string name in new[] { nameof(Game1.getMouseY), nameof(Game1.getOldMouseY) })
             Patch(harmony, name, postfix: nameof(MouseY_Postfix), args: new[] { typeof(bool) });
     }
+
 
     private static void Patch(Harmony harmony, string method, string? prefix = null, string? postfix = null, Type[]? args = null)
     {
@@ -62,6 +66,29 @@ internal static class Patches
         }
     }
 
+    /// <summary>
+    /// Skip a resize to the size the window already has (Wine reports one now and then, e.g. around taps): it would
+    /// reallocate every full-window render target, a visible hitch. Zoom and UI scale changes still go through, since
+    /// they change the targets' sizes.
+    /// </summary>
+    private static bool SetWindowSize_Prefix(Game1 __instance, int w, int h)
+    {
+        try
+        {
+            if (!ModEntry.Active || !L.Matches(w, h) || __instance.screen == null || __instance.uiScreen == null)
+                return true;
+            float zoom = Game1.options.zoomLevel, ui = Game1.options.uiScale;
+            bool same = __instance.screen.Width == (int)Math.Ceiling(L.World.X / zoom) && __instance.screen.Height == (int)Math.Ceiling(L.World.Y / zoom)
+                && __instance.uiScreen.Width == (int)Math.Ceiling(L.Bottom.Width / ui) && __instance.uiScreen.Height == (int)Math.Ceiling(L.Bottom.Height / ui)
+                && Game1.graphics.PreferredBackBufferWidth == w && Game1.graphics.PreferredBackBufferHeight == h;
+            return !same;
+        }
+        catch (Exception)
+        {
+            return true;
+        }
+    }
+
     /// <summary>Size the world render target to the whole window (both screens) and the UI render target to the bottom screen.</summary>
     private static void SetWindowSize_Postfix(Game1 __instance, int w, int h)
     {
@@ -77,11 +104,11 @@ internal static class Patches
             CreateRenderTargets(__instance);
             Game1.updateViewportForScreenSizeChange(fullscreenChange: false, w, h);
 
-            // Lay open menus out again for the bottom screen.
-            var bounds = new Rectangle(Game1.viewport.X, Game1.viewport.Y, Game1.viewport.Width, Game1.viewport.Height);
+            // Lay open menus out again for the bottom screen, in UI units (menus centre themselves in these bounds).
             Game1.PushUIMode();
             try
             {
+                var bounds = new Rectangle(0, 0, Game1.uiViewport.Width, Game1.uiViewport.Height);
                 foreach (IClickableMenu menu in Game1.onScreenMenus)
                     menu.gameWindowSizeChanged(bounds, bounds);
                 Game1.activeClickableMenu?.gameWindowSizeChanged(bounds, bounds);
@@ -203,6 +230,13 @@ internal static class Patches
         {
             var device = Game1.graphics.GraphicsDevice;
             var batch = Game1.spriteBatch;
+            // HUD elements the user sent to the top screen, laid out for it (nothing to do when there are none).
+            RenderTarget2D? topUi = HudLayout.DrawTopPass(device);
+            float zoom = Game1.options.zoomLevel;
+            var world = L.BottomWorld;
+            var bottomSource = new Rectangle((int)Math.Round(world.X / zoom), (int)Math.Round(world.Y / zoom),
+                (int)Math.Round(world.Width / zoom), (int)Math.Round(world.Height / zoom));
+            BottomBackground.Prepare(device, target_screen, bottomSource);
             device.SetRenderTarget(null);
             device.Clear(Color.Black);
             // Copy the world's colour but keep the window opaque: Stardew's lighting pass can leave the world
@@ -210,15 +244,13 @@ internal static class Patches
             batch.Begin(SpriteSortMode.Deferred, OpaqueColorOnly, SamplerState.LinearClamp, DepthStencilState.Default, RasterizerState.CullNone);
             // Top screen: the world's first rows. Bottom screen: the world after the rows hidden by the hinge,
             // magnified to the bottom screen's pixel density so both show it at the same physical size.
-            float zoom = Game1.options.zoomLevel;
             var topRows = new Rectangle(0, 0, target_screen.Width, (int)Math.Ceiling(L.Top.Bottom / zoom));
             batch.Draw(target_screen, Vector2.Zero, topRows, Color.White, 0f, Vector2.Zero, zoom, SpriteEffects.None, 1f);
-            var world = L.BottomWorld;
-            var bottomSource = new Rectangle((int)Math.Round(world.X / zoom), (int)Math.Round(world.Y / zoom),
-                (int)Math.Round(world.Width / zoom), (int)Math.Round(world.Height / zoom));
-            batch.Draw(target_screen, L.Bottom, bottomSource, Color.White);
+            // The bottom screen's background: the world (default), blurred, a color or an image (user's choice).
+            BottomBackground.Draw(batch, target_screen, bottomSource);
             batch.End();
             batch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.LinearClamp, DepthStencilState.Default, RasterizerState.CullNone);
+            BottomBackground.DrawDim(batch);
             // The game draws its fade to black in the UI layer, which only covers the bottom screen.
             if ((Game1.fadeToBlack || Game1.globalFade) && Game1.fadeToBlackAlpha > 0f)
             {
@@ -227,6 +259,8 @@ internal static class Patches
             }
             if (__instance.uiScreen != null)
                 batch.Draw(__instance.uiScreen, new Vector2(L.Bottom.X, L.Bottom.Y), __instance.uiScreen.Bounds, Color.White, 0f, Vector2.Zero, Game1.options.uiScale, SpriteEffects.None, 1f);
+            if (topUi != null)
+                batch.Draw(topUi, new Vector2(L.Top.X, L.Top.Y), topUi.Bounds, Color.White, 0f, Vector2.Zero, Game1.options.uiScale, SpriteEffects.None, 1f);
             batch.End();
             return false;
         }
@@ -239,7 +273,8 @@ internal static class Patches
 
     /// <summary>
     /// Title and loading screens (no save loaded, so no world render target): the game drew straight to the window;
-    /// put the UI layer on the bottom screen over it, as the game would at the window's top-left.
+    /// put the UI layer on the bottom screen over it, as the game would at the window's top-left, and the title
+    /// screen's top half (<see cref="TitleScreen"/>) on the top screen, fading with the game's fades.
     /// </summary>
     private static bool DrawUiOnly(Game1 game)
     {
@@ -248,8 +283,17 @@ internal static class Patches
         try
         {
             var batch = Game1.spriteBatch;
+            RenderTarget2D? top = TitleScreen.DrawTop(L);
             Game1.graphics.GraphicsDevice.SetRenderTarget(null);
+            if (top != null)
+                Game1.graphics.GraphicsDevice.Clear(Color.Black);
             batch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.LinearClamp, DepthStencilState.Default, RasterizerState.CullNone);
+            if (top != null)
+            {
+                batch.Draw(top, new Vector2(L.Top.X, L.Top.Y), top.Bounds, Color.White, 0f, Vector2.Zero, Game1.options.uiScale, SpriteEffects.None, 1f);
+                if ((Game1.fadeToBlack || Game1.globalFade) && Game1.fadeToBlackAlpha > 0f)
+                    batch.Draw(Game1.fadeToBlackRect, L.Top, Color.Black * (Game1.gameMode == 0 ? 1f - Game1.fadeToBlackAlpha : Game1.fadeToBlackAlpha));
+            }
             batch.Draw(game.uiScreen, new Vector2(L.Bottom.X, L.Bottom.Y), game.uiScreen.Bounds, Color.White, 0f, Vector2.Zero, Game1.options.uiScale, SpriteEffects.None, 1f);
             batch.End();
             return false;
@@ -271,11 +315,16 @@ internal static class Patches
         AlphaDestinationBlend = Blend.One,
     };
 
-    /// <summary>No mouse cursor while the pointer is on the bottom (touch) screen.</summary>
+    /// <summary>No menu cursor while a finger drives the game (held items are drawn separately and stay).</summary>
+    private static bool MenuDrawMouse_Prefix() => !(ModEntry.Active && (TouchInput.Driving || TitleScreen.DrawingTop));
+
+    /// <summary>No mouse cursor while the pointer is on the bottom (touch) screen or a finger drives it.</summary>
     private static bool DrawMouseCursor_Prefix()
     {
         if (!ModEntry.Active)
             return true;
+        if (TouchInput.Driving)
+            return false;
         var mouse = Game1.input.GetMouseState();
         return !L.Bottom.Contains(mouse.X, mouse.Y);
     }

@@ -1,0 +1,9 @@
+{
+  "format": "gamenative-duo/game-profile",
+  "version": 1,
+  "game": "steam-433340",
+  "engine": "unity-ugui",
+  "cameras": {
+    "world": [{"name": "Main Camera"}, {"name": "FPSCamera"}, {"name": "WeaponCamera"}]
+  }
+}

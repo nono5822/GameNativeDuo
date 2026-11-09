@@ -1,0 +1,108 @@
+# Uniform editing (U1-U4): progress
+
+Design: `duo/docs/uniform-editing.md`. Plan context: `duo/docs/devkit-platform.md`.
+Branch `duo/uniform-editing`, worktree `~/dev/GameNativeDuo-uniform` (the main checkout holds someone's uncommitted
+hotkeys work on `agent/2026-10-29-0124`: never commit or reset it from here).
+
+**Resuming:** read this file, `git log --oneline devkit..HEAD`, `git status`; continue at the first unchecked box.
+Commit after every box (code + this file together). Device: Thor `d615ac15` (USB) or `duo/agents/thor-wifi.sh`.
+
+## U1 Declare and gate
+
+- [x] Parser: `features` (screens/move/scale range), `present`, `when` in `UiElement`; old top-level `screens` kept; unit tests
+- [x] `EditCapabilities` model (source, reasonOff, elements, background, widgets) + unit tests
+- [x] On-device editor gated by it (drag/pinch/+-/screen chips, reasons in the toolbar, absent elements in the list)
+- [x] Menus (`DuoMenuPanel`, `DuoQuickMenu`, `SplitScreenController`) read it instead of `canEdit`/`modSeen`
+- [x] PC editor: server sends capabilities, `index.html` gates the same way
+- [x] Balatro: declare features, list all four elements always (`present`), `features.json`
+- [x] Stardew: list absent menus with `present: false`, declare features (rebuild DLL, needs the game's folder)
+- [x] Unity: elements under camera roots (sprite HUDs, tk2d) declare screens = their camera's + hidden (rebuild shared DLL). Crosshairs left free: they can move, the default only keeps them on top
+- [x] `engine-adapter-contract.md` updated
+- [x] Thor test: Balatro title + menus, Stardew title, Hollow Knight title (in-run/in-save checks listed in the log)
+
+## U2 Known before launch + tags
+
+- [x] `features.json` bundled per mod (`assets/duo/mods/<id>/features.json`, Unity fallback `shared/unity-features.json`), `ModFeatures` + `EditingLevel` (Full/Partial; Regions comes with U3), tests read the bundled files
+- [x] Mod explorer tag on cards + "UI editing" section in details; Dual screen control shows "Official · Partial editing"
+- [x] Editor uses the static list (bundled features.json, all absent) until the mod answers; capabilities editable from the installed mod's features before its hello
+- [x] Thor test: tag on the Balatro card, "UI editing" details, control text (widened to 240 dp: it was cut at 160). Static fallback compiles; not provoked on the device (needs the editor open before the mod's first hello).
+
+## U3 Regions as elements
+
+- [x] Read current region view code and write the sub-plan (below)
+- [x] U3a Native: `duoSetRegions` (per region crop + scissor on the bottom output, clear color) and `duoSetMasks`
+  (black rects on the top frame via `vkCmdClearAttachments`, loaded with `GetDeviceProcAddr`); Java hooks in
+  `VulkanRenderer`; .so rebuilt (worktree needed `lsfg-vk-android/thirdparty/*` copied from the main checkout: the
+  dxbc submodule clone fails)
+- [x] U3b Model: `UiRegion` (id, name, source fractions of the X screen, screen top/bottom/hidden, place on the bottom
+  as centre fractions + width fraction, options filter/touch) in `UiLayout.regions`; JSON round trip; migrate the
+  old single `region` string to one region filling the bottom screen; unit tests
+- [x] U3c Session: region mode gets a `UiLayoutController` (source REGIONS); `RegionOutput` turns regions into
+  `duoSetRegions` / `duoSetMasks` data (pure function, unit-tested); background color drawn as the clear color;
+  widgets on in region mode; touch: a tap inside a shown region clicks at its source point
+- [x] U3d Editor (device): REGIONS elements (place on the bottom, source in the top map); Add / Remove; buttons
+  Show / Off / Move here; source drag moves the crop and its mask live; background modes game (black) and color
+  (image/blur greyed with the reason)
+- [x] U3d PC editor: Add/Remove regions (`/api/regions/add|remove`, buttons shown when `caps.source == "regions"`); tested over Wi-Fi with curl (state, add, remove), page JS syntax-checked, not opened in a browser
+
+- [x] U3e `EditingLevel.REGIONS`: the Dual screen control shows for games in region view and reads "<title> · Regions" (badge in the explorer for entries that declare it; community settings packages do not carry features yet)
+- [x] U3 Thor test: Dead Cells, two regions, one moved here (masked on top), source drag, remove, relaunch, PC API, library control
+
+## U4 Conformance
+
+- [x] Check runner (`ui/ConformanceCheck.kt`): plan per element from its features, test rule, dump, judge, restore; "Check" in the editor's List panel (mod games), report panel, logcat, `files/duo/conformance/<game>.json`. No developer-mode setting yet (devkit item 2): the button is in the list panel, out of the way
+- [x] Thor test: Hollow Knight title 39/40 (one finding below); Balatro with a menu open: Menus failed first (a
+  real gap), passes after the fix
+- [ ] "Verified" tag: needs the community index to carry check reports (`duo check` / share flow); not started
+
+## Log
+
+- 2026-11-07: branch and worktree created, docs committed.
+- Found: the editor's tap hit-test skipped every top-level element (`depth == 0`, meant for Unity's whole-screen
+  canvases), so Balatro's four elements (all `parent: -1`) could only be picked from the List. Fix in the editor
+  step: skip only top-level elements that have children (`UiElement.hasChildren`).
+- Editor, menus, PC editor gated (compiles, lint clean; not yet run on the Thor). PC editor had the same root-element
+  click bug (`e.depth === 0`); fixed the same way. `canEdit`/`modSeen` are gone: everything reads
+  `UiLayoutController.capabilities`.
+- Stardew references: pulled the game folder (no Content) from the Thor into the session scratchpad; build with `-p:GamePath=<that> -p:EnableModDeploy=false -p:EnableModZip=false`. Pull again with `adb exec-out run-as app.gamenative.duo sh -c 'cd ".../common/Stardew Valley" && tar cf - --exclude=Content --exclude=Mods .'`.
+- Unity build refs: `-p:ManagedPath=~/dev/GameNativeDuo/duo/agents/runs/2026-10-28-0119/sr-managed` (Slime Rancher, oldest Unity).
+- Thor, Balatro (title screen only, no run: achievements): editor lists all 4 elements as absent with their `when`;
+  Menus selectable by tap once a popup is open; drag refused with the hint lit; Hide and size controls hidden;
+  background tab greys blur with the reason. Found and fixed: Menus reported the overlay's whole backdrop
+  (6279x3610 px in a 1440 window) instead of its panel (`D.content_of`). Hand/Consumables/Hand info during a run
+  still to check (needs a seeded run with `G.F_NO_ACHIEVEMENTS`).
+- `refreshIfUpdated` left Balatro's Lua alone ("0 updated": files hand-pushed in earlier sessions count as the
+  user's). Pushed by hand with `run-as cp`.
+- Thor, Hollow Knight (title): editor lists 43 elements from the new shared plugin, no regressions. tk2d HUD (fixed
+  screens) only exists in-game: untested. Plugins were not refreshed by the app update either: they predate the
+  install record (hand-pushed during HK work), so the installer counts them as the user's. Not a user-facing bug
+  (fresh installs record them), but the dev device needs hand pushes after each change.
+- Thor, Stardew (title): Chat absent with "In multiplayer". Found and fixed: on the title screen the HUD menus exist
+  with stale positions (a box drawn at the screen edge); now everything is absent until `Context.IsWorldReady`.
+  Editor status counts only visible elements.
+- U3c/U3d code: region mode has a `UiLayoutController` (`regionMode`), regions become elements (place on the bottom,
+  `<id>#source` child in the top map; a region only on top is one element in the map), editor gestures are applied
+  relative to the regions as last saved (`regionBase`). "Choose bottom view" and `RegionPanel` are gone: the two-finger
+  menu offers Edit UI layout in region view too (no Line up screens there). Masks are cleared whenever the bottom
+  surface goes (companion, display off, session end). `RegionView.pan/zoom/format` are now only used by their tests
+  (cleanup candidate).
+- Thor, Dead Cells (region view, no mod): the old single region migrated to "Region 1" filling the bottom screen;
+  Add region drew a second crop live; Move here blacked its source out on the top screen; dragging the source in
+  the map moved crop and mask together; Remove cleared the mask; the saved file holds only `regions` (synthetic
+  rules stripped); regions survive a relaunch.
+- Balatro's Hand read `scale` as an absolute size (default 1.15), against the contract (multiplies the element's own size): the first pinch from 100% shrank the hand. Now relative; declared range 0.7 to 1.2.
+- Check findings: (1) Balatro moved menus between screens only when they opened; an open menu now follows the rule
+  (`D.place_open_menu`). (2) Hollow Knight `.../StartGameButton/Text/CursorLeft` moved 248 px for an expected 124:
+  the menu cursor is animated by the game, and the adapter takes the game's writes as the new base and offsets again.
+  Not fixed; look at `UiRouter`'s "changed element becomes the new base" path for animated elements.
+
+## Status 2026-11-07 (end of session)
+
+U1, U2, U3 done and tested on the Thor; U4 done except the "Verified" tag (community index side). For a person:
+- Balatro during a run (Hand / Consumables / Hand info move, resize, screens) with a seeded run and
+  `G.F_NO_ACHIEVEMENTS`; Hollow Knight in a save (tk2d HUD fixed screens); Stardew in a save.
+- The PC editor page in a real browser (API tested with curl only).
+- Merge with the hotkeys work in the main checkout: both touch `UiLayout.kt`, `UiLayoutController.kt`,
+  `PcEditorServer.kt`, `pc-editor/index.html`, `DuoBridge.kt`; `UiLayout.extra` now keeps the `hotkeys` key on save.
+- Dev device: bundled mod files hand-pushed in earlier sessions are never refreshed by app updates (the install
+  record counts them as the user's): use "Reset mod files" in Dual screen status or push by hand.

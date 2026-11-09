@@ -1,0 +1,12 @@
+{
+  "format": "gamenative-duo/features",
+  "version": 1,
+  "engine": "unity-ugui",
+  "touch": true,
+  "background": [
+    "color",
+    "image"
+  ],
+  "elements": [],
+  "dynamic": true
+}

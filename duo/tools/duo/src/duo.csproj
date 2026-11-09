@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    duo: GameNative Duo's developer tool (duo/docs/devkit-platform.md, "Dev tools"; API: duo/docs/duo-api.md).
+    Run:     dotnet run (project duo/tools/duo/src), arguments after a double dash, e.g. sim
+    Publish: dotnet publish -c Release -r linux-x64 (or win-x64): one self-contained native binary (AOT).
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>duo</AssemblyName>
+    <RootNamespace>GameNativeDuo.Tool</RootNamespace>
+    <Version>0.1.0</Version>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <PublishAot>true</PublishAot>
+    <IsAotCompatible>true</IsAotCompatible>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <!--
+    duo: GameNative Duo's developer tool (duo/docs/devkit-platform.md, "Dev tools"; API: duo/docs/duo-api.md).
+    Run:     dotnet run (project duo/tools/duo/src), arguments after a double dash, e.g. sim
+    Publish: dotnet publish -c Release -r linux-x64 (or win-x64): one self-contained native binary (AOT).
+  -->
+    <EmbeddedResource Include="../../../../app/src/main/assets/duo/pc-editor/index.html" LogicalName="index.html" />
+    <!-- duo new: the SDKs and examples, copied into new mods. -->
+    <EmbeddedResource Include="../../../sdk/csharp/GameNativeDuo.Sdk/*.cs" LogicalName="sdk/cs/%(Filename)%(Extension)" />
+    <EmbeddedResource Include="../../../sdk/lua/duo.lua" LogicalName="sdk/duo.lua" />
+    <EmbeddedResource Include="../../../sdk/c/duo.h" LogicalName="sdk/duo.h" />
+    <EmbeddedResource Include="../../../sdk/c/native-asi/dllmain.c" LogicalName="tpl/native/dllmain.c" />
+    <EmbeddedResource Include="../../../sdk/examples/love-basic/main.lua" LogicalName="tpl/love/main.lua" />
+    <EmbeddedResource Include="../../../sdk/examples/unity-basic/DuoExample.cs" LogicalName="tpl/unity/Plugin.cs" />
+  </ItemGroup>
+</Project>

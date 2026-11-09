@@ -1,0 +1,109 @@
+{
+  "format": "gamenative-duo\/ui-layout",
+  "version": 1,
+  "game": "STEAM_433340",
+  "engine": "unity-ugui",
+  "elements": {
+    "HUD Root\/HudUI\/UIContainer\/Ammo Slots": {
+      "screen": "bottom",
+      "scale": 1.331,
+      "y": -0.2403
+    },
+    "HUD Root\/HudUI\/UIContainer\/Currency": {
+      "screen": "bottom",
+      "scale": 1.25,
+      "x": 0.02,
+      "y": -0.03
+    },
+    "HUD Root\/HudUI\/UIContainer\/CurrencyIcon": {
+      "screen": "bottom",
+      "scale": 1.25,
+      "x": 0.02,
+      "y": -0.03
+    },
+    "HUD Root\/HudUI\/UIContainer\/CurrentDay": {
+      "screen": "bottom",
+      "scale": 1.3,
+      "x": 0.012,
+      "y": 0.012
+    },
+    "HUD Root\/HudUI\/UIContainer\/CurrentTime": {
+      "screen": "bottom",
+      "scale": 1.3,
+      "x": 0.012,
+      "y": 0.012
+    },
+    "HUD Root\/HudUI\/UIContainer\/Energy Meter": {
+      "screen": "bottom",
+      "scale": 1.25,
+      "x": 0.02,
+      "y": -0.03
+    },
+    "HUD Root\/HudUI\/UIContainer\/EnergyIcon": {
+      "screen": "bottom",
+      "scale": 1.25,
+      "x": 0.02,
+      "y": -0.03
+    },
+    "HUD Root\/HudUI\/UIContainer\/Health Meter": {
+      "screen": "bottom",
+      "scale": 1.25,
+      "x": 0.02,
+      "y": -0.03
+    },
+    "HUD Root\/HudUI\/UIContainer\/HealthIcon": {
+      "screen": "bottom",
+      "scale": 1.25,
+      "x": 0.02,
+      "y": -0.03
+    },
+    "HUD Root\/HudUI\/UIContainer\/Keys": {
+      "screen": "bottom",
+      "scale": 1.25,
+      "x": 0.02,
+      "y": -0.03
+    },
+    "HUD Root\/HudUI\/UIContainer\/KeysIcon": {
+      "screen": "bottom",
+      "scale": 1.25,
+      "x": 0.02,
+      "y": -0.03
+    },
+    "HUD Root\/HudUI\/UIContainer\/MailIcon": {
+      "screen": "bottom",
+      "scale": 1.3,
+      "x": 0.012,
+      "y": 0.012
+    },
+    "HUD Root\/HudUI\/UIContainer\/TimeIcon": {
+      "screen": "bottom",
+      "scale": 1.3,
+      "x": 0.012,
+      "y": 0.012
+    },
+    "HUD Root\/HudUI\/UIContainer\/crossHair": {
+      "screen": "top"
+    }
+  },
+  "background": {
+    "mode": "image",
+    "color": "#101322",
+    "dim": 0.55,
+    "blur": 0.5,
+    "image": "background.jpg"
+  },
+  "widgets": [
+    {
+      "type": "fps",
+      "x": 0.82,
+      "y": 0.03,
+      "scale": 1.15
+    },
+    {
+      "type": "battery",
+      "x": 0.82,
+      "y": 0.115,
+      "scale": 1.15
+    }
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "format": "gamenative-duo/companion",
+  "version": 1,
+  "id": "general",
+  "name": "Companion",
+  "author": "GameNative Duo",
+  "packageVersion": "1.0.0",
+  "games": ["*"],
+  "pages": [
+    {
+      "id": "notes",
+      "title": "Notes",
+      "cards": [
+        {"id": "notes", "type": "notes", "title": "Notes", "hint": "Tap to write: where you left off, codes, what to try next."}
+      ]
+    },
+    {
+      "id": "checklist",
+      "title": "Checklist",
+      "cards": [
+        {"id": "todo", "type": "checklist", "title": "To do", "userItems": true}
+      ]
+    },
+    {
+      "id": "map",
+      "title": "Map",
+      "cards": [
+        {"id": "map", "type": "image", "user": true, "hint": "Pick a picture to keep here (a map, a guide page, a screenshot). Pinch to zoom, double tap to fit."}
+      ]
+    },
+    {
+      "id": "guide",
+      "title": "Guide",
+      "cards": [
+        {"id": "guide", "type": "text", "user": true, "hint": "Pick a guide saved as a .txt or .md file to read it here while you play."}
+      ]
+    },
+    {
+      "id": "timer",
+      "title": "Timer",
+      "columns": 2,
+      "cards": [
+        {"id": "played", "type": "value", "label": "This session", "value": "{session.playTime:time}"},
+        {"id": "battery", "type": "value", "label": "Battery", "value": "{session.battery}%"},
+        {"id": "stopwatch", "type": "timer", "title": "Stopwatch", "mode": "stopwatch", "span": 2},
+        {"id": "countdown", "type": "timer", "title": "Countdown", "mode": "countdown", "seconds": 300, "span": 2}
+      ]
+    }
+  ]
+}

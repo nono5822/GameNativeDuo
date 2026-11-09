@@ -364,6 +364,33 @@ class BestConfigServiceTest {
     }
 
     @Test
+    fun testImportedConfigAppliesDirectInputOnly() = runBlocking {
+        val configJson = """
+            {
+                "dxwrapper": "dxvk",
+                "dxwrapperConfig": "version=1.10.3",
+                "containerVariant": "bionic",
+                "wineVersion": "proton-9.0-arm64ec",
+                "inputType": 1
+            }
+        """.trimIndent()
+
+        val parsed = BestConfigService.parseConfigResult(
+            context,
+            Json.parseToJsonElement(configJson).jsonObject,
+            "exact_gpu_match",
+            true,
+        )
+        val updated = ContainerUtils.applyBestConfigMapToContainerData(
+            ContainerData(enableXInput = true, enableDInput = true),
+            parsed.config,
+        )
+
+        assertFalse(updated.enableXInput)
+        assertTrue(updated.enableDInput)
+    }
+
+    @Test
     fun testGlibcBox64VersionValidation() {
         // Modern flavor rejects glibc containers wholesale — this test only applies to legacy.
         assumeFalse("glibc not supported on modern", BuildConfig.MODERN_ANDROID)
@@ -651,6 +678,39 @@ class BestConfigServiceTest {
         val result = runBlocking { BestConfigService.parseConfigToContainerData(context, bestConfig, "exact_gpu_match", true) }
 
         assertTrue("Result should not be null", result!!.isEmpty())
+    }
+
+    @Test
+    fun testUnknownFexcorePreset_forceApplyDefaultsPresetAndKeepsOtherKeys() {
+        val configJson = """
+            {
+                "wineVersion": "proton-9.0-arm64ec",
+                "dxwrapper": "dxvk",
+                "dxwrapperConfig": "version=2.4.1,framerate=0,maxDeviceMemory=0,async=1,asyncCache=0",
+                "containerVariant": "bionic",
+                "box64Version": "0.3.6",
+                "emulator": "FEXCore",
+                "fexcorePreset": "CUSTOM-1",
+                "launchRealSteam": true,
+                "steamType": "headless"
+            }
+        """.trimIndent()
+
+        val bestConfig = Json.parseToJsonElement(configJson).jsonObject
+
+        val rejected = runBlocking { BestConfigService.parseConfigResult(context, bestConfig, "exact_gpu_match", true) }
+        assertTrue(rejected.config.isEmpty())
+        assertEquals(listOf("FEXCore preset CUSTOM-1"), rejected.missingComponents)
+
+        val forced = runBlocking {
+            BestConfigService.parseConfigToContainerData(context, bestConfig, "exact_gpu_match", true, forceApply = true)
+        }
+
+        assertNotNull(forced)
+        assertEquals(PrefManager.fexcorePreset, forced!!["fexcorePreset"])
+        assertEquals(true, forced["launchRealSteam"])
+        assertEquals("FEXCore", forced["emulator"])
+        assertEquals("proton-9.0-arm64ec", forced["wineVersion"])
     }
 
     /**

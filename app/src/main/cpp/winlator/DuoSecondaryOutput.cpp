@@ -17,6 +17,11 @@
 #include "VulkanRendererContext.h"
 #include <jni.h>
 #include <android/native_window_jni.h>
+#include <algorithm>
+
+// Regions: {ox, oy, sx, sy, x, y, w, h} each (see duoSetRegions); a few at most, so the cost stays flat.
+static constexpr int DUO_REGION_FLOATS = 8;
+static constexpr int DUO_MAX_REGIONS = 8;
 
 struct DuoSecondary {
     ANativeWindow* window = nullptr;
@@ -233,7 +238,7 @@ void VulkanRendererContext::duoRenderSecondary() {
     rpi.renderPass = renderPass;
     rpi.framebuffer = s->fbs[img];
     rpi.renderArea = {{0, 0}, s->ext};
-    VkClearValue clr = {{{0.f, 0.f, 0.f, 1.f}}};
+    VkClearValue clr = {{{duoClear[0], duoClear[1], duoClear[2], 1.f}}};
     rpi.clearValueCount = 1;
     rpi.pClearValues = &clr;
     vk_.CmdBeginRenderPass(cb, &rpi, VK_SUBPASS_CONTENTS_INLINE);
@@ -244,16 +249,29 @@ void VulkanRendererContext::duoRenderSecondary() {
     vk_.CmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 
     // Same draws as the main screen (textures were imported and transitioned by its command buffer, submitted
-    // earlier on this queue), placed with this screen's crop.
+    // earlier on this queue), placed with this screen's crop. With regions, once per region: its own crop, clipped
+    // to its place on this screen (scissor), so several parts of the frame share one pass.
     const float cw = (float)std::max(1, containerWidth), ch = (float)std::max(1, containerHeight);
+    const size_t regionCount = duoRegions.size() / DUO_REGION_FLOATS;
+    for (size_t ri = 0; ri < std::max<size_t>(1, regionCount); ri++) {
+    float rox = s->ox, roy = s->oy, rsx = s->sx, rsy = s->sy;
+    if (regionCount > 0) {
+        const float* g = &duoRegions[ri * DUO_REGION_FLOATS];
+        rox = g[0]; roy = g[1]; rsx = g[2]; rsy = g[3];
+        const int x0 = std::clamp((int)g[4], 0, (int)s->ext.width), y0 = std::clamp((int)g[5], 0, (int)s->ext.height);
+        const int x1 = std::clamp((int)(g[4] + g[6]), x0, (int)s->ext.width), y1 = std::clamp((int)(g[5] + g[7]), y0, (int)s->ext.height);
+        if (x1 <= x0 || y1 <= y0) continue;
+        VkRect2D rsc{{x0, y0}, {(uint32_t)(x1 - x0), (uint32_t)(y1 - y0)}};
+        vk_.CmdSetScissor(cb, 0, 1, &rsc);
+    }
     for (auto& d : frameDraws) {
         if (d.ds == VK_NULL_HANDLE) continue;
         vk_.CmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeLayout, 0, 1, &d.ds, 0, nullptr);
         WindowPushConstants pc{};
-        pc.ndcX0 = (s->ox + (float)d.x * s->sx) / cw * 2.f - 1.f;
-        pc.ndcY0 = (s->oy + (float)d.y * s->sy) / ch * 2.f - 1.f;
-        pc.ndcX1 = (s->ox + (float)(d.x + d.w) * s->sx) / cw * 2.f - 1.f;
-        pc.ndcY1 = (s->oy + (float)(d.y + d.h) * s->sy) / ch * 2.f - 1.f;
+        pc.ndcX0 = (rox + (float)d.x * rsx) / cw * 2.f - 1.f;
+        pc.ndcY0 = (roy + (float)d.y * rsy) / ch * 2.f - 1.f;
+        pc.ndcX1 = (rox + (float)(d.x + d.w) * rsx) / cw * 2.f - 1.f;
+        pc.ndcY1 = (roy + (float)(d.y + d.h) * rsy) / ch * 2.f - 1.f;
         pc.useTexAlpha = 0;
         pc.effectId = 0;
         pc.sharpness = 0.f;
@@ -263,10 +281,11 @@ void VulkanRendererContext::duoRenderSecondary() {
         pc.brightness = 0.f;
         pc.contrast = 0.f;
         pc.gamma = 1.f;
-        pc.outW = std::max(1.0f, (float)d.w * s->sx / cw * (float)s->ext.width);
-        pc.outH = std::max(1.0f, (float)d.h * s->sy / ch * (float)s->ext.height);
+        pc.outW = std::max(1.0f, (float)d.w * rsx / cw * (float)s->ext.width);
+        pc.outH = std::max(1.0f, (float)d.h * rsy / ch * (float)s->ext.height);
         vk_.CmdPushConstants(cb, pipeLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(pc), &pc);
         vk_.CmdDraw(cb, 4, 1, 0, 0);
+    }
     }
     vk_.CmdEndRenderPass(cb);
     if (vk_.EndCommandBuffer(cb) != VK_SUCCESS) {
@@ -298,6 +317,84 @@ void VulkanRendererContext::duoRenderSecondary() {
         RLOG_E("duo: second screen present out of date (%d)", (int)r);
     }
     s->frame = (f + 1) % MAX_FRAMES_IN_FLIGHT;
+}
+
+// Regions on the second screen: per region {ox, oy, sx, sy} (its crop, like duoSetSecondary's) and {x, y, w, h}, where
+// it goes on the second screen in pixels. Empty: the whole second screen shows the single crop. (r, g, b): what the
+// second screen shows around the regions.
+void VulkanRendererContext::duoSetRegions(const float* data, int count, float r, float g, float b) {
+    std::unique_lock<std::shared_mutex> fl(frameMutex);
+    std::lock_guard<std::mutex> lk(renderMutex);
+    const int n = std::clamp(count, 0, DUO_MAX_REGIONS);
+    duoRegions.assign(data, data + (size_t)n * DUO_REGION_FLOATS);
+    duoClear[0] = r; duoClear[1] = g; duoClear[2] = b;
+    needsRender.store(true); dirtyCV.notify_one();
+}
+
+// Black rectangles drawn over the main screen's frame (a HUD moved to the second screen), {x, y, w, h} each, in X
+// screen pixels. Drawn with vkCmdClearAttachments inside the main pass: no pipeline, no texture, nothing per frame
+// when there are none.
+void VulkanRendererContext::duoSetMasks(const float* rects, int count) {
+    std::unique_lock<std::shared_mutex> fl(frameMutex);
+    std::lock_guard<std::mutex> lk(renderMutex);
+    const int n = std::clamp(count, 0, DUO_MAX_REGIONS);
+    duoMasks.assign(rects, rects + (size_t)n * 4);
+    needsRender.store(true); dirtyCV.notify_one();
+}
+
+// Called inside the main render pass right after the windows are drawn, with the main screen's transform.
+void VulkanRendererContext::duoDrawMasks(VkCommandBuffer cb, float ox, float oy, float sx, float sy, float cw, float ch,
+                                         VkExtent2D ext) {
+    if (duoMasks.empty() || cw <= 0.f || ch <= 0.f) return;
+    VkClearAttachment att{};
+    att.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    att.colorAttachment = 0;
+    att.clearValue.color = {{0.f, 0.f, 0.f, 1.f}};
+    VkClearRect rects[DUO_MAX_REGIONS];
+    uint32_t n = 0;
+    for (size_t i = 0; i + 3 < duoMasks.size() && n < DUO_MAX_REGIONS; i += 4) {
+        const float* m = &duoMasks[i];
+        const int x0 = std::clamp((int)((ox + m[0] * sx) / cw * (float)ext.width), 0, (int)ext.width);
+        const int y0 = std::clamp((int)((oy + m[1] * sy) / ch * (float)ext.height), 0, (int)ext.height);
+        const int x1 = std::clamp((int)((ox + (m[0] + m[2]) * sx) / cw * (float)ext.width + 0.999f), x0, (int)ext.width);
+        const int y1 = std::clamp((int)((oy + (m[1] + m[3]) * sy) / ch * (float)ext.height + 0.999f), y0, (int)ext.height);
+        if (x1 <= x0 || y1 <= y0) continue;
+        rects[n].rect = {{x0, y0}, {(uint32_t)(x1 - x0), (uint32_t)(y1 - y0)}};
+        rects[n].baseArrayLayer = 0;
+        rects[n].layerCount = 1;
+        n++;
+    }
+    // Not in the renderer's dispatch table: looked up once from the same device.
+    static PFN_vkCmdClearAttachments clearAttachments = nullptr;
+    static VkDevice clearDevice = VK_NULL_HANDLE;
+    if (clearDevice != device) {
+        clearAttachments = vk_.GetDeviceProcAddr
+            ? (PFN_vkCmdClearAttachments)vk_.GetDeviceProcAddr(device, "vkCmdClearAttachments") : nullptr;
+        clearDevice = device;
+    }
+    if (n > 0 && clearAttachments) clearAttachments(cb, 1, &att, n, rects);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_winlator_renderer_VulkanRenderer_nativeDuoSetRegions(JNIEnv* env, jobject, jlong handle, jfloatArray data,
+                                                              jint clearRgb) {
+    auto* r = reinterpret_cast<VulkanRendererContext*>(handle);
+    if (!r) return;
+    const jsize len = data ? env->GetArrayLength(data) : 0;
+    std::vector<float> v((size_t)len);
+    if (len > 0) env->GetFloatArrayRegion(data, 0, len, v.data());
+    r->duoSetRegions(v.data(), (int)(len / DUO_REGION_FLOATS), ((clearRgb >> 16) & 0xFF) / 255.f,
+                     ((clearRgb >> 8) & 0xFF) / 255.f, (clearRgb & 0xFF) / 255.f);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_winlator_renderer_VulkanRenderer_nativeDuoSetMasks(JNIEnv* env, jobject, jlong handle, jfloatArray rects) {
+    auto* r = reinterpret_cast<VulkanRendererContext*>(handle);
+    if (!r) return;
+    const jsize len = rects ? env->GetArrayLength(rects) : 0;
+    std::vector<float> v((size_t)len);
+    if (len > 0) env->GetFloatArrayRegion(rects, 0, len, v.data());
+    r->duoSetMasks(v.data(), (int)(len / 4));
 }
 
 extern "C" JNIEXPORT jboolean JNICALL

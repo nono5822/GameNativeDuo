@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- GameNativeDuo: the logo's blue instead of upstream's purple for XML views (modern flavour override). -->
+<resources>
+    <color name="colorPrimary">#5B8DF6</color>
+</resources>

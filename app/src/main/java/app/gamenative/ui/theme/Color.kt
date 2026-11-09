@@ -9,7 +9,7 @@ val customBackground = Color(0xFF09090B)
 val customForeground = Color(0xFFFAFAFA)
 val customCard = Color(0xFF09090B)
 val customCardForeground = Color(0xFFFAFAFA)
-val customPrimary = Color(0xFFA21CAF)
+val customPrimary = Color(0xFF5B8DF6) // GameNativeDuo: logo blue (upstream 0xFFA21CAF)
 val customPrimaryForeground = Color(0xFFFAFAFA)
 val customSecondary = Color(0xFF27272A)
 val customSecondaryForeground = Color(0xFFFAFAFA)
@@ -27,7 +27,7 @@ val pluviaSeedColor = Color(0x284561FF)
  */
 
 // Brand
-val PluviaPrimary = Color(0xFFA21CAF)
+val PluviaPrimary = Color(0xFF5B8DF6) // GameNativeDuo: logo blue (upstream 0xFFA21CAF)
 val PluviaSeed = Color(0x284561FF)
 
 // Backgrounds
@@ -45,8 +45,8 @@ val PluviaSecondary = Color(0xFF27272A)
 
 // Accents
 val PluviaCyan = Color(0xFF00D4FF)
-val PluviaPurple = Color(0xFF8B5CF6)
-val PluviaPink = Color(0xFFEC4899)
+val PluviaPurple = Color(0xFF5B8DF6) // GameNativeDuo: logo blue (upstream 0xFF8B5CF6)
+val PluviaPink = Color(0xFFD74EE9) // GameNativeDuo: logo purple (upstream 0xFFEC4899)
 
 // Semantic
 val PluviaSuccess = Color(0xFF10B981)

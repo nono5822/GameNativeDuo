@@ -40,6 +40,17 @@ object DuoViewport {
         return x.toInt() to y.toInt()
     }
 
+    /**
+     * X screen coordinates under surface point ([sx], [sy]) as floats, also outside the shown rectangle (a finger
+     * dragged off it keeps reporting); null only when nothing is shown.
+     */
+    fun surfaceToScreenUnbounded(rect: FloatArray, surfaceW: Int, surfaceH: Int, sx: Float, sy: Float, out: FloatArray): Boolean {
+        val fit = fit(rect, surfaceW, surfaceH) ?: return false
+        out[0] = rect[0] + (sx - fit.offsetX) / fit.scale
+        out[1] = rect[1] + (sy - fit.offsetY) / fit.scale
+        return true
+    }
+
     private class Fit(val scale: Float, val offsetX: Float, val offsetY: Float)
 
     private fun fit(rect: FloatArray?, surfaceW: Int, surfaceH: Int): Fit? {
@@ -56,6 +67,9 @@ enum class SplitLayout(val id: String) {
 
     /** Each part at its display's own resolution, 1:1 (see [ScreenSplit.native]). */
     NATIVE("native"),
+
+    /** The game unchanged on top; the bottom screen shows a magnified part of the same frame (see [RegionView]). */
+    REGION("region"),
     ;
 
     companion object {
@@ -108,7 +122,13 @@ class ScreenSplit(val top: FloatArray, val bottom: FloatArray) {
          * bottom part centred. Each part maps 1:1 to its display's pixels; the game decides what to draw where
          * (e.g. a mod puts the world on top and the UI below). Sizes are as the displays are currently rotated.
          */
-        fun native(topW: Int, topH: Int, bottomW: Int, bottomH: Int): ScreenSplit {
+        fun native(topW: Int, topH: Int, bottomW: Int, bottomH: Int, scale: Float = 1f): ScreenSplit {
+            // Below 100% the game renders fewer pixels and the renderer scales both parts up (even sizes for codecs/GPUs).
+            fun s(v: Int) = if (scale >= 1f) v else ((v * scale).roundToInt() / 2) * 2
+            return nativeUnscaled(s(topW), s(topH), s(bottomW), s(bottomH))
+        }
+
+        private fun nativeUnscaled(topW: Int, topH: Int, bottomW: Int, bottomH: Int): ScreenSplit {
             val w = maxOf(topW, bottomW)
             return ScreenSplit(
                 top = floatArrayOf(((w - topW) / 2).toFloat(), 0f, topW.toFloat(), topH.toFloat()),
@@ -117,14 +137,15 @@ class ScreenSplit(val top: FloatArray, val bottom: FloatArray) {
         }
 
         /** [native] for this device's displays (top in landscape), or null without a bottom screen. */
-        fun nativeFor(context: Context): ScreenSplit? = displaySizes(context)?.let { (t, b) ->
-            native(t.first, t.second, b.first, b.second)
+        fun nativeFor(context: Context, scale: Float = 1f): ScreenSplit? = displaySizes(context)?.let { (t, b) ->
+            native(t.first, t.second, b.first, b.second, scale)
         }
 
-        /** Container screen size for [layout] on this device, or null without a bottom screen. */
-        fun recommendedFor(context: Context, layout: SplitLayout): Pair<Int, Int>? = when (layout) {
-            SplitLayout.FILL -> recommendedFor(context)
-            SplitLayout.NATIVE -> nativeFor(context)?.screenSize()
+        /** Container screen size for [layout] at [scale] (see DuoContainerSettings.splitScale), or null without a bottom screen. */
+        fun recommendedFor(context: Context, layout: SplitLayout, scale: Float = 1f): Pair<Int, Int>? = when (layout) {
+            SplitLayout.FILL -> recommendedFor(context, width = (1280 * minOf(scale, 1f)).roundToInt() / 2 * 2)
+            SplitLayout.NATIVE -> nativeFor(context, scale)?.screenSize()
+            SplitLayout.REGION -> null // the game keeps its own size
         }
 
         /** (top w, h) in landscape and (bottom w, h) as currently shown, or null without a bottom screen. */

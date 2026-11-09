@@ -1,0 +1,38 @@
+{
+  "name": "gamenative-duo",
+  "displayName": "GameNative Duo",
+  "description": "Develop dual-screen mods for GameNative Duo: the duo editor and dev tools in VS Code, duo check results as problems, schemas for the JSON files.",
+  "version": "0.1.0",
+  "publisher": "gamenative-duo",
+  "license": "MIT",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Other", "Debuggers"],
+  "main": "./extension.js",
+  "activationEvents": ["workspaceContains:**/manifest.json", "workspaceContains:**/profile.json"],
+  "contributes": {
+    "commands": [
+      { "command": "gamenativeDuo.openEditor", "title": "GameNative Duo: Open editor and dev tools" },
+      { "command": "gamenativeDuo.startSim", "title": "GameNative Duo: Start the simulator (duo sim)" },
+      { "command": "gamenativeDuo.build", "title": "GameNative Duo: Build this mod (duo build)" },
+      { "command": "gamenativeDuo.check", "title": "GameNative Duo: Run the conformance check (duo check)" },
+      { "command": "gamenativeDuo.test", "title": "GameNative Duo: Run this test script (duo test)" },
+      { "command": "gamenativeDuo.pack", "title": "GameNative Duo: Check this package (duo pack)" }
+    ],
+    "configuration": {
+      "title": "GameNative Duo",
+      "properties": {
+        "gamenativeDuo.duoPath": { "type": "string", "default": "duo", "description": "The duo program (on PATH, or a full path)." },
+        "gamenativeDuo.deviceUrl": { "type": "string", "default": "", "description": "A device in developer mode (http://IP:8642); empty uses the simulator." },
+        "gamenativeDuo.deviceCode": { "type": "string", "default": "", "description": "The device's pairing code." }
+      }
+    },
+    "taskDefinitions": [
+      { "type": "duo", "required": ["command"], "properties": { "command": { "type": "string", "description": "duo arguments, e.g. build src" } } }
+    ],
+    "jsonValidation": [
+      { "fileMatch": "**/ui-layout.json", "url": "https://raw.githubusercontent.com/nono5822/GameNativeDuo-community/main/schema/ui-layout.schema.json" },
+      { "fileMatch": "**/games/*/*/manifest.json", "url": "https://raw.githubusercontent.com/nono5822/GameNativeDuo-community/main/schema/package.schema.json" },
+      { "fileMatch": "**/profile.json", "url": "https://raw.githubusercontent.com/nono5822/GameNativeDuo-community/main/schema/game-profile.schema.json" }
+    ]
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "format": "gamenative-duo/features",
+  "version": 1,
+  "engine": "unity-ugui",
+  "touch": true,
+  "background": [
+    "color",
+    "image"
+  ],
+  "elements": [
+    {
+      "id": "GameNativeDuo/LiveMap",
+      "name": "Live map",
+      "own": true,
+      "features": {
+        "screens": [
+          "bottom",
+          "hidden"
+        ]
+      }
+    }
+  ],
+  "dynamic": true
+}
