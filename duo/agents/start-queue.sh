@@ -3,13 +3,13 @@
 # started it, does not stop the run), with the PC kept awake while it runs (it may wait through several 5 h usage
 # windows). Same arguments and environment as overnight.sh.
 #
-#   duo/agents/start-queue.sh duo/agents/tasks/queue/01-*.md duo/agents/tasks/queue/03-*.md
+#   duo/agents/start-queue.sh 8 9               GitHub issues #8 then #9 (a task .md path works too)
 #   tail -f duo/agents/runs/queue.log        follow it
 #   kill "$(cat duo/agents/runs/queue.pid)"  stop it (the current task's work is left for you to commit or drop)
 
 set -euo pipefail
 
-[ $# -ge 1 ] || { echo "usage: start-queue.sh <task.md>..." >&2; exit 2; }
+[ $# -ge 1 ] || { echo "usage: start-queue.sh <issue number | task.md>..." >&2; exit 2; }
 AGENTS="$(cd "$(dirname "$0")" && pwd)"
 RUNS="$AGENTS/runs"
 mkdir -p "$RUNS"

@@ -1,17 +1,19 @@
-## Description
-<!-- What changed and why? -->
+<!-- GameNative Duo. Keep it short and plain. Delete a section only if it really doesn't apply. -->
 
-## Recording
-<!-- Attach a short recording/GIF showing the change -->
+## What and why
+<!-- What changes for the user or the code, and why. Link the issue: Closes #N -->
 
-## Type of Change
-- [ ] Bug fix
-- [ ] Performance / stability improvement
-- [ ] Compatibility improvements
-- [ ] Other (requires prior approval)
+## Upstream files touched
+<!-- Files outside app/src/main/java/app/gamenative/duo/ and duo/. Each should be a one-line hook marked
+     // GameNativeDuo and listed in CLAUDE.md. Write "None" if there are none. -->
 
-## Checklist
-- [ ] If I have access to `#code-changes`, I have discussed this change there and it has been green-lighted. If I do not have access, I have still provided clear context in this PR. If I skip both, I accept that this change may face delays in review, may not be reviewed at all, or may be closed.
-- [ ] This change aligns with the current project scope (core functionality, stability, or performance). If not, it has been explicitly approved beforehand.
-- [ ] I have attached a recording of the change.
-- [ ] I have read and agree to the contribution guidelines in `CONTRIBUTING.md`.
+## How it was tested
+- [ ] Builds (`./gradlew :app:assembleModernDebug`)
+- [ ] Duo unit tests pass (`./gradlew :app:testModernDebugUnitTest --tests 'app.gamenative.duo.*'`)
+- [ ] Tried on a device (which one, which games, what you checked):
+
+## Screenshots
+<!-- Both screens if the bottom screen changed. A short GIF for anything that moves. -->
+
+## Not tested
+<!-- What you could not check, and what a reviewer should look at closely. -->
