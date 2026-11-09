@@ -2,13 +2,15 @@
 
 <img src="assets/banner.png" alt="GameNative Duo: dual-screen PC gaming for Android handhelds" width="100%">
 
-**Your PC games, across both screens of your dual-screen Android handheld.**
+**PC games across both screens of your dual-screen Android handheld.**
 
 A fork of [GameNative](https://github.com/utkarshdalal/GameNative) that makes the second screen part of the game.
-The world plays on the top screen. The HUD, inventory, map and dialogue live on the bottom screen, and you use them
-with your fingers.
+It is a hub for dual-screen PC mods. Instead of being limited to a companion app, GameNative Duo brings per-engine
+solutions to each game, with plenty of tools for developers. It can render a game's interface on the bottom screen,
+extend the game view onto the bottom screen as one continuous picture, resize interface elements, add widgets, make
+bottom-screen elements touchable, and much more.
 
-<img src="assets/stardew-walk.gif" alt="The farmer walking around the farm on the AYN Thor: the world scrolls across the top screen, the hinge and the bottom screen as one picture, with the HUD only on the bottom screen" width="600">
+<img src="assets/stardew-walk.webp" alt="Stardew Valley on the AYN Thor: walking across the farm, the world scrolls across the top screen, the hinge and the bottom screen as one picture, with the clock, money, toolbar and energy bar only on the bottom screen" width="600">
 
 <sub>Recorded on an AYN Thor. Both screens are captured on the device and assembled at their physical scale, hinge
 included, so the farm lines up across the gap exactly as it does in your hands.</sub>
@@ -17,59 +19,45 @@ included, so the farm lines up across the gap exactly as it does in your hands.<
 
 ## What it is
 
-[GameNative](https://github.com/utkarshdalal/GameNative) runs the Windows games you own on Steam, Epic, GOG and Amazon
-directly on Android, using Wine, Box64 and DXVK. It uses one screen.
+### The goal
+Dual-screen Android handhelds like the AYN Thor were built with DS emulation in mind. Play a PC game on one through
+[GameNative](https://github.com/utkarshdalal/GameNative), which runs the Windows games you own on Steam, Epic, GOG and
+Amazon with Wine, Box64 and DXVK, and the second screen sits there doing nothing. PC games were never designed for two
+screens, and no single trick fixes them all: each game draws its HUD, menus and map its own way.
 
-GameNative Duo adds what a dual-screen handheld needs:
+GameNative Duo's goal is to make the second screen a real part of the PC games you play on a dual-screen handheld, the
+way it was on the DS and 3DS, and to make that possible for any game, built by anyone who wants to.
 
-- **One game across two screens.** The game renders a single tall picture. The top part goes to the top screen and the
-  rest to the bottom screen, straight from the same GPU frame with no copies. A one-time calibration accounts for the
-  hinge and for the different pixel density of each panel, so the picture reads as one.
-- **Interface on the bottom screen.** Small per-game mods move the HUD and menus off the game view. The top screen shows
-  only the game. Crosshairs and other things you aim with stay on top automatically.
-- **A real touchscreen.** The bottom screen behaves like a touchscreen built into the game: no cursor, taps land under
-  your finger, and drag and drop works. The game never switches its button prompts to keyboard and mouse.
-- **A layout you control.** Every piece of the interface can be moved, resized, hidden or sent to the top screen, live,
-  while you play, on the device or from a PC.
-- **A bottom screen you style.** Show the world continuing below, a soft blur of it, a solid color or your own image,
-  and add live readouts such as FPS, battery and temperature.
+### A hub, in three layers
+1. **The app** does the work every game shares. It splits the game's picture across both screens straight from the
+   GPU, turns the bottom screen into a touchscreen the game understands, lines the screens up across the hinge, and
+   provides the layout editor (on the device or from a PC), widgets, save backups and a clean undo.
+2. **Mods** teach a game, or a whole engine, to use two screens. They talk to the app through a small, open contract,
+   so one adapter can cover many games: the Unity adapter, for example, works with most Unity games through a short
+   profile instead of new code.
+3. **The community** shares mods, layouts and settings through a signed index. Installing one is a switch next to Play,
+   and switching it off puts the game back exactly as it was.
+
+### What a mod can do
+- **Move the interface off the game.** HUD, menus, inventory and dialogue go to the bottom screen, and the top screen
+  shows only the game. Things you aim with stay on top.
+- **Make one picture out of two screens.** The world continues from the top screen onto the bottom one, aligned across
+  the hinge. 
+- **Add what the game never had.** A live map that follows you, or a companion page fed with the game's own state.
+- **Make it touchable.** Taps, drags and drops go straight into the game's own interface, with no cursor, and the game
+  keeps its controller prompts. For an example, the GameNative Duo Stardew Valley mod add drag and drop functionality to the bottom screen for the inventory menu.  
+- **Leave the final say to the player.** Every element can be moved, resized, hidden or sent to the other screen, live,
+  and the resulting preset can be shared with others easily.
+
+Games without a mod still get something useful on the bottom screen: a live, magnified part of the picture (a minimap,
+say) or a companion with notes, checklists and timers.
+
+### Who it is for
+- **Players**: turn on Dual screen and play. Tune the layout if you want to, or use one someone else shared.
+- **Modders**: SDKs for C#, Lua and C, a simulator that runs your mod on a PC without a handheld, templates, and a
+  conformance check. One adapter can bring a whole engine's worth of games to two screens.
 
 GameNative Duo installs next to official GameNative under its own app id (`app.gamenative.duo`), so you can keep both.
-
-## A closer look
-
-<table>
-<tr>
-<td width="50%" align="center"><img src="assets/stardew-dialogue.jpg" alt="An in-game event: the farm on the top screen, Demetrius's dialogue box on the bottom screen"></td>
-<td width="50%" align="center"><img src="assets/stardew-inventory.jpg" alt="The inventory open on the bottom screen while the farm stays visible on the top screen"></td>
-</tr>
-<tr>
-<td valign="top"><b>Dialogue and events</b><br>Conversations and choices appear on the bottom screen, and you answer
-them with a tap. The scene stays uncovered on top.</td>
-<td valign="top"><b>Inventory</b><br>Menus are laid out for the bottom screen's own size and resolution, so nothing is
-cut off and nothing covers the game.</td>
-</tr>
-<tr>
-<td width="50%" align="center"><img src="assets/stardew-drag.gif" alt="Dragging the watering can between inventory slots with a finger, recorded on the device"></td>
-<td width="50%" align="center"><img src="assets/stardew-map.jpg" alt="The world map open on the bottom screen"></td>
-</tr>
-<tr>
-<td valign="top"><b>Drag and drop</b><br>Pick an item up with your finger, carry it and drop it in another slot. Touches
-go into the game directly and never move the system mouse.</td>
-<td valign="top"><b>Map and menus</b><br>Every menu the game opens goes to the bottom screen: the map, the journal, shops
-and settings.</td>
-</tr>
-<tr>
-<td width="50%" align="center"><img src="assets/stardew-editor.jpg" alt="The layout editor on the bottom screen with the clock selected and sent to the top screen"></td>
-<td width="50%" align="center"><img src="assets/stardew-custom.jpg" alt="The resulting layout: the clock and money on the top screen, the rest of the HUD on the bottom screen"></td>
-</tr>
-<tr>
-<td valign="top"><b>Layout editor</b><br>Hold two fingers on the bottom screen and choose Edit UI layout. Tap an element,
-then send it to the top or bottom screen, hide it, drag it or resize it.</td>
-<td valign="top"><b>Your layout</b><br>Here the clock and money moved to the top screen. Changes apply instantly and are
-saved per game, as fractions of the screen, so a layout fits any device with the same screen shapes.</td>
-</tr>
-</table>
 
 ## Balatro on two screens
 
@@ -119,6 +107,25 @@ mega pack, a four slot shop, boss blinds and controller only play. The mod is on
 second draw and no frame read back to the CPU, so it costs a few microseconds per frame. Balatro runs at a 75% split
 resolution by default, which keeps a busy late game table near 60 fps on the Thor.
 
+## Hollow Knight with a live map
+
+<table>
+<tr>
+<td width="50%" align="center"><img src="assets/hk-live-map.webp" alt="Hollow Knight on the AYN Thor: the Knight runs through the Colosseum of Fools on the top screen while the live map on the bottom screen follows him, then switches to the area and the whole kingdom"></td>
+<td width="50%" align="center"><img src="assets/hk-live-map.jpg" alt="The Knight resting on a bench on the top screen; masks, soul and geo above the live map of the Colosseum of Fools and Kingdom's Edge on the bottom screen"></td>
+</tr>
+<tr>
+<td valign="top"><b>A map that follows you</b><br>Knight, area and kingdom zoom, switched with the map button.</td>
+<td valign="top"><b>Game on top, everything else below</b><br>Masks, soul and geo sit above the live map.</td>
+</tr>
+</table>
+
+The kingdom stays on the top screen, and the bottom screen shows the game's own map, live, following the Knight as you
+explore. Drag to pan, pinch or double-tap to zoom, and press the map button to switch between the Knight, the area and
+the whole kingdom. The map dims under menus and dialogue instead of disappearing, and the inventory and pause menu open
+below. Everything about the map (size, position, start zoom, how it behaves under menus, when the Knight icon shows) is
+a setting in the layout editor, like any other element. It costs about 0.12 ms per frame on the Thor.
+
 ## Features
 
 ### Two screens, one picture
@@ -132,10 +139,18 @@ The top screen keeps the full 1920x1080 view of the world with nothing drawn ove
 continuing below, with the interface on top of it.
 <br clear="right">
 
+<img src="assets/stardew-title.jpg" alt="Stardew Valley's title screen across both screens of the AYN Thor: the logo and sky on the top screen, the clouds, hills and menu buttons continuing on the bottom screen" width="100%">
+
 ### Native touch
+<img src="assets/stardew-drag.webp" alt="Stardew Valley's inventory open on the bottom screen of the AYN Thor while the farm stays on the top screen: tools and items are picked up with a finger and dropped into other slots, with the game's tooltips showing" width="420" align="right">
+
 Bottom-screen touches are delivered to the game's own interface system: Unity's UI events, or the game's mouse state in
 Stardew Valley without moving the real pointer. Taps, holds, drags and drops behave as the game expects, and a tap is
 never mistaken for a gameplay click.
+
+Here the inventory is open on the bottom screen while the farm stays visible above. Items are picked up and dropped
+with a finger, and the game shows its own tooltips, with no cursor on screen.
+<br clear="right">
 
 ### Layout editor
 <img src="assets/duo-editor-tabs.jpg" alt="The layout editor's three tabs on the bottom screen: Elements, Background and Widgets" width="100%">
@@ -149,6 +164,10 @@ The editor opens on the bottom screen over the running game and has three tabs.
 
 Everything applies within a frame and is saved per game. Layouts are plain JSON and use the same format as community
 presets, so a shared layout carries its background and widgets too.
+
+Each mod declares what can be edited, so the editor only offers what really works for that game, and says why when
+something is off. Before you install a mod, its card already shows **Full** or **Partial** editing (or **Regions** for
+region view). A mod can also add elements with their own settings, like Hollow Knight's live map.
 
 <table>
 <tr>
@@ -202,22 +221,67 @@ change the background, switch widgets on and off, and line up the screens, witho
 
 ### Region view, for any game
 Games without a dual-screen mod can still use the bottom screen. Region view leaves the game unchanged on the top screen
-and shows a live, magnified part of the same frame on the bottom screen, such as a minimap. Taps on the bottom screen
+and shows live, magnified parts of the same frame on the bottom screen, such as a minimap. Taps on the bottom screen
 click the game at the matching spot. It costs almost nothing: the bottom screen is drawn from the frame already on the
 GPU.
 
-### Community packages
-A Community button on each game page lists shared layouts, recommended settings and dual-screen mods for that game.
-Packages come from a signed index on GitHub
-([GameNativeDuo-community](https://github.com/nono5822/GameNativeDuo-community)). Layouts and settings apply in one tap.
-Code mods install only after a consent screen that explains what they change, and removing one restores the game
-exactly. Share your own layout from the same screen, and rate packages through GitHub Discussions.
+Regions are edited like any other element, on the device or from a PC: add several, pick what each one shows, and place
+them on the bottom screen. **Move here** also hides the original on the top screen, so the minimap really moves instead
+of showing twice.
 
-### One-tap mods
-Games with a bundled dual-screen mod get a Dual screen switch next to Play. It installs the mod and its loader, sets the
-screen size and restores everything when switched off. After an app update, installed mods are refreshed automatically.
+### Companions
+A companion is a small app for the bottom screen, made of pages of cards: notes, checklists, timers, a value or progress
+tracker, a list, a picture of a map or a guide. The general companion works with every game, no mod needed. When a game
+has no split, the companion is the bottom screen. During a split or region view, open it from the two-finger menu.
+Companions are described in a JSON file, with no code, so anyone can write one for their game
+([`duo/docs/companions.md`](https://github.com/nono5822/GameNativeDuo/blob/devkit/duo/docs/companions.md)).
+
+### One control next to Play
+Every game with dual-screen support gets a Dual screen control next to Play. The switch turns the mod on and off. The
+arrow opens the mod explorer, which lists the bundled mod and the community ones for that game, with their editing
+level, so you can choose which one the switch applies. Turning a mod on installs it and its loader, sets the
+screen size and the launch options it needs; turning it off restores everything. After an app update, installed mods
+are refreshed automatically.
+
+<table>
+<tr>
+<td width="50%" align="center"><img src="assets/duo-game-page.jpg" alt="Hollow Knight's game page: the Play button and next to it the Dual screen control, reading GameNative Duo, Full editing, with its switch on, a status check mark and an arrow"></td>
+<td width="50%" align="center"><img src="assets/duo-mod-explorer.jpg" alt="The mod explorer for Hollow Knight: the bundled GameNative Duo mod, marked Official, Code mod and Full editing and tested on the AYN Thor, above an experimental community mod"></td>
+</tr>
+<tr>
+<td valign="top"><b>The Dual screen control</b><br>On or off, which mod, and whether it is working, next to Play.</td>
+<td valign="top"><b>The mod explorer</b><br>Bundled and community mods side by side, with their editing level.</td>
+</tr>
+</table>
+
+If something is wrong (the mod did not start, the window has the wrong size, the game runs under a display server that
+cannot split), the control says so and opens **Dual screen status**, with a one-tap fix for each problem, a check of the
+mod's files and your save backups. The bottom screen also shows a card while the mod starts, and explains what happened
+if it does not.
+
+<img src="assets/duo-status-card.jpg" alt="The bottom screen's status card: Starting Stardew Valley. This screen fills in once the game's dual-screen mod has loaded. A Hide button." width="520">
+
+### Save backups
+Your saves are zipped before every mod install, keeping the newest five per game. Restoring one backs up the current
+saves first, so nothing is lost either way.
+
+### Community packages
+The mod explorer also lists shared layouts, recommended settings and dual-screen mods for each game. Packages
+come from a signed index on GitHub
+([GameNativeDuo-community](https://github.com/nono5822/GameNativeDuo-community)). Layouts and settings apply in one tap.
+Share your own layout from the editor, and rate packages through GitHub Discussions.
+
+Code mods are held to a higher bar. The community's build service builds them from their published source after a
+maintainer has reviewed the code, the author signs them, and the app checks that signature. A mod can only use the
+bridge features it declares, it installs only after a consent screen that explains all of this, and a mod withdrawn
+from the index is removed from your device automatically, with your game restored. (The app side is done; it goes live
+once the community repository publishes its first signed code mod.)
 
 ## Games
+
+<img src="assets/duo-library.jpg" alt="GameNative Duo's library on the Dual screen tab: Balatro, Hollow Knight, Slime Rancher, Stardew Valley and Subnautica" width="100%">
+
+The library's Dual screen tab lists every game with a bundled dual-screen mod.
 
 | Game | Engine | Support | Status |
 |---|---|---|---|
@@ -225,13 +289,15 @@ screen size and restores everything when switched off. After an app update, inst
 | Slime Rancher | Unity (BepInEx) | Bundled mod | HUD below, crosshair on top, native touch, layout editor |
 | Subnautica | Unity (BepInEx) | Bundled mod | HUD and menus below, prompts and reticle on top |
 | Balatro | LOVE (Lovely) | Bundled mod | Hand, shop, packs and menus below, table on top, native touch and controller |
+| Hollow Knight | Unity (BepInEx) | Bundled mod | Live map on the bottom screen, HUD, inventory and menus below, layout editor |
 | Dead Cells | HashLink | Region view | Minimap on the bottom screen, no mod needed |
-| Hollow Knight, Silksong | Unity (BepInEx) | Community mod | Experimental, built from the game files, not yet tested on hardware |
+| Silksong | Unity (BepInEx) | Community mod | Experimental, not yet tested on hardware |
 | Risk of Rain 2 | Unity (BepInEx) | Community mod | Experimental, not yet tested on hardware |
 | The Binding of Isaac | Custom | Region view | Experimental minimap preset |
 
 The Unity adapter is generic. Most Unity games that use the Mono backend and Unity's standard UI can be added with a
-single catalog entry, with per-game adjustments only where a game needs them. The list of games to support next is
+single catalog entry, and per-game adjustments are a small `profile.json` (which cameras and canvases go where) instead
+of code. Slime Rancher and Subnautica already work this way. Any other game gets the general companion. The list of games to support next is
 ranked from GameNative's own play data for the AYN Thor ([`duo/futuregames.md`](https://github.com/nono5822/GameNativeDuo/blob/devkit/duo/futuregames.md)).
 
 ## Devices
@@ -239,20 +305,21 @@ ranked from GameNative's own play data for the AYN Thor ([`duo/futuregames.md`](
 | Device | Status |
 |---|---|
 | AYN Thor | Supported. Top screen 1920x1080, bottom screen 1240x1080, calibration built in |
-| AYANEO Pocket DS, Retroid Dual Screen and others | Planned. Device profiles name screens "top" and "bottom" independently of how Android numbers its displays |
+| AYANEO Pocket DS, Retroid Dual Screen and others | Planned ([#9](https://github.com/nono5822/GameNativeDuo/issues/9)). Device profiles name screens "top" and "bottom" independently of how Android numbers its displays |
 
 ## Getting started
 
 1. Install the APK. It sits next to official GameNative. Sign in as you would in GameNative.
-2. Open a game with dual-screen support (the Dual screen tab lists them) and turn on its Dual screen switch, or open
-   Community to apply a shared package.
-3. Press Play. Unity games need their in-game resolution set to the tall window once (1920x2160 on the Thor).
-4. In game, hold two fingers on the bottom screen to open the menu: Edit UI layout, Edit on PC, Line up screens, or
-   Choose bottom view for region view. The same options are in the GameNative Duo tab of GameNative's in-game menu
+2. Open a game with dual-screen support (the Dual screen tab lists them) and turn on the Dual screen switch next to
+   Play. The arrow beside it opens the mod explorer if you want a community mod or layout instead.
+3. Press Play. The bottom screen shows a card while the mod starts. The window size and Unity's launch resolution are
+   set for you.
+4. In game, hold two fingers on the bottom screen to open the menu: Companion, Edit UI layout (regions too, in region
+   view), Edit on PC or Line up screens. The same options are in the GameNative Duo tab of GameNative's in-game menu
    (Back button).
 
-Every GameNative Duo option lives in the GameNative Duo tab of the container settings: screen split, split mode, split
-resolution, native touch and the bottom-screen panel.
+Every GameNative Duo option lives in the GameNative Duo tab of the container settings: the bottom-screen panel, screen
+split, native touch, split mode, split resolution, companion and developer mode.
 
 ## Performance
 
@@ -265,6 +332,7 @@ around that.
 - Per-frame work is limited to the interface elements you changed. Measured in Slime Rancher on the Thor, the Unity
   adapter costs about 0.1 ms per frame, under half a percent of the frame time.
 - Region view in Dead Cells kept the GPU around 12% busy.
+- Hollow Knight's live map costs about 0.12 ms per frame, and the game stays at 60 fps with it on.
 - The Balatro mod draws both screens in one pass and never reads a frame back. Its own work is about 0.06 ms per
   frame. The cost that remains is presenting the tall frame, so Balatro defaults to the 75% split resolution.
 - A split resolution setting (100, 75 or 50%) lowers the cost of the tall window on demanding games.
@@ -280,7 +348,8 @@ engine adapter, and the app share a small, engine-neutral contract:
 - **`layout.json`** describes where each screen sits inside the game window.
 - **`ui.json`** holds the user's layout: for each element, its screen, scale and offset. Presets use the same format.
 - **A local bridge** (UDP on 127.0.0.1, 16-byte touch packets) carries native touch, live layout updates and the
-  element list for the editor.
+  element list for the editor. It also carries game state for companions, commands back to the game, log lines and
+  haptics.
 
 Implement those three things for an engine and the editor, storage, touch and community presets work unchanged. The
 specification is [`duo/docs/engine-adapter-contract.md`](https://github.com/nono5822/GameNativeDuo/blob/devkit/duo/docs/engine-adapter-contract.md).
@@ -289,19 +358,41 @@ is the reference implementation, and the Stardew Valley adapter
 ([`duo/mods-src/stardew`](https://github.com/nono5822/GameNativeDuo/tree/devkit/duo/mods-src/stardew)) is a
 second, complete example for a non-Unity engine.
 
+### Tools for modders
+- **SDKs** ([`duo/sdk/`](https://github.com/nono5822/GameNativeDuo/tree/devkit/duo/sdk)) for C# (Unity, MonoGame and
+  any .NET game), Lua (LÖVE) and C (a header-only library for native mods), with short examples. The bundled mods use
+  them too.
+- **The `duo` tool** ([`duo/tools/duo`](https://github.com/nono5822/GameNativeDuo/tree/devkit/duo/tools/duo)): start a
+  mod from a template, build, test and pack it, and check it against the contract. Its simulator runs a mod on a PC with
+  no handheld at all, and its web UI inspects elements, bridge traffic and logs, on the simulator or on a device
+  ([`duo/docs/duo-api.md`](https://github.com/nono5822/GameNativeDuo/blob/devkit/duo/docs/duo-api.md)).
+- **AI assistants**: `duo mcp` lets an AI agent inspect a running game's interface, move elements and capture both
+  screens, and a Claude skill teaches it the contract.
+- **A VS Code extension** that wraps the same tool.
+- **Developer mode** in the app: an overlay on the bottom screen with the mod's engine, SDK version and capabilities,
+  bridge traffic and its latest log lines, plus mods pushed from the PC (`duo dev --device`) that replace the installed
+  files at the next start.
+- **Game profiles** ([`duo/docs/game-profiles.md`](https://github.com/nono5822/GameNativeDuo/blob/devkit/duo/docs/game-profiles.md)):
+  for many Unity games, a `profile.json` that says which cameras and canvases go where is the whole port.
+- **A conformance check** ("Check" in the editor's element list) tries every feature a mod declares and reports what
+  does not work.
+
 ### Roadmap
+Planned work is tracked in the [issues](https://github.com/nono5822/GameNativeDuo/issues). The main items:
+- Touch hotkeys: buttons on the bottom screen for keys, clicks and gamepad buttons, for any game
+  ([#8](https://github.com/nono5822/GameNativeDuo/issues/8)).
+- Choosing your device on first start, and per-device versions of mods and layouts
+  ([#9](https://github.com/nono5822/GameNativeDuo/issues/9)).
+- Widgets on the top screen and battery options for the bottom screen
+  ([#10](https://github.com/nono5822/GameNativeDuo/issues/10)).
 - More engine adapters: Godot (Slay the Spire 2, Brotato), Unreal (UMG), Ren'Py, RPG Maker, Unity UI Toolkit.
-- Top-screen masks for region view, so an element shown below can be hidden above.
-- An MCP server so AI agents can help build and test dual-screen mods: inspect the interface, move elements and capture
-  both screens.
-- Bottom-screen panels and window routing.
+- Window routing: sending a game's extra windows to the bottom screen.
 
 ### Building
 ```bash
 ./gradlew :app:assembleModernDebug     # APK in app/build/outputs/apk/modern/debug/
 ```
-The newest work is on the `devkit` branch and the `duo/*` feature branches. Architecture, conventions and debugging
-notes are in [`CLAUDE.md`](https://github.com/nono5822/GameNativeDuo/blob/devkit/CLAUDE.md) and
+The newest work is on the `devkit` branch. Architecture, conventions and debugging notes are in [`CLAUDE.md`](https://github.com/nono5822/GameNativeDuo/blob/devkit/CLAUDE.md) and
 [`duo/notes/`](https://github.com/nono5822/GameNativeDuo/tree/devkit/duo/notes).
 
 ## Staying close to GameNative
