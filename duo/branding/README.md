@@ -9,8 +9,10 @@
   in the modern flavour); purple `#D74EE9` is secondary.
 - **Banner**: `banner.svg` (1280x640, also the GitHub social-preview size), rendered with
   `resvg --use-font-file Nunito-900.ttf --use-font-file Nunito-700.ttf banner.svg banner.png` (Nunito, SIL OFL, from
-  Google Fonts). The PNG is `.github/assets/banner.png`. The DUO wordmark is plain white (no gradient, no dot in the
-  O); the gradient stays on the icon tile.
+  Google Fonts). The PNG is `.github/assets/banner.png`. The DUO wordmark keeps its original shapes (lighter
+  segments at 66% opacity) in white, with no dot in the O; the gradient stays on the icon tile. Download the 700 and
+  900 weights separately (`css2?family=Nunito:wght@900`): asked together, Google Fonts can return Bold for both, and
+  "GameNative" then renders too light.
 - **README footage**: `shot.py` captures from the Thor over adb and assembles both screens at their physical scale
   (calibration gap 249, scale 1.142), hinge and bezels included: `shot.py still NAME`, `shot.py video NAME SECONDS`
   (animated WebP, raw clips kept in `duo/agents/runs/footage/` for `shot.py encode`), `shot.py top NAME` for app
