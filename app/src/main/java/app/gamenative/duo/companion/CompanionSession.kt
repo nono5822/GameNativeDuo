@@ -8,6 +8,8 @@ import android.os.HandlerThread
 import android.os.Looper
 import android.os.Process
 import app.gamenative.duo.DualScreenHost
+import app.gamenative.duo.hotkeys.HotkeyInput
+import app.gamenative.duo.hotkeys.HotkeySource
 import app.gamenative.powercontrol.PowerManager
 import java.io.File
 import java.text.DateFormat
@@ -36,6 +38,12 @@ class CompanionSession(
     val files: CompanionFiles get() = entry.files
 
     val data = CompanionData()
+
+    /** What hotkeys cards press in the game; set by the game session (null: buttons show why they cannot work). */
+    var hotkeyInput: HotkeyInput? = null
+
+    /** Where the user's own hotkeys are kept (the session's UI layout); set by the game session. */
+    var hotkeys: HotkeySource? = null
 
     /** Told (main thread) when the package was edited and reloaded: views rebuild. */
     val reloadListeners = mutableListOf<() -> Unit>()

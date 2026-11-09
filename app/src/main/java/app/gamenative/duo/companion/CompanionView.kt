@@ -38,6 +38,9 @@ interface CompanionHost {
      * Android serves the keyboard to the main display while the game runs there, and the full-size keyboard fits better.
      */
     fun editText(title: String, initial: String, multiLine: Boolean, done: (String) -> Unit)
+
+    /** The game activity's context, for dialogs on the main screen (a card's own context is the bottom screen's). */
+    val mainContext: Context
 }
 
 /**

@@ -6,6 +6,15 @@ import android.os.Looper
 import android.os.Process
 import app.gamenative.duo.DualScreenHost
 import app.gamenative.duo.community.ShareLayout
+import app.gamenative.duo.hotkeys.HOTKEY_ICONS
+import app.gamenative.duo.hotkeys.HotkeyGrid
+import app.gamenative.duo.hotkeys.HotkeyKeys
+import app.gamenative.duo.hotkeys.HotkeyMode
+import app.gamenative.duo.hotkeys.HotkeyPreset
+import app.gamenative.duo.hotkeys.HotkeySize
+import app.gamenative.duo.hotkeys.MouseButton
+import app.gamenative.duo.hotkeys.PadButton
+import app.gamenative.duo.mods.DuoModCatalog
 import app.gamenative.duo.ui.UiBackground
 import app.gamenative.duo.ui.UiBackgroundMode
 import app.gamenative.duo.ui.UiElementList
@@ -232,6 +241,15 @@ internal class PcEditorServer(private val context: Context, private val host: Pc
                         onMain(20_000) { done: (Boolean?) -> Unit -> host.controller.setBackgroundImage(jpeg, w, h) { done(it) } } == true
                 sendJson(out, JSONObject().put("ok", ok))
             }
+            "POST /api/hotkeys" -> {
+                // {"grid": {...}} stores the user's buttons; {"grid": null} goes back to the game's preset.
+                val o = JSONObject(String(req.body))
+                val sent = o.optJSONObject("grid")
+                val grid = sent?.let { HotkeyGrid.fromJson(it) }
+                val dropped = (sent?.optJSONArray("buttons")?.length() ?: 0) - (grid?.buttons?.size ?: 0)
+                onMainUnit { host.controller.setHotkeys(grid) }
+                sendJson(out, JSONObject().put("ok", true).put("dropped", dropped))
+            }
             "POST /api/reset" -> {
                 onMainUnit { host.controller.resetAll() }
                 sendJson(out, JSONObject().put("ok", true))
@@ -280,9 +298,33 @@ internal class PcEditorServer(private val context: Context, private val host: Pc
                             UiWidgetType.entries.forEach { put(JSONObject().put("id", it.id).put("label", it.label)) }
                         },
                     )
-                    .put("elements", JSONArray().apply { elements?.elements?.forEach { e -> put(elementJson(e)) } }),
+                    .put("elements", JSONArray().apply { elements?.elements?.forEach { e -> put(elementJson(e)) } })
+                    .put("hotkeys", hotkeysJson(c)),
             )
         } ?: JSONObject().put("error", "busy")
+    }
+
+    /** The hotkeys the game uses now (the user's, else its preset) and every choice the editor offers. */
+    private fun hotkeysJson(c: UiLayoutController): JSONObject {
+        val preset = HotkeyPreset.forGame(c.layout.game, DuoModCatalog.forApp(c.layout.game)?.unity == true, c.engine)
+        fun names(pairs: List<Pair<String, String>>) = JSONArray().apply { pairs.forEach { (id, l) -> put(JSONArray().put(id).put(l)) } }
+        return JSONObject()
+            .put("grid", (c.layout.hotkeys ?: preset.grid).toJson())
+            .put("custom", c.layout.hotkeys != null)
+            .put("preset", preset.id)
+            .put(
+                "presets",
+                JSONArray().apply {
+                    HotkeyPreset.entries.forEach { put(JSONObject().put("id", it.id).put("label", it.label).put("grid", it.grid.toJson())) }
+                },
+            )
+            .put("keys", JSONArray().apply { HotkeyKeys.NAMES.forEach { put(it.first) } })
+            .put("mouse", names(MouseButton.entries.map { it.id to it.label }))
+            .put("pad", names(PadButton.entries.map { it.id to it.label }))
+            .put("modes", names(HotkeyMode.entries.map { it.id to it.label }))
+            .put("sizes", names(HotkeySize.entries.map { it.id to it.label }))
+            .put("icons", JSONArray(HOTKEY_ICONS))
+            .put("maxButtons", HotkeyGrid.MAX_BUTTONS)
     }
 
     private fun elementJson(e: app.gamenative.duo.ui.UiElement) = JSONObject()

@@ -51,6 +51,7 @@ internal object CompanionCards {
             CardType.VALUE -> value(env, card)
             CardType.PROGRESS -> progress(env, card)
             CardType.LIST -> list(env, card)
+            CardType.HOTKEYS -> HotkeyCard.build(env, card)
             CardType.UNSUPPORTED -> {
                 val text = "This card (\"${card.typeName}\") needs a newer GameNative Duo."
                 CardBinding(frame(env, card, note(env.context, text)), emptySet())
@@ -558,7 +559,7 @@ internal object CompanionCards {
     // ---- shared pieces ---------------------------------------------------------------------------------------------
 
     /** The card's chrome: a dark rounded panel with its title. */
-    private fun frame(env: CardEnv, card: CompanionCard, content: View): View {
+    internal fun frame(env: CardEnv, card: CompanionCard, content: View): View {
         val ctx = env.context
         return LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
@@ -579,7 +580,7 @@ internal object CompanionCards {
         outer.layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
     }
 
-    private fun column(ctx: Context) = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
+    internal fun column(ctx: Context) = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
 
     private fun bodyText(ctx: Context) = TextView(ctx).apply {
         textSize = 16f
@@ -587,10 +588,10 @@ internal object CompanionCards {
         setLineSpacing(0f, 1.15f)
     }
 
-    private fun note(ctx: Context, text: String) = DuoUi.label(ctx, text, 14f, DuoUi.MUTED).apply { maxLines = 4 }
+    internal fun note(ctx: Context, text: String) = DuoUi.label(ctx, text, 14f, DuoUi.MUTED).apply { maxLines = 4 }
 
     /** A row of chips. Not baseline-aligned: that shifts pill buttons down and clips their bottoms. */
-    private fun chipRow(ctx: Context, centered: Boolean = false) = LinearLayout(ctx).apply {
+    internal fun chipRow(ctx: Context, centered: Boolean = false) = LinearLayout(ctx).apply {
         orientation = LinearLayout.HORIZONTAL
         isBaselineAligned = false
         gravity = if (centered) Gravity.CENTER else Gravity.CENTER_VERTICAL
@@ -598,7 +599,7 @@ internal object CompanionCards {
 
     private const val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
 
-    private fun chipParams(ctx: Context) = LinearLayout.LayoutParams(WRAP, WRAP).apply {
+    internal fun chipParams(ctx: Context) = LinearLayout.LayoutParams(WRAP, WRAP).apply {
         setMargins(0, dp(ctx, 6), dp(ctx, 8), dp(ctx, 2))
     }
 
@@ -609,7 +610,7 @@ internal object CompanionCards {
     internal fun dp(ctx: Context, v: Int) = (v * ctx.resources.displayMetrics.density).roundToInt()
 
     /** "Removed x · Undo" for a few seconds after a destructive tap. */
-    private class UndoBar(ctx: Context) {
+    internal class UndoBar(ctx: Context) {
         private var action: (() -> Unit)? = null
         private val label = DuoUi.label(ctx, "", 14f, DuoUi.MUTED)
         private val hide = Runnable { view.visibility = View.GONE }

@@ -104,6 +104,7 @@ h3 { margin: 4px 0 10px; font-size: 13px; letter-spacing: .08em; text-transform:
       <button data-tab="elements" class="on">Elements</button>
       <button data-tab="background">Background</button>
       <button data-tab="widgets">Widgets</button>
+      <button data-tab="hotkeys">Hotkeys</button>
       <button data-tab="share">Share</button>
     </div>
     <section class="pane show" id="pane-elements">
@@ -125,6 +126,16 @@ h3 { margin: 4px 0 10px; font-size: 13px; letter-spacing: .08em; text-transform:
       <div class="row" id="addWidgets"></div>
       <p class="muted">Widgets are live readouts drawn by GameNative Duo on the bottom screen. Drag them on the bottom screen to place them.</p>
       <div id="widgetList"></div>
+    </section>
+    <section class="pane" id="pane-hotkeys">
+      <h3>Touch hotkeys</h3>
+      <p class="muted" id="hkNote"></p>
+      <div class="card" id="hkGrid"></div>
+      <div id="hkList"></div>
+      <div class="row"><button class="primary" id="hkAdd">Add a button</button></div>
+      <h3 style="margin-top:16px">Start from</h3>
+      <div class="row" id="hkPresets"></div>
+      <datalist id="hkKeyNames"></datalist>
     </section>
     <section class="pane" id="pane-share">
       <h3>Share with the community</h3>
@@ -256,6 +267,7 @@ function render() {
   renderSelection();
   renderBackground();
   renderWidgetPane();
+  renderHotkeys();
 }
 
 function screenBox(label, which, left, top, w, h) {
@@ -400,6 +412,105 @@ function renderWidgetPane() {
     c.onclick = (ev) => { if (ev.target.tagName !== "BUTTON" && ev.target.tagName !== "INPUT") { selectedWidget = i; render(); } };
     host.appendChild(c);
   });
+}
+
+// ---- hotkeys pane -------------------------------------------------------------------------------------------
+
+// The companion's Hotkeys page: buttons that press keys, mouse or controller buttons, or send mod commands.
+const hk = () => state.hotkeys;
+const hkKind = (b) => (b.command ? "command" : b.mouse ? "mouse" : b.pad ? "pad" : "keys");
+
+async function saveHotkeys(grid) {
+  hk().grid = grid; hk().custom = grid !== null;
+  const r = await api("/api/hotkeys", { grid });
+  if (r.dropped > 0) toast(r.dropped + " button(s) were not saved: check their keys or command");
+  scheduleRefresh(300);
+}
+
+function option(select, value, label, selected) {
+  const o = document.createElement("option"); o.value = value; o.textContent = label; o.selected = selected; select.appendChild(o);
+}
+
+function renderHotkeys() {
+  const h = hk(); if (!h) return;
+  const grid = h.grid;
+  $("#hkNote").textContent = (h.custom ? "Your own buttons." : "This game's default buttons (" + h.preset + "): change anything to make them yours.") +
+    " They show on the companion's Hotkeys page on the bottom screen and are shared with your layout.";
+  const dl = $("#hkKeyNames"); if (!dl.childElementCount) h.keys.forEach((k) => option(dl, k, k, false));
+  const g = $("#hkGrid");
+  g.innerHTML = '<div class="row"><label class="muted">Across</label><select id="hkCols"></select><label class="muted">Size</label><select id="hkSize"></select>' +
+    '<label class="muted"><input type="checkbox" id="hkHaptics"> Vibrate</label></div>';
+  for (let c = 2; c <= 5; c++) option($("#hkCols"), c, c, grid.columns === c);
+  h.sizes.forEach(([id, l]) => option($("#hkSize"), id, l, grid.size === id));
+  $("#hkHaptics").checked = grid.haptics !== false;
+  $("#hkCols").onchange = (ev) => saveHotkeys(Object.assign({}, grid, { columns: +ev.target.value }));
+  $("#hkSize").onchange = (ev) => saveHotkeys(Object.assign({}, grid, { size: ev.target.value }));
+  $("#hkHaptics").onchange = (ev) => saveHotkeys(Object.assign({}, grid, { haptics: ev.target.checked }));
+
+  const list = $("#hkList"); list.innerHTML = "";
+  grid.buttons.forEach((b, i) => list.appendChild(hotkeyCard(grid, b, i)));
+  $("#hkAdd").disabled = grid.buttons.length >= h.maxButtons;
+  $("#hkAdd").onclick = () => saveHotkeys(Object.assign({}, grid, { buttons: grid.buttons.concat([{ label: "New", keys: "Esc" }]) }));
+
+  const p = $("#hkPresets"); p.innerHTML = "";
+  h.presets.forEach((pr) => {
+    const b = document.createElement("button"); b.textContent = pr.label; b.className = grid.preset === pr.id ? "on" : "";
+    b.onclick = () => { if (confirm("Replace the buttons with the " + pr.label + " set?")) saveHotkeys(Object.assign({}, pr.grid, { columns: grid.columns, size: grid.size, haptics: grid.haptics })); };
+    p.appendChild(b);
+  });
+  if (h.custom) {
+    const b = document.createElement("button"); b.textContent = "Game defaults";
+    b.onclick = () => { if (confirm("Forget your buttons and use this game's defaults?")) saveHotkeys(null); };
+    p.appendChild(b);
+  }
+}
+
+function hotkeyCard(grid, b, i) {
+  const h = hk(), c = document.createElement("div"); c.className = "card";
+  c.innerHTML =
+    '<div class="row"><input type="text" class="hkIcon" maxlength="8" style="width:56px" list="hkIcons" title="Icon (an emoji)">' +
+    '<input type="text" class="hkLabel" maxlength="24" style="flex:1;width:auto" placeholder="Label"></div>' +
+    '<div class="row"><select class="hkKind"><option value="keys">Keys</option><option value="mouse">Mouse</option><option value="pad">Controller</option><option value="command">Mod command</option></select>' +
+    '<input type="text" class="hkCommand" style="flex:1;width:auto" placeholder="game.command">' +
+    '<input type="text" class="hkKeys" style="flex:1;width:auto" list="hkKeyNames" placeholder="Ctrl+Tab">' +
+    '<select class="hkMouse"></select><select class="hkPad"></select></div>' +
+    '<div class="row"><select class="hkMode"></select><select class="hkSpan"></select><span style="flex:1"></span>' +
+    '<button class="hkUp" title="Move earlier">↑</button><button class="hkDown" title="Move later">↓</button><button class="hkDel">Remove</button></div>';
+  const q = (s) => c.querySelector(s);
+  q(".hkIcon").value = b.icon || ""; q(".hkLabel").value = b.label || "";
+  q(".hkKind").value = hkKind(b);
+  q(".hkCommand").value = b.command || ""; q(".hkKeys").value = b.keys || "";
+  h.mouse.forEach(([id, l]) => option(q(".hkMouse"), id, l, b.mouse === id));
+  h.pad.forEach(([id, l]) => option(q(".hkPad"), id, l, b.pad === id));
+  h.modes.forEach(([id, l]) => option(q(".hkMode"), id, l, (b.mode || "tap") === id));
+  for (let s = 1; s <= grid.columns; s++) option(q(".hkSpan"), s, s === 1 ? "1 cell" : s + " cells", (b.span || 1) === s);
+  q(".hkKeys").placeholder = hkKind(b) === "command" ? "Keys without the mod (optional)" : "Ctrl+Tab";
+  const kind = hkKind(b);
+  q(".hkCommand").style.display = kind === "command" ? "" : "none";
+  q(".hkKeys").style.display = kind === "keys" || kind === "command" ? "" : "none";
+  q(".hkMouse").style.display = kind === "mouse" ? "" : "none";
+  q(".hkPad").style.display = kind === "pad" ? "" : "none";
+  const commit = () => {
+    const k = q(".hkKind").value, nb = { label: q(".hkLabel").value.trim() };
+    const icon = q(".hkIcon").value.trim(); if (icon) nb.icon = icon;
+    if (k === "keys" || k === "command") { const keys = q(".hkKeys").value.trim(); if (keys) nb.keys = keys; }
+    if (k === "keys" && !nb.keys) nb.keys = "Esc";
+    if (k === "command") nb.command = q(".hkCommand").value.trim() || "game.command";
+    if (k === "mouse") nb.mouse = q(".hkMouse").value || "left";
+    if (k === "pad") nb.pad = q(".hkPad").value || "a";
+    if (q(".hkMode").value !== "tap") nb.mode = q(".hkMode").value;
+    if (+q(".hkSpan").value > 1) nb.span = +q(".hkSpan").value;
+    const buttons = grid.buttons.slice(); buttons[i] = nb;
+    saveHotkeys(Object.assign({}, grid, { buttons }));
+  };
+  c.querySelectorAll("input, select").forEach((n) => (n.onchange = commit));
+  const move = (d) => { const bs = grid.buttons.slice(), j = i + d; if (j < 0 || j >= bs.length) return; [bs[i], bs[j]] = [bs[j], bs[i]]; saveHotkeys(Object.assign({}, grid, { buttons: bs })); };
+  q(".hkUp").onclick = () => move(-1); q(".hkDown").onclick = () => move(1);
+  q(".hkDel").onclick = () => { const bs = grid.buttons.slice(); bs.splice(i, 1); saveHotkeys(Object.assign({}, grid, { buttons: bs })); };
+  if (!document.getElementById("hkIcons")) {
+    const dl = document.createElement("datalist"); dl.id = "hkIcons"; h.icons.forEach((ic) => ic && option(dl, ic, ic, false)); document.body.appendChild(dl);
+  }
+  return c;
 }
 
 function renderWidgetsOnly() { document.querySelectorAll(".widget").forEach((n) => n.remove()); renderWidgets(); }

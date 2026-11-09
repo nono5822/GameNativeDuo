@@ -194,6 +194,7 @@ enum class CardType(val id: String) {
     PROGRESS("progress"),
     LIST("list"),
     MAP("map"),
+    HOTKEYS("hotkeys"),
     UNSUPPORTED(""),
     ;
 

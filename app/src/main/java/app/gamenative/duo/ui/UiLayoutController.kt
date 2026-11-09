@@ -6,6 +6,7 @@ import android.os.Handler
 import android.os.Looper
 import app.gamenative.duo.DualScreenHost
 import app.gamenative.duo.bridge.DuoBridge
+import app.gamenative.duo.hotkeys.HotkeyGrid
 import app.gamenative.service.SteamService
 import com.winlator.container.Container
 import java.io.File
@@ -134,9 +135,22 @@ class UiLayoutController(
         }
     }
 
+    /** Back to the preset. Touch hotkeys stay: they have their own editor and reset. */
     fun resetAll() {
+        val hotkeys = layout.hotkeys
         layout = UiLayoutStore.reset(context, container.id)
+        if (hotkeys != null) {
+            layout = layout.copy(hotkeys = hotkeys)
+            UiLayoutStore.save(context, layout)
+        }
         push()
+    }
+
+    /** The touch hotkeys (null: the game's preset). The app draws them: the mod has nothing to redraw. */
+    fun setHotkeys(hotkeys: HotkeyGrid?) {
+        layout = layout.copy(hotkeys = hotkeys)
+        listeners.forEach { it(layout) }
+        UiLayoutStore.save(context, layout)
     }
 
     fun setBackground(background: UiBackground, save: Boolean) {

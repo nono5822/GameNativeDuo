@@ -482,6 +482,8 @@ private class SplitBottomPresentation(
     override fun editText(title: String, initial: String, multiLine: Boolean, done: (String) -> Unit) =
         CompanionPickers.editText(outerContext, title, initial, multiLine, done)
 
+    override val mainContext: Context get() = outerContext
+
     // ---- background image, snapshots, PC editor ----------------------------------------------------------------
 
     /** The system photo picker (on the top screen); the chosen image becomes the bottom screen's background. */

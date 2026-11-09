@@ -2,6 +2,8 @@ package app.gamenative.duo.ui
 
 import android.content.Context
 import app.gamenative.duo.DualScreenHost
+import app.gamenative.duo.hotkeys.HotkeyGrid
+import app.gamenative.duo.hotkeys.HotkeyPreset
 import app.gamenative.duo.mods.DuoModCatalog
 import com.winlator.container.Container
 import java.io.File
@@ -206,6 +208,8 @@ data class UiLayout(
     val rules: Map<String, UiRule> = emptyMap(),
     val background: UiBackground = UiBackground(),
     val widgets: List<UiWidget> = emptyList(),
+    /** Touch hotkeys for the companion's hotkeys card; null: the game's preset (see [HotkeyPreset]). */
+    val hotkeys: HotkeyGrid? = null,
 ) {
     fun rule(id: String): UiRule = rules[id] ?: UiRule()
 
@@ -219,6 +223,7 @@ data class UiLayout(
         put("elements", JSONObject().apply { rules.toSortedMap().forEach { (id, r) -> put(id, r.toJson()) } })
         if (!background.isDefault) put("background", background.toJson())
         if (widgets.isNotEmpty()) put("widgets", org.json.JSONArray().apply { widgets.forEach { put(it.toJson()) } })
+        hotkeys?.let { put("hotkeys", it.toJson()) }
     }
 
     companion object {
@@ -241,6 +246,7 @@ data class UiLayout(
                 rules,
                 UiBackground.fromJson(json.optJSONObject("background")),
                 widgets,
+                json.optJSONObject("hotkeys")?.let { HotkeyGrid.fromJson(it) },
             )
         }
     }

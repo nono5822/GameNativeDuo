@@ -4,9 +4,16 @@
   "id": "general",
   "name": "Companion",
   "author": "GameNative Duo",
-  "packageVersion": "1.0.0",
+  "packageVersion": "1.1.0",
   "games": ["*"],
   "pages": [
+    {
+      "id": "hotkeys",
+      "title": "Hotkeys",
+      "cards": [
+        {"id": "hotkeys", "type": "hotkeys", "user": true}
+      ]
+    },
     {
       "id": "notes",
       "title": "Notes",

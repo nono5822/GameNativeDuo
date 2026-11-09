@@ -10,6 +10,10 @@ import app.gamenative.duo.companion.CompanionSession
 import app.gamenative.duo.display.DeviceProfile
 import app.gamenative.duo.display.DisplayInventory
 import app.gamenative.duo.display.DisplaySnapshot
+import app.gamenative.duo.hotkeys.HotkeyInput
+import app.gamenative.duo.hotkeys.HotkeyPreset
+import app.gamenative.duo.hotkeys.HotkeySource
+import app.gamenative.duo.mods.DuoModCatalog
 import app.gamenative.duo.mods.DuoModInstaller
 import app.gamenative.duo.mods.SessionStatus
 import app.gamenative.duo.mods.SessionStatusStore
@@ -141,6 +145,10 @@ class DualScreenSession internal constructor(
     }
     private var running = false
 
+    /** Touch hotkeys (the companion's hotkeys card): pressed in the game, kept in the game's UI layout. */
+    private val hotkeyInput = HotkeyInput(xServer, bridge)
+    private val hotkeyLayout = uiLayout ?: UiLayoutController(context, container, null)
+
     /** The game's UI layout while the screen split runs with a mod-aware layout (else null). */
     val layout: UiLayoutController? get() = uiLayout
 
@@ -163,6 +171,10 @@ class DualScreenSession internal constructor(
         if (running) return
         running = true
         displayManager?.registerDisplayListener(displayListener, Handler(Looper.getMainLooper()))
+        companion?.hotkeyInput = hotkeyInput
+        companion?.hotkeys = HotkeySource(hotkeyLayout) {
+            HotkeyPreset.forGame(container.id, DuoModCatalog.forApp(container.id)?.unity == true, bridge?.engine)
+        }
         report("session start (container ${container.id}, profile ${profile.id}, $settings)")
         if (screenSplit == null) LayoutFile.delete(container)
         try {
@@ -220,6 +232,7 @@ class DualScreenSession internal constructor(
         bottomPanel.stop()
         screenSplit?.stop()
         companion?.stop()
+        hotkeyInput.close()
         try {
             gamescopeStatus?.dismiss()
         } catch (t: Throwable) {

@@ -22,8 +22,9 @@ import timber.log.Timber
  *
  * Wire format (little-endian): `'G' 'D' version type`, then per type:
  * - app -> mod: [TOUCH] `action u8, pointer u8, 0, 0, x f32, y f32` (window pixels, origin top-left);
- *   [RULES_CHANGED]; [DUMP_ELEMENTS] `request u32`.
- * - mod -> app: [HELLO] `capabilities u32, engine ascii`; [ELEMENTS_WRITTEN] `request u32`.
+ *   [RULES_CHANGED]; [DUMP_ELEMENTS] `request u32`; [COMMAND] `request u32, json utf-8`.
+ * - mod -> app: [HELLO] `capabilities u32, engine ascii`; [ELEMENTS_WRITTEN] `request u32`;
+ *   [COMMAND_RESULT] `request u32, status u8, message utf-8`.
  *
  * Costs: the receive thread sleeps in the kernel; sends go through one background thread (Android forbids socket
  * I/O on the main thread, even on loopback), and touch moves are coalesced per finger so a slow game frame never
@@ -97,6 +98,23 @@ class DuoBridge private constructor(private val socket: DatagramSocket) {
         enqueue(p, coalesce = false)
     }
 
+    /**
+     * Asks the mod to run [command] (`{"cmd": ..., "args": {...}}`, see duo/docs/companions.md); the mod answers with
+     * COMMAND_RESULT for [request] ([commandListeners]). False when the JSON is too big for one datagram.
+     */
+    fun sendCommand(request: Int, command: String, args: org.json.JSONObject? = null): Boolean {
+        val json = org.json.JSONObject().put("cmd", command).apply { if (args != null) put("args", args) }.toString().toByteArray()
+        if (json.size > MAX_COMMAND_BYTES) return false
+        val p = packet(COMMAND, 8 + json.size)
+        ByteBuffer.wrap(p).order(ByteOrder.LITTLE_ENDIAN).putInt(4, request)
+        System.arraycopy(json, 0, p, 8, json.size)
+        enqueue(p, coalesce = false)
+        return true
+    }
+
+    /** Told (main thread) when the mod answers a command: request, status ([RESULT_OK]...), message. */
+    val commandListeners = CopyOnWriteArrayList<(request: Int, status: Int, message: String) -> Unit>()
+
     fun close() {
         closed = true
         try {
@@ -152,6 +170,12 @@ class DuoBridge private constructor(private val socket: DatagramSocket) {
                         val request = b.getInt(4)
                         main.post { listener?.onElementsWritten(request) }
                     }
+                    COMMAND_RESULT -> if (n >= 9) {
+                        val request = b.getInt(4)
+                        val status = buffer[8].toInt() and 0xFF
+                        val message = String(buffer, 9, n - 9, Charsets.UTF_8)
+                        main.post { commandListeners.forEach { it(request, status, message) } }
+                    }
                 }
             } catch (t: Throwable) {
                 if (closed) return
@@ -190,6 +214,16 @@ class DuoBridge private constructor(private val socket: DatagramSocket) {
         const val DUMP_ELEMENTS: Byte = 0x03
         const val HELLO: Byte = 0x81.toByte()
         const val ELEMENTS_WRITTEN: Byte = 0x83.toByte()
+        const val COMMAND: Byte = 0x05
+        const val COMMAND_RESULT: Byte = 0x85.toByte()
+
+        const val RESULT_OK = 0
+        const val RESULT_REFUSED = 1
+        const val RESULT_UNKNOWN = 2
+        const val RESULT_FAILED = 3
+
+        /** A command and its arguments fit one small datagram; anything bigger is a mistake. */
+        const val MAX_COMMAND_BYTES = 1200
 
         const val CAP_TOUCH = 1
         const val CAP_UI_RULES = 2
@@ -203,6 +237,12 @@ class DuoBridge private constructor(private val socket: DatagramSocket) {
 
         /** Bottom-screen background: the game itself (the world continues on the bottom screen). */
         const val CAP_BG_GAME = 32
+
+        /** The mod publishes companion state (STATE; app side not built yet). */
+        const val CAP_STATE = 64
+
+        /** The mod runs commands (COMMAND / COMMAND_RESULT): companion buttons, hotkeys. */
+        const val CAP_COMMANDS = 128
 
         const val TOUCH_DOWN = 0
         const val TOUCH_MOVE = 1

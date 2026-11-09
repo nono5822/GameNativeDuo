@@ -114,6 +114,8 @@ private class BottomPanelPresentation(
     override fun editText(title: String, initial: String, multiLine: Boolean, done: (String) -> Unit) =
         CompanionPickers.editText(outerContext, title, initial, multiLine, done)
 
+    override val mainContext: Context get() = outerContext
+
     private fun buildContent(): LinearLayout {
         val pad = dp(24)
         val root = LinearLayout(context).apply {
