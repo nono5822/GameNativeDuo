@@ -9,4 +9,9 @@
   in the modern flavour); purple `#D74EE9` is secondary.
 - **Banner**: `banner.svg` (1280x640, also the GitHub social-preview size), rendered with
   `resvg --use-font-file Nunito-900.ttf --use-font-file Nunito-700.ttf banner.svg banner.png` (Nunito, SIL OFL, from
-  Google Fonts). The PNG is `.github/assets/banner.png` on `master`.
+  Google Fonts). The PNG is `.github/assets/banner.png`. The DUO wordmark is plain white (no gradient, no dot in the
+  O); the gradient stays on the icon tile.
+- **README footage**: `shot.py` captures from the Thor over adb and assembles both screens at their physical scale
+  (calibration gap 249, scale 1.142), hinge and bezels included: `shot.py still NAME`, `shot.py video NAME SECONDS`
+  (animated WebP, raw clips kept in `duo/agents/runs/footage/` for `shot.py encode`), `shot.py top NAME` for app
+  screens (the bottom screen shows the Android launcher there).
