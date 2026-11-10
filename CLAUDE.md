@@ -221,7 +221,8 @@ adb logcat -s GNDuo                         # devkit logs
 ```
 
 - CI: `.github/workflows/duo-debug-build.yml` builds the APK on pushes to `devkit`/`duo/**` (artifact on the run), then
-  runs `lintKotlinDuo` and the duo unit tests; its second job runs the SDK, `duo` tool and game-profile tests;
+  runs `lintKotlinDuo` and the duo unit tests; its second job runs the SDK and `duo` tool tests (the game-profile
+  tests need a game's `UnityEngine.dll`: local only);
   `duo-upstream-check.yml` nightly test-merges upstream `master` (needs `devkit` as the default branch).
 - All builds sign with `duo/debug.keystore` (debug-only, deliberately committed) so CI and local APKs update
   each other. For local builds: `cp duo/debug.keystore ~/.android/debug.keystore` (back up your own first).

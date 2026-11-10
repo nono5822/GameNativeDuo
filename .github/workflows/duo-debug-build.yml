@@ -94,7 +94,9 @@ jobs:
           retention-days: 14
 
   sdk-tests:
-    # The Duo SDKs (C#, Lua, C), the duo tool with its simulator, and the Unity game-profile tests. No Android build.
+    # The Duo SDKs (C#, Lua, C) and the duo tool with its simulator. No Android build. The Unity game-profile tests
+    # (duo/mods-src/unity/GameProfileTests) are not here: they compile against a game's UnityEngine.dll, which cannot
+    # be in the repository; run them locally with -p:ManagedPath=<Game_Data/Managed>.
     if: github.repository != 'utkarshdalal/GameNative'
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -116,10 +118,6 @@ jobs:
       - name: duo tool and simulator tests
         if: success() || failure()
         run: dotnet test duo/tools/duo/tests
-
-      - name: Unity game-profile tests
-        if: success() || failure()
-        run: dotnet test duo/mods-src/unity/GameProfileTests
 
       - name: Lua SDK test
         if: success() || failure()
