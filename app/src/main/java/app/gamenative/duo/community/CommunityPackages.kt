@@ -30,8 +30,10 @@ object CommunityPackages {
 
     /** The last verified index for [containerId] on disk, or null (never fetched, or the game has no packages). */
     fun cached(context: Context, containerId: String): CommunityGame? = try {
-        val (json, sig) = indexFiles(context, CommunityIndex.gameKey(containerId))
-        if (json.isFile && sig.isFile) parseVerified(json.readBytes(), sig.readText()) else null
+        val key = CommunityIndex.gameKey(containerId)
+        val (json, sig) = indexFiles(context, key)
+        // The cache holds only what was accepted: checked for the right game again, not against the sequence mark.
+        if (json.isFile && sig.isFile) parseVerified(json.readBytes(), sig.readText(), key, 0L) else null
     } catch (t: Throwable) {
         Timber.tag(DualScreenHost.TAG).w(t, "Ignoring the cached community index for %s", containerId)
         null
@@ -49,6 +51,9 @@ object CommunityPackages {
     }
 
     private class UntrustedException : IOException("the package list's signature is not valid")
+
+    /** A correctly signed list that is not the one asked for, or older than one already accepted ([IndexFreshness]). */
+    private class StaleException(why: String) : IOException("the package list was refused: $why")
 
     private fun fetch(context: Context, containerId: String, revalidate: Boolean = true): CommunityGame {
         val key = CommunityIndex.gameKey(containerId)
@@ -73,7 +78,8 @@ object CommunityPackages {
             }
             val body = response.body.bytes()
             val signature = fetchText("${CommunityIndex.gameUrl(key)}.sig")
-            val game = parseVerified(body, signature) ?: throw UntrustedException()
+            val game = parseVerified(body, signature, key, IndexSequences.highest(context, key)) ?: throw UntrustedException()
+            IndexSequences.accept(context, key, game.sequence)
             json.parentFile?.mkdirs()
             writeAtomic(json, body)
             writeAtomic(sig, signature.toByteArray())
@@ -256,14 +262,17 @@ object CommunityPackages {
         writeAtomic(file, record.toString(2).toByteArray())
     }
 
-    private fun parseVerified(bytes: ByteArray, signature: String): CommunityGame? {
+    /** Null when the signature is wrong; throws [StaleException] for a signed list of another game or an older one. */
+    private fun parseVerified(bytes: ByteArray, signature: String, key: String, highest: Long): CommunityGame? {
         val sig = try {
             Base64.decode(signature.trim(), Base64.DEFAULT)
         } catch (e: IllegalArgumentException) {
             return null
         }
         if (!Ed25519.verify(publicKey, bytes, sig)) return null
-        return CommunityGame.fromJson(JSONObject(String(bytes, Charsets.UTF_8)))
+        val json = JSONObject(String(bytes, Charsets.UTF_8))
+        IndexFreshness.problem(json, key, highest)?.let { throw StaleException(it) }
+        return CommunityGame.fromJson(json)
     }
 
     private fun fetchText(url: String): String = Net.http.newCall(Request.Builder().url(url).build()).execute().use { response ->

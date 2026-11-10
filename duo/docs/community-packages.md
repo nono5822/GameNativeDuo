@@ -23,6 +23,10 @@ contributor ──PR──▶ GameNativeDuo-community (main)
   mirror or CDN cannot alter content. The private key is the community repo's `DUO_INDEX_SIGNING_KEY` secret; the
   maintainer keeps a copy offline. Rotating it needs an app update. Every payload file is checked against its sha256
   before use.
+- A signature does not say which file it is or how old. Every signed file carries `sequence` (when the index was
+  built); the app keeps the highest one it accepted per file (`IndexSequences`) and refuses an older file, and a game
+  file whose `key` is not the game it asked for (`IndexFreshness`). Files from before sequences still load until a
+  file with one was seen.
 - Payloads are content-addressed (`v1/blobs/<sha256>`): immutable, cacheable forever, deduplicated.
 
 ## Formats

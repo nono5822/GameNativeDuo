@@ -47,6 +47,31 @@ object CommunityIndex {
     const val CATALOG_URL = "$BASE_URL/catalog.json"
 }
 
+/**
+ * What a signature does not prove: that a signed file is the one that was asked for, and that it is the newest. Every
+ * index file carries `sequence` (the time it was built, set by the index builder and covered by the signature); the
+ * app remembers the highest one it accepted per file ([IndexSequences]) and refuses anything older, so a withdrawn
+ * version cannot be served again. Game files also name their game in `key`.
+ */
+object IndexFreshness {
+    /** The file's `sequence`, 0 for an index published before sequences existed. */
+    fun sequenceOf(json: JSONObject): Long = json.optLong("sequence", 0L).coerceAtLeast(0L)
+
+    /**
+     * Why [json] (signature already verified) must not be used, or null when it is fine. [expectedKey] is the game
+     * that was requested (null for files without a key: the catalog, the revocation list); [highest] is the highest
+     * sequence accepted for this file so far (0 when none). A file without a sequence is accepted only while none was
+     * ever seen: old indexes still load, but cannot replace a newer one.
+     */
+    fun problem(json: JSONObject, expectedKey: String?, highest: Long): String? {
+        if (expectedKey != null && json.optString("key") != expectedKey) {
+            return "it is the list of another game (${json.optString("key").ifEmpty { "no key" }.take(40)})"
+        }
+        val sequence = sequenceOf(json)
+        return if (sequence < highest) "it is older than the list this device already has" else null
+    }
+}
+
 enum class CommunityKind(val id: String) {
     UI_LAYOUT("ui-layout"),
     DUO_SETTINGS("duo-settings"),
@@ -331,7 +356,7 @@ data class BridgePermissions(val capabilities: Set<String>, val commands: List<S
  * One game's packages, as published in `games/<key>.json`. The file's top-level `official` list is written by the index
  * builder from the maintainer's `OFFICIAL` file (no manifest field reaches it) and covered by the index signature.
  */
-class CommunityGame(val key: String, val title: String, val packages: List<CommunityPackage>) {
+class CommunityGame(val key: String, val title: String, val packages: List<CommunityPackage>, val sequence: Long = 0L) {
     companion object {
         fun fromJson(json: JSONObject): CommunityGame {
             val official = CommunityIndex.OFFICIAL_PACKAGES + json.optJSONArray("official").strings()
@@ -339,7 +364,8 @@ class CommunityGame(val key: String, val title: String, val packages: List<Commu
             val packages = (0 until array.length()).mapNotNull { i ->
                 array.optJSONObject(i)?.let(CommunityPackage::fromJson)?.let { it.copy(official = it.id in official) }
             }
-            return CommunityGame(json.optString("key"), json.optJSONObject("game")?.optString("title").orEmpty(), packages)
+            val title = json.optJSONObject("game")?.optString("title").orEmpty()
+            return CommunityGame(json.optString("key"), title, packages, IndexFreshness.sequenceOf(json))
         }
     }
 }

@@ -153,7 +153,8 @@ object CommunityCatalog {
         try {
             val body = fetch(CommunityIndex.CATALOG_URL)
             val sig = String(fetch(CommunityIndex.CATALOG_URL + ".sig"), Charsets.UTF_8)
-            val parsed = parse(body, sig) ?: return
+            val parsed = parse(body, sig, IndexSequences.highest(context, IndexSequences.CATALOG)) ?: return
+            IndexSequences.accept(context, IndexSequences.CATALOG, sequenceOf(body))
             keys = parsed
             File(context.filesDir, "duo/community/index").mkdirs()
             cacheFile(context).writeBytes(body)
@@ -173,7 +174,10 @@ object CommunityCatalog {
         null
     }
 
-    private fun parse(body: ByteArray, signature: String): Set<String>? {
+    private fun sequenceOf(body: ByteArray) = IndexFreshness.sequenceOf(JSONObject(String(body, Charsets.UTF_8)))
+
+    /** Null for a wrong signature, and for a signed catalog older than [highest] ([IndexFreshness]). */
+    private fun parse(body: ByteArray, signature: String, highest: Long = 0L): Set<String>? {
         val key = Base64.decode(CommunityIndex.PUBLIC_KEY, Base64.DEFAULT)
         val sig = try {
             Base64.decode(signature.trim(), Base64.DEFAULT)
@@ -181,7 +185,12 @@ object CommunityCatalog {
             return null
         }
         if (!Ed25519.verify(key, body, sig)) return null
-        val games = JSONObject(String(body, Charsets.UTF_8)).optJSONArray("games") ?: return emptySet()
+        val json = JSONObject(String(body, Charsets.UTF_8))
+        IndexFreshness.problem(json, null, highest)?.let {
+            Timber.tag(DualScreenHost.TAG).w("Community catalog refused: %s", it)
+            return null
+        }
+        val games = json.optJSONArray("games") ?: return emptySet()
         return (0 until games.length()).mapNotNull { games.optJSONObject(it)?.optString("key")?.ifEmpty { null } }.toSet()
     }
 

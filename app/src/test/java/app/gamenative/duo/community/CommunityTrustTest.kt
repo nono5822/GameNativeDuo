@@ -100,6 +100,13 @@ class CommunityRevocationsTest {
     private val sig = "EY5QqPDWi62Y+H9IOnb9nwAEi5RhxoUofOGbd4734CkHHOfH6Bm03GDcHZPz+W95faPBWFXKVnfhv+wWa4y8Bw=="
 
     @Test
+    fun anOlderSignedListIsRefused() {
+        // This list has no sequence: fine on a device that never saw one, refused once a newer list was accepted.
+        assertEquals(2, CommunityRevocations.parse(body.toByteArray(), sig, key, highest = 0)!!.size)
+        assertNull(CommunityRevocations.parse(body.toByteArray(), sig, key, highest = 1_800_000_000))
+    }
+
+    @Test
     fun signedListIsReadAndMatched() {
         val list = CommunityRevocations.parse(body.toByteArray(), sig, key)!!
         assertEquals("sent saves away", CommunityRevocations.reason(list, "a.mod", "1.0.0"))
