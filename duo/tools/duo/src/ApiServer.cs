@@ -8,7 +8,8 @@ namespace GameNativeDuo.Tool;
 
 /// <summary>
 /// The Duo API (duo/docs/duo-api.md) for the simulator, on 127.0.0.1 only. Every /api/ request needs the token
-/// (X-Duo-Code header or ?k=); the page itself is public and asks for it, like on the device.
+/// (pairing as on the device: POST /api/pair, then X-Duo-Token; X-Duo-Code also works here, the sim only listens on
+/// this PC); the page itself is public and asks for the code.
 /// </summary>
 public sealed class ApiServer : IDisposable
 {
@@ -19,6 +20,9 @@ public sealed class ApiServer : IDisposable
     private readonly HttpListener _listener = new();
     private readonly CancellationTokenSource _stop = new();
     public readonly string Token;
+
+    /// <summary>What POST /api/pair hands out for the right code (the device also asks its player to allow the address).</summary>
+    private readonly string _session = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
     public readonly int Port;
     public Func<string, byte[]?>? Snapshot; // "top"/"bottom" -> PNG (window capture), set by the sim
     public ConformanceRunner? Check;
@@ -31,7 +35,8 @@ public sealed class ApiServer : IDisposable
         _listener.Prefixes.Add($"http://127.0.0.1:{port}/");
     }
 
-    public string Url => $"http://127.0.0.1:{Port}/?k={Token}";
+    /// <summary>The page with the code after '#': browsers keep that part to themselves.</summary>
+    public string Url => $"http://127.0.0.1:{Port}/#k={Token}";
 
     public void Start()
     {
@@ -71,17 +76,32 @@ public sealed class ApiServer : IDisposable
                 await Send(res, 200, "text/html; charset=utf-8", ms.ToArray());
                 return;
             }
-            string? given = req.Headers["X-Duo-Code"] ?? req.QueryString["k"];
-            if (given == null || !CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(given.ToUpperInvariant()), Encoding.ASCII.GetBytes(Token)))
-            {
-                await Json(res, new JsonObject { ["error"] = "wrong code" }, 403);
-                return;
-            }
             string body = "";
             if (req.HasEntityBody)
             {
                 using var r = new StreamReader(req.InputStream, Encoding.UTF8);
                 body = await r.ReadToEndAsync();
+            }
+            if (req.HttpMethod == "POST" && path == "/api/pair")
+            {
+                string? code = null;
+                try
+                {
+                    code = (string?)(JsonNode.Parse(body) as JsonObject)?["code"];
+                }
+                catch (System.Text.Json.JsonException)
+                {
+                }
+                if (Same(code?.Trim().ToUpperInvariant(), Token))
+                    await Json(res, new JsonObject { ["token"] = _session });
+                else
+                    await Json(res, new JsonObject { ["error"] = "wrong code" }, 403);
+                return;
+            }
+            if (!Same(req.Headers["X-Duo-Token"], _session) && !Same(req.Headers["X-Duo-Code"]?.ToUpperInvariant(), Token))
+            {
+                await Json(res, new JsonObject { ["error"] = "not paired" }, 403);
+                return;
             }
             await Route(req.HttpMethod + " " + path, req, res, body);
         }
@@ -96,6 +116,9 @@ public sealed class ApiServer : IDisposable
             }
         }
     }
+
+    private static bool Same(string? given, string expected) =>
+        given != null && CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(given), Encoding.UTF8.GetBytes(expected));
 
     private async Task Route(string route, HttpListenerRequest req, HttpListenerResponse res, string body)
     {

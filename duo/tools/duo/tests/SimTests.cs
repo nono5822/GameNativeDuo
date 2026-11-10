@@ -86,9 +86,17 @@ public class SimTests : IDisposable
     [Fact]
     public async Task EverythingAnAgentNeeds()
     {
-        // Wrong code: refused; the page itself: public.
+        // Not paired: refused; the page itself: public.
         var anon = new HttpClient { BaseAddress = _http.BaseAddress };
         Assert.Equal(HttpStatusCode.Forbidden, (await anon.GetAsync("/api/info")).StatusCode);
+        // Pairing: the code once, then the session token on every request; the code in the address no longer works.
+        var wrong = await anon.PostAsync("/api/pair", new StringContent("{\"code\":\"NOPE00\"}"));
+        Assert.Equal(HttpStatusCode.Forbidden, wrong.StatusCode);
+        var paired = await anon.PostAsync("/api/pair", new StringContent("{\"code\":\"token1\"}"));
+        string session = (string)JsonNode.Parse(await paired.Content.ReadAsStringAsync())!["token"]!;
+        Assert.Equal(HttpStatusCode.Forbidden, (await anon.GetAsync("/api/info?k=TOKEN1")).StatusCode);
+        anon.DefaultRequestHeaders.Add("X-Duo-Token", session);
+        Assert.Equal(HttpStatusCode.OK, (await anon.GetAsync("/api/info")).StatusCode);
         Assert.Contains("<html", await anon.GetStringAsync("/"), StringComparison.OrdinalIgnoreCase);
 
         await WaitConnected();

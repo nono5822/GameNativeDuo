@@ -14,10 +14,10 @@ drift apart; `duo/tools/duo/tests` runs the same contract tests against the sim.
 ## Rules
 
 - JSON in and out (`Content-Type: application/json`), UTF-8. Errors: HTTP 4xx/5xx with `{"error": "..."}`.
-- **Auth**: every `/api/` request carries `X-Duo-Code: <code>` (or `?k=<code>` for images and the page's first load).
-  The device's code is the 6-character pairing code on the bottom screen (20 wrong codes stop the server); the sim's
-  is a random token printed at start. A custom header means a web page on another site cannot drive either server
-  (browsers preflight it, and neither server answers CORS).
+- **Auth**: pair once, then every `/api/` request carries `X-Duo-Token: <token>` (see "Pairing" below). The code is
+  the 6-character pairing code on the device's bottom screen; the sim prints its own at start. A custom header means
+  a web page on another site cannot drive either server (browsers preflight it, and neither server answers CORS).
+  The code is never accepted in an address (`?k=`): a link or QR code carries it after `#`, which browsers do not send.
 - The device serves the **player's** endpoints (Layout) always, and the **developer** endpoints (everything marked
   *dev*) only while developer mode is on (setting in the GameNative Duo tab); otherwise they answer 403
   `{"error": "developer mode is off"}`.
@@ -25,6 +25,21 @@ drift apart; `duo/tools/duo/tests` runs the same contract tests against the sim.
 - Events are **long polls**, not WebSockets: `GET /api/events?since=N&wait=S` returns at once when something newer
   than `N` exists, else after up to `S` seconds (max 25) with an empty list. One mechanism for curl, the MCP server
   and the page, no upgrade handshake to implement twice.
+
+## Pairing
+
+`POST /api/pair` with `{"code": "ABC234"}` is the only request that carries the code.
+
+| Answer | Meaning |
+|---|---|
+| 200 `{"token": "..."}` | Paired. Send `X-Duo-Token` from now on. On the device the token only works from the address it was given to |
+| 202 `{"status": "confirm"}` | Device only: the code is right and the player is being asked, on the bottom screen, to allow this address. Ask again every second |
+| 403 `{"error": "wrong code"}` | Five wrong codes lock that address out for five minutes (429 `{"error": "too many wrong codes", "retryAfter": seconds}`); other addresses are not affected |
+| 403 `{"error": "refused on the device"}` | The player refused this address, until the PC editor is started again |
+
+Any other request without a valid token answers 403 `{"error": "not paired"}`: pair again. The device listens only on
+the Wi-Fi address it shows. The sim only listens on this PC, asks nobody, and also accepts `X-Duo-Code: <code>` on
+every request (handy for curl). `duo`, `duo mcp` and the VS Code extension pair by themselves from `--code` / `DUO_CODE`.
 
 ## Endpoints
 

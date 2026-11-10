@@ -23,16 +23,15 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.net.Inet4Address
 import java.net.InetAddress
+import java.net.InetSocketAddress
 import java.net.NetworkInterface
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.SocketException
 import java.net.URLDecoder
-import java.security.SecureRandom
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import org.json.JSONArray
 import org.json.JSONObject
@@ -60,14 +59,19 @@ internal interface PcEditorHost {
 
 /**
  * The PC editor: a small web server on the device's Wi-Fi address while the user has it open, serving a web app
- * (assets/duo/pc-editor/) that shows both screens and edits the same layout as the on-device editor. Every request
- * must carry the pairing code shown on the bottom screen; after [MAX_BAD_CODES] wrong ones the server stops. It never
- * runs in the background: started from the bottom screen's menu, stopped with it or with the game.
+ * (assets/duo/pc-editor/) that shows both screens and edits the same layout as the on-device editor. A browser pairs
+ * once with the code shown on the bottom screen and the player's Allow on the device, then every request carries the
+ * session token it was given ([PcPairing]). The server listens only on the address it shows, and never runs in the
+ * background: started from the bottom screen's menu, stopped with it or with the game.
  */
 internal class PcEditorServer(private val context: Context, private val host: PcEditorHost) {
-    val code: String = randomCode()
+    val pairing = PcPairing()
+    val code: String get() = pairing.code
     var port: Int = 0
         private set
+
+    /** The address the server listens on (the Wi-Fi address when it started), or null without one. */
+    private var address: InetAddress? = null
 
     private val main = Handler(Looper.getMainLooper())
     private val workers = Executors.newFixedThreadPool(2) { r ->
@@ -77,17 +81,20 @@ internal class PcEditorServer(private val context: Context, private val host: Pc
         }, "GNDuo-pc").apply { isDaemon = true }
     }
     private var socket: ServerSocket? = null
-    private val badCodes = AtomicInteger()
-
     @Volatile var onStopped: (() -> Unit)? = null
 
     /** The address to type on the PC, or null when the device has no Wi-Fi address. */
-    val url: String? get() = lanAddress()?.let { "http://${it.hostAddress}:$port/" }
+    val url: String? get() = address?.let { "http://${it.hostAddress}:$port/" }
 
     fun start(): Boolean = try {
         val s = ServerSocket()
         s.reuseAddress = true
-        s.bind(java.net.InetSocketAddress(PORT_FIRST).takeIf { isFree(PORT_FIRST) } ?: java.net.InetSocketAddress(0))
+        // Only the Wi-Fi address shown to the player, not every interface (mobile data, VPN). Without Wi-Fi nothing
+        // can reach the editor anyway: loopback, so the card can say "connect to Wi-Fi".
+        val lan = lanAddress()
+        val bind = lan ?: InetAddress.getByAddress(byteArrayOf(127, 0, 0, 1))
+        s.bind(InetSocketAddress(bind, PORT_FIRST).takeIf { isFree(bind, PORT_FIRST) } ?: InetSocketAddress(bind, 0))
+        address = lan
         socket = s
         port = s.localPort
         Thread({ acceptLoop(s) }, "GNDuo-pc-accept").apply { isDaemon = true }.start()
@@ -144,7 +151,7 @@ internal class PcEditorServer(private val context: Context, private val host: Pc
                 val input = BufferedInputStream(c.getInputStream())
                 val req = read(input) ?: return
                 val out = c.getOutputStream()
-                route(req, out)
+                route(req, out, c.inetAddress?.hostAddress.orEmpty())
             } catch (t: Throwable) {
                 Timber.tag(DualScreenHost.TAG).w(t, "PC editor request failed")
             }
@@ -188,20 +195,16 @@ internal class PcEditorServer(private val context: Context, private val host: Pc
         return Request(parts[0], path, query, headers, body)
     }
 
-    private fun route(req: Request, out: OutputStream) {
-        // The page itself is public (it asks for the code); everything else needs it.
+    private fun route(req: Request, out: OutputStream, from: String) {
+        // The page itself is public (it asks for the code); everything else needs a session token from pairing.
         if (req.method == "GET" && (req.path == "/" || req.path == "/index.html")) {
             return asset(out, "duo/pc-editor/index.html", "text/html; charset=utf-8")
         }
-        val given = req.headers["x-duo-code"] ?: req.query["k"]
-        if (given == null || !constantTimeEquals(given.uppercase(), code)) {
-            if (badCodes.incrementAndGet() >= MAX_BAD_CODES) {
-                Timber.tag(DualScreenHost.TAG).w("PC editor: too many wrong codes, stopping")
-                main.post { stop() }
-            }
-            return send(out, 403, "application/json", """{"error":"wrong code"}""".toByteArray())
-        }
         val route = "${req.method} ${req.path}"
+        if (route == "POST /api/pair") return pair(req, out, from)
+        if (!pairing.valid(from, req.headers["x-duo-token"])) {
+            return send(out, 403, "application/json", """{"error":"not paired"}""".toByteArray())
+        }
         if (route == "GET /api/info") return sendJson(out, info())
         if (route in DEV_ROUTES) {
             val dev = onMain(1_000) { done: (DevSession?) -> Unit -> done(host.dev) }
@@ -278,6 +281,26 @@ internal class PcEditorServer(private val context: Context, private val host: Pc
                 sendJson(out, answer.put("layout", json).put("layoutInUrl", fits))
             }
             else -> send(out, 404, "text/plain", "not found".toByteArray())
+        }
+    }
+
+    /** `POST /api/pair {"code"}` (duo/docs/duo-api.md, "Pairing"): the only request that carries the code. */
+    private fun pair(req: Request, out: OutputStream, from: String) {
+        val given = try {
+            JSONObject(String(req.body)).optString("code")
+        } catch (e: Exception) {
+            ""
+        }
+        fun answer(status: Int, o: JSONObject) = send(out, status, "application/json", o.toString().toByteArray())
+        when (val r = pairing.pair(from, given)) {
+            is PcPairing.Result.Paired -> answer(200, JSONObject().put("token", r.token))
+            PcPairing.Result.Confirm -> answer(202, JSONObject().put("status", "confirm"))
+            PcPairing.Result.Refused -> answer(403, JSONObject().put("error", "refused on the device"))
+            PcPairing.Result.WrongCode -> answer(403, JSONObject().put("error", "wrong code"))
+            is PcPairing.Result.Locked -> {
+                Timber.tag(DualScreenHost.TAG).w("PC editor: %s is locked out for %d s", from, r.seconds)
+                answer(429, JSONObject().put("error", "too many wrong codes").put("retryAfter", r.seconds))
+            }
         }
     }
 
@@ -396,7 +419,9 @@ internal class PcEditorServer(private val context: Context, private val host: Pc
     private fun send(out: OutputStream, status: Int, type: String, body: ByteArray) {
         val reason = when (status) {
             200 -> "OK"
+            202 -> "Accepted"
             403 -> "Forbidden"
+            429 -> "Too Many Requests"
             404 -> "Not Found"
             else -> "Error"
         }
@@ -417,23 +442,9 @@ internal class PcEditorServer(private val context: Context, private val host: Pc
             "POST /api/check", "GET /api/check",
         )
         private const val MAX_BODY = 16 * 1024 * 1024
-        private const val MAX_BAD_CODES = 20
-        private const val ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
-        private fun randomCode(): String {
-            val r = SecureRandom()
-            return (1..6).map { ALPHABET[r.nextInt(ALPHABET.length)] }.joinToString("")
-        }
-
-        private fun constantTimeEquals(a: String, b: String): Boolean {
-            if (a.length != b.length) return false
-            var diff = 0
-            for (i in a.indices) diff = diff or (a[i].code xor b[i].code)
-            return diff == 0
-        }
-
-        private fun isFree(port: Int): Boolean = try {
-            ServerSocket(port).close()
+        private fun isFree(address: InetAddress, port: Int): Boolean = try {
+            ServerSocket(port, 1, address).close()
             true
         } catch (t: Throwable) {
             false

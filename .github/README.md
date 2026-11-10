@@ -201,8 +201,8 @@ session, refresh once a second and cost nothing when none are placed.
 <img src="assets/duo-pc-card.jpg" alt="The bottom screen showing the PC editor's address, pairing code and QR code" width="360" align="right">
 
 Choose Edit on PC and the device serves a web editor on your Wi-Fi. Open the address on a PC (or scan the QR code with
-a tablet) and enter the six-letter code shown on the bottom screen. The page shows both screens with every interface
-element outlined.
+a tablet), enter the six-letter code shown on the bottom screen, and tap Allow on the device. The page shows both
+screens with every interface element outlined.
 
 - Drag an element to move it, or drop it on the other screen to send it there. Scroll to resize.
 - Search the element list, or use the keyboard: arrows move, plus and minus resize, T, B and H send an element to the
@@ -210,7 +210,8 @@ element outlined.
 - Pick the background, upload an image from the PC, and place widgets.
 - Share the layout with the community straight from the PC browser. Background images stay private.
 
-The editor runs only while you have it open and stops with the game. After 20 wrong codes it shuts itself down.
+The editor runs only while you have it open and stops with the game. A computer that sends five wrong codes is
+locked out for five minutes.
 <br clear="right">
 
 ### In GameNative's own menu
