@@ -38,8 +38,12 @@ object CommunityRevocations {
     fun reason(entries: List<Entry>, packageId: String, version: String): String? =
         entries.firstOrNull { it.covers(packageId, version) }?.reason
 
-    /** Parses a signed list; null when the signature does not match [publicKey] (base64). */
-    fun parse(body: ByteArray, signature: String, publicKey: String = CommunityIndex.PUBLIC_KEY): List<Entry>? {
+    /**
+     * Parses a signed list; null when the signature does not match [publicKey] (base64), or when the list is older
+     * than [highest], the highest sequence accepted so far ([IndexFreshness]): an old list would bring a withdrawn
+     * mod back.
+     */
+    fun parse(body: ByteArray, signature: String, publicKey: String = CommunityIndex.PUBLIC_KEY, highest: Long = 0L): List<Entry>? {
         // java.util.Base64 (not android.util): parse runs in local unit tests too.
         val sig = try {
             java.util.Base64.getMimeDecoder().decode(signature.trim())
@@ -47,7 +51,9 @@ object CommunityRevocations {
             return null
         }
         if (!Ed25519.verify(java.util.Base64.getDecoder().decode(publicKey), body, sig)) return null
-        val array = JSONObject(String(body, Charsets.UTF_8)).optJSONArray("revoked") ?: JSONArray()
+        val json = JSONObject(String(body, Charsets.UTF_8))
+        if (IndexFreshness.problem(json, null, highest) != null) return null
+        val array = json.optJSONArray("revoked") ?: JSONArray()
         return (0 until array.length()).mapNotNull { i ->
             val o = array.optJSONObject(i) ?: return@mapNotNull null
             val versions = o.optJSONArray("versions")?.let { a -> (0 until a.length()).map { a.optString(it) } }.orEmpty()
@@ -81,7 +87,9 @@ object CommunityRevocations {
                 if (!it.isSuccessful) throw IOException("HTTP ${it.code}")
                 it.body.string()
             }
-            val parsed = parse(body, signature) ?: throw IOException("the revocation list's signature is not valid")
+            val parsed = parse(body, signature, highest = IndexSequences.highest(context, IndexSequences.REVOKED))
+                ?: throw IOException("the revocation list's signature is not valid, or the list is older than the one on this device")
+            IndexSequences.accept(context, IndexSequences.REVOKED, IndexFreshness.sequenceOf(JSONObject(String(body, Charsets.UTF_8))))
             file.parentFile?.mkdirs()
             file.writeBytes(body)
             File(file.path + ".sig").writeText(signature)
