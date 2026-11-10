@@ -25,7 +25,7 @@ import timber.log.Timber
  * Wire format (little-endian): `'G' 'D' version type`, then per type:
  * - app -> mod: [TOUCH] `action u8, pointer u8, 0, 0, x f32, y f32` (window pixels, origin top-left);
  *   [RULES_CHANGED]; [DUMP_ELEMENTS] `request u32`; [SUBSCRIBE] `json {"keys": ["prefix"]}`.
- * - mod -> app: [HELLO] `capabilities u32, engine ascii, 0, token ascii`; [ELEMENTS_WRITTEN] `request u32`;
+ * - mod -> app: [HELLO] `capabilities u32, engine ascii`; [ELEMENTS_WRITTEN] `request u32`;
  *   [STATE] `flags u8, 0, 0, 0, json object` (companion state deltas); [ELEMENTS_CHANGED]; [LOG] `level u8, text`;
  *   [HAPTIC] `ms u16, strength u8`. Everything after HELLO is accepted only from the port that said hello.
  *
@@ -36,7 +36,8 @@ import timber.log.Timber
 class DuoBridge private constructor(private val socket: DatagramSocket) {
     /**
      * This session's secret, written into `layout.json` / `bridge.json` (`bridge.token`) next to the port. Mods on
-     * SDK 1.1+ send it back in every HELLO; see [BridgePackets.judgeHello] for what happens to those that do not.
+     * SDK 1.1+ send it back at the end of every HELLO (`capabilities u32, engine ascii, 0, token ascii`); see
+     * [BridgePackets.judgeHello] for what happens to those that do not.
      */
     val token: String = BridgePackets.newToken()
 
