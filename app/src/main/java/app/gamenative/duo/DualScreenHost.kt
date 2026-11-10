@@ -144,6 +144,7 @@ class DualScreenSession internal constructor(
             it.permissions = BridgePermissions(emptySet(), emptyList())
         }
     }
+
     /** Developer mode (setting), with the dev-folder files [DualScreenHost.attach] loaded. */
     private val dev = DevSession.open(settings.developerMode, bridge, companion, DualScreenHost.devFiles)
 

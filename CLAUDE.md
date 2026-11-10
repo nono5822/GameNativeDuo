@@ -36,7 +36,7 @@ Upstream lands ~4-5 commits/day; `XServerScreen.kt` (~6,800 lines) changes almos
 | File | Change |
 |---|---|
 | `ui/screen/xserver/XServerScreen.kt` | import + one `DualScreenHost.attach(...)` line after the external-display controllers start |
-| `app/build.gradle.kts` | `applicationId = "app.gamenative.duo"` |
+| `app/build.gradle.kts` | `applicationId = "app.gamenative.duo"`; the `lintKotlinDuo` task at the end |
 | `build.gradle.kts` (root) | `buildscript` pins D8/R8 `com.android.tools:r8` (see Known issues) |
 | `com/winlator/renderer/VulkanRenderer.java` | `duoViewRect` crop in `updateTransform` (right after the surface guard, before upstream's effective-screen scaling; uses the full `xServer.screenInfo`), `setDuoViewRect`, `duoSetSecondary`/`duoClearSecondary`, `duoSetRegions`/`duoSetMasks` + their natives |
 | `cpp/winlator/VulkanRendererContext.{h,cpp}` | declarations, `duoRenderSecondary()` after both present paths, `duoWaitSecondary()` before the `deleteQueue` flush, `duoDestroySecondary()` in the destructor, `duoDrawMasks()` after the window draws in `recordCmdBuf`, region/mask members (new code in `DuoSecondaryOutput.cpp`) |
@@ -216,11 +216,11 @@ edit); colours, icon geometry and the banner source: `duo/branding/README.md`.
 ./gradlew :app:assembleModernDebug          # APK: app/build/outputs/apk/modern/debug/
 ./gradlew :app:installModernDebug           # build + install on the connected device
 adb logcat -s GNDuo                         # devkit logs
-./gradlew :app:lintKotlinMain 2>&1 | grep duo/   # NOT reliable: the run stops inside upstream files and never reaches duo/
-                                                 # (an empty result proves nothing); check line length (140) and sorted imports of changed files yourself
+./gradlew :app:lintKotlinDuo                # style check of app.gamenative.duo only (lintKotlinMain stops inside upstream files)
 ```
 
-- CI: `.github/workflows/duo-debug-build.yml` builds the APK on pushes to `devkit`/`duo/**` (artifact on the run);
+- CI: `.github/workflows/duo-debug-build.yml` builds the APK on pushes to `devkit`/`duo/**` (artifact on the run), then
+  runs `lintKotlinDuo` and the duo unit tests; its second job runs the SDK, `duo` tool and game-profile tests;
   `duo-upstream-check.yml` nightly test-merges upstream `master` (needs `devkit` as the default branch).
 - All builds sign with `duo/debug.keystore` (debug-only, deliberately committed) so CI and local APKs update
   each other. For local builds: `cp duo/debug.keystore ~/.android/debug.keystore` (back up your own first).
