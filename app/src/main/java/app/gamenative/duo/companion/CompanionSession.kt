@@ -117,7 +117,13 @@ class CompanionSession(
             (modKeys - changes.keys).forEach { changes[it] = null }
             pendingFull = false
         }
-        changes.forEach { (k, v) -> if (v == null) modKeys.remove(k) else if (modKeys.size < MAX_MOD_KEYS) modKeys.add(k) }
+        changes.forEach { (k, v) ->
+            if (v == null) {
+                modKeys.remove(k)
+            } else if (modKeys.size < MAX_MOD_KEYS) {
+                modKeys.add(k)
+            }
+        }
         try {
             data.putAll(changes)
         } catch (t: Throwable) {

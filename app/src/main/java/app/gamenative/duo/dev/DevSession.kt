@@ -48,7 +48,13 @@ class DevSession(val bridge: DuoBridge, private val companion: CompanionSession?
     private val onState: (Int, Map<String, Any?>) -> Unit = { flags, changes ->
         synchronized(state) {
             if (flags and DuoBridge.STATE_FULL != 0) state.clear()
-            changes.forEach { (k, v) -> if (v == null) state.remove(k) else if (state.size < 5000) state[k] = v }
+            changes.forEach { (k, v) ->
+                if (v == null) {
+                    state.remove(k)
+                } else if (state.size < 5000) {
+                    state[k] = v
+                }
+            }
         }
         add("state", JSONObject().put("keys", JSONArray(changes.keys.take(50))).put("full", flags and DuoBridge.STATE_FULL != 0))
     }

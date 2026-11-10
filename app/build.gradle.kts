@@ -526,3 +526,12 @@ dependencies {
     "modernXrImplementation"("com.meta.horizon.platform.sdk:core-kotlin:0.2.2")
     "modernXrImplementation"("com.meta.horizon.platform.sdk:iap-kotlin:0.2.2")
 }
+
+// GameNativeDuo: the style check for our own package only. lintKotlinMain stops inside upstream files and never
+// reaches app/gamenative/duo, so CI runs this one (.github/workflows/duo-debug-build.yml).
+tasks.register<org.jmailen.gradle.kotlinter.tasks.LintTask>("lintKotlinDuo") {
+    group = "verification"
+    description = "Kotlin style check of app.gamenative.duo."
+    source(files("src/main/java/app/gamenative/duo"))
+    reports.set(mapOf("plain" to layout.buildDirectory.file("reports/ktlint/duo-lint.txt").get().asFile))
+}

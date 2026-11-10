@@ -2,6 +2,8 @@ name: Duo debug build
 
 # Builds an installable debug APK of GameNativeDuo (modern flavour, Android 10+) on every push to the
 # fork's working branches and on pull requests into devkit. Download it from the run's Artifacts.
+# Then checks our own code: the style of app.gamenative.duo, its unit tests, and (second job) the SDK and
+# duo tool tests. The APK is uploaded first, so a failing test still leaves a build to try.
 
 on:
   push:
@@ -71,3 +73,58 @@ jobs:
           name: GameNativeDuo-modern-debug-${{ github.run_number }}
           path: app/build/outputs/apk/modern/debug/*.apk
           retention-days: 14
+
+      - name: Duo style check
+        # Only app.gamenative.duo: lintKotlinMain stops inside upstream files.
+        run: ./gradlew -Pkotlin.daemon.jvmargs=-Xmx3g :app:lintKotlinDuo
+
+      - name: Duo unit tests
+        # Only our package: some upstream tests assert /data/data/app.gamenative paths and fail under the duo id.
+        if: success() || failure()
+        run: ./gradlew -Pkotlin.daemon.jvmargs=-Xmx3g :app:testModernDebugUnitTest --tests 'app.gamenative.duo.*'
+
+      - name: Upload test and style reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: duo-test-reports-${{ github.run_number }}
+          path: |
+            app/build/reports/tests/testModernDebugUnitTest/
+            app/build/reports/ktlint/duo-lint.txt
+          retention-days: 14
+
+  sdk-tests:
+    # The Duo SDKs (C#, Lua, C) and the duo tool with its simulator. No Android build. The Unity game-profile tests
+    # (duo/mods-src/unity/GameProfileTests) are not here: they compile against a game's UnityEngine.dll, which cannot
+    # be in the repository; run them locally with -p:ManagedPath=<Game_Data/Managed>.
+    if: github.repository != 'utkarshdalal/GameNative'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install LuaJIT
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends luajit
+
+      - name: C# SDK tests
+        run: dotnet test duo/sdk/csharp/GameNativeDuo.Sdk.Tests
+
+      - name: duo tool and simulator tests
+        if: success() || failure()
+        run: dotnet test duo/tools/duo/tests
+
+      - name: Lua SDK test
+        if: success() || failure()
+        run: luajit duo/sdk/lua/tests/test_duo.lua
+
+      - name: C SDK test
+        if: success() || failure()
+        run: |
+          gcc -std=c99 -D_DEFAULT_SOURCE -Wall -o "$RUNNER_TEMP/test_duo" duo/sdk/c/tests/test_duo.c
+          "$RUNNER_TEMP/test_duo"
