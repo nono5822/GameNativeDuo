@@ -81,6 +81,7 @@ internal class PcEditorServer(private val context: Context, private val host: Pc
         }, "GNDuo-pc").apply { isDaemon = true }
     }
     private var socket: ServerSocket? = null
+
     @Volatile var onStopped: (() -> Unit)? = null
 
     /** The address to type on the PC, or null when the device has no Wi-Fi address. */
