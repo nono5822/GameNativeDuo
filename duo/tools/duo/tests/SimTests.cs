@@ -81,6 +81,21 @@ public class SimTests : IDisposable
         for (int i = 0; i < 300 && !_sim.Bridge.Connected; i++)
             await Task.Delay(10);
         Assert.True(_sim.Bridge.Connected, "the SDK said hello to the sim");
+        Assert.True(_sim.Bridge.TokenSeen, "with the session token from layout.json");
+    }
+
+    [Fact]
+    public void HelloRules()
+    {
+        const string t = "00112233445566778899aabbccddeeff";
+        // The token always wins, also from a new port (a restarted game).
+        Assert.True(AppBridge.AcceptsHello(t, t, samePort: false, modAlive: true, tokenSeen: true));
+        Assert.False(AppBridge.AcceptsHello(t, "ffeeddccbbaa99887766554433221100", samePort: true, modAlive: true, tokenSeen: false));
+        // No token (a mod on SDK 1.0): the first mod and its repeats, never over a live mod, never after a token.
+        Assert.True(AppBridge.AcceptsHello(t, null, samePort: false, modAlive: false, tokenSeen: false));
+        Assert.True(AppBridge.AcceptsHello(t, null, samePort: true, modAlive: true, tokenSeen: false));
+        Assert.False(AppBridge.AcceptsHello(t, null, samePort: false, modAlive: true, tokenSeen: false));
+        Assert.False(AppBridge.AcceptsHello(t, null, samePort: true, modAlive: true, tokenSeen: true));
     }
 
     [Fact]

@@ -110,6 +110,9 @@ namespace GameNativeDuo.Sdk
         /// <summary>The app's bridge port this session, 0 without one.</summary>
         public int BridgePort;
 
+        /// <summary>The session token the app expects in every HELLO ("" from an app older than SDK 1.1).</summary>
+        public string BridgeToken = "";
+
         public static DuoLayout Load(out string error) => Load(DuoPaths.LayoutFile, out error);
 
         public static DuoLayout Load(string path, out string error)
@@ -146,17 +149,28 @@ namespace GameNativeDuo.Sdk
                 BottomScale = (float)MiniJson.Num(root, "bottomScale", 1),
                 BottomShift = (int)MiniJson.Num(root, "bottomShift", 0),
                 BridgePort = (int)MiniJson.Num(MiniJson.Obj(json, "bridge"), "port", 0),
+                BridgeToken = MiniJson.Str(MiniJson.Obj(json, "bridge"), "token", ""),
             };
         }
 
         /// <summary>The bridge port from bridge.json (sessions without a split have no layout.json), or 0.</summary>
         public static int ReadBridgePort()
         {
+            string token;
+            return ReadBridge(out token);
+        }
+
+        /// <summary>The bridge port and session token from bridge.json, or 0 and "".</summary>
+        public static int ReadBridge(out string token)
+        {
+            token = "";
             try
             {
                 if (!File.Exists(DuoPaths.BridgeFile))
                     return 0;
-                return (int)MiniJson.Num(MiniJson.Parse(File.ReadAllText(DuoPaths.BridgeFile)) as Dictionary<string, object>, "port", 0);
+                var json = MiniJson.Parse(File.ReadAllText(DuoPaths.BridgeFile)) as Dictionary<string, object>;
+                token = MiniJson.Str(json, "token", "");
+                return (int)MiniJson.Num(json, "port", 0);
             }
             catch (Exception)
             {

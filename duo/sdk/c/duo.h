@@ -17,7 +17,7 @@
 extern "C" {
 #endif
 
-#define DUO_SDK_VERSION "1.0"
+#define DUO_SDK_VERSION "1.1"
 
 enum { DUO_DOWN = 0, DUO_MOVE = 1, DUO_UP = 2, DUO_CANCEL = 3 };
 enum { DUO_OK = 0, DUO_NOT_NOW = 1, DUO_UNKNOWN = 2, DUO_FAILED = 3 };
@@ -37,6 +37,7 @@ typedef struct {
     float bottom_scale;
     int bottom_shift;
     int port;
+    char token[48]; /* the session token the app expects in every HELLO; "" from an app that has none */
 } duo_layout;
 
 typedef void (*duo_touch_fn)(int action, int pointer, float x, float y, void *user);
@@ -235,6 +236,32 @@ static double duo__num(const char *json, const char *obj, const char *key, doubl
     return strtod(p + 1, NULL);
 }
 
+/* The string after "key": inside the object that follows "obj": (or anywhere when obj is NULL); "" when absent. */
+static void duo__str(const char *json, const char *obj, const char *key, char *out, size_t size) {
+    char pat[64];
+    const char *p = json, *end = NULL;
+    size_t n = 0;
+    out[0] = 0;
+    if (obj) {
+        snprintf(pat, sizeof pat, "\"%s\"", obj);
+        p = strstr(json, pat);
+        if (!p) return;
+        p = strchr(p + strlen(pat), '{');
+        if (!p) return;
+        end = strchr(p, '}');
+    }
+    snprintf(pat, sizeof pat, "\"%s\"", key);
+    p = strstr(p, pat);
+    if (!p || (end && p > end)) return;
+    p = strchr(p + strlen(pat), ':');
+    if (!p) return;
+    p++;
+    while (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n') p++;
+    if (*p != '"') return;
+    for (p++; *p && *p != '"' && n + 1 < size; p++) out[n++] = *p;
+    out[n] = 0;
+}
+
 static void duo__rect(const char *json, const char *obj, duo_rect *r) {
     r->x = (int)duo__num(json, obj, "x", 0); r->y = (int)duo__num(json, obj, "y", 0);
     r->w = (int)duo__num(json, obj, "w", 0); r->h = (int)duo__num(json, obj, "h", 0);
@@ -251,6 +278,7 @@ int duo_parse_layout(const char *json, duo_layout *out) {
     out->bottom_scale = (float)duo__num(json, NULL, "bottomScale", 1);
     out->bottom_shift = (int)duo__num(json, NULL, "bottomShift", 0);
     out->port = (int)duo__num(json, "bridge", "port", 0);
+    duo__str(json, "bridge", "token", out->token, sizeof out->token);
     out->valid = 1;
     return 1;
 }
@@ -288,8 +316,16 @@ static void duo__read_files(void) {
     }
     if (!duo__s.layout.valid || duo__s.layout.port == 0) {
         int old = duo__s.layout.port;
-        duo__s.layout.port = duo_read_file("bridge.json", buf, sizeof buf) > 0 ? (int)duo__num(buf, NULL, "port", 0) : 0;
-        if (duo__s.layout.port != old) duo__s.next_hello = 0;
+        char old_token[sizeof duo__s.layout.token];
+        memcpy(old_token, duo__s.layout.token, sizeof old_token);
+        duo__s.layout.token[0] = 0;
+        if (duo_read_file("bridge.json", buf, sizeof buf) > 0) {
+            duo__s.layout.port = (int)duo__num(buf, NULL, "port", 0);
+            duo__str(buf, NULL, "token", duo__s.layout.token, sizeof duo__s.layout.token);
+        } else {
+            duo__s.layout.port = 0;
+        }
+        if (duo__s.layout.port != old || strcmp(old_token, duo__s.layout.token) != 0) duo__s.next_hello = 0;
     }
     s = duo__stamp("ui.json");
     if (s != duo__s.ui_stamp) {
@@ -515,7 +551,7 @@ void duo_tick(int window_w, int window_h) {
         duo__read_files();
     }
     if (now >= duo__s.next_hello && duo__s.layout.port > 0) {
-        unsigned char b[96];
+        unsigned char b[192];
         unsigned caps = DUO_CAP_UI_RULES | DUO_CAP_ELEMENTS | DUO_CAP_ELEMENTS_CHANGED | duo__s.extra_caps;
         int n;
         if (duo__s.touch) caps |= DUO_CAP_TOUCH;
@@ -524,6 +560,14 @@ void duo_tick(int window_w, int window_h) {
         duo__s.next_hello = now + 2;
         duo__u32(b, caps);
         n = snprintf((char *)b + 4, sizeof b - 4, "%s/sdk%s", duo__s.engine, DUO_SDK_VERSION);
+        if (n > (int)sizeof b - 5) n = (int)sizeof b - 5;
+        /* After a NUL, the session token: proof to the app that this is the game and not another app on the device. */
+        if (duo__s.layout.token[0] && 4 + n + 1 + strlen(duo__s.layout.token) <= sizeof b) {
+            size_t t = strlen(duo__s.layout.token);
+            b[4 + n] = 0;
+            memcpy(b + 4 + n + 1, duo__s.layout.token, t);
+            n += 1 + (int)t;
+        }
         duo__send_type(0x81, b, 4 + n);
     }
     duo__receive();

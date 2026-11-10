@@ -19,12 +19,13 @@ import timber.log.Timber
 /**
  * GameNative Duo's link to in-game mods: UDP datagrams on 127.0.0.1 (Wine's sockets are this app's own, so it is a
  * kernel loopback hop). This side binds a free port, written into `layout.json` as `bridge.port`; a mod binds its own
- * and announces it with a HELLO every 2 s, which also says what it can do ([CAP_TOUCH], ...). No mod, no traffic.
+ * and announces it with a HELLO every 2 s, which also says what it can do ([CAP_TOUCH], ...) and carries the session
+ * [token], so another app on the device cannot pose as the mod. No mod, no traffic.
  *
  * Wire format (little-endian): `'G' 'D' version type`, then per type:
  * - app -> mod: [TOUCH] `action u8, pointer u8, 0, 0, x f32, y f32` (window pixels, origin top-left);
  *   [RULES_CHANGED]; [DUMP_ELEMENTS] `request u32`; [SUBSCRIBE] `json {"keys": [prefix...]}`.
- * - mod -> app: [HELLO] `capabilities u32, engine ascii`; [ELEMENTS_WRITTEN] `request u32`;
+ * - mod -> app: [HELLO] `capabilities u32, engine ascii, 0, token ascii`; [ELEMENTS_WRITTEN] `request u32`;
  *   [STATE] `flags u8, 0, 0, 0, json object` (companion state deltas); [ELEMENTS_CHANGED]; [LOG] `level u8, text`;
  *   [HAPTIC] `ms u16, strength u8`. Everything after HELLO is accepted only from the port that said hello.
  *
@@ -33,6 +34,18 @@ import timber.log.Timber
  * builds a backlog. [listener] callbacks run on the main thread.
  */
 class DuoBridge private constructor(private val socket: DatagramSocket) {
+    /**
+     * This session's secret, written into `layout.json` / `bridge.json` (`bridge.token`) next to the port. Mods on
+     * SDK 1.1+ send it back in every HELLO; see [BridgePackets.judgeHello] for what happens to those that do not.
+     */
+    val token: String = BridgePackets.newToken()
+
+    /** True once a mod proved itself with [token] this session: HELLOs without it are then ignored for good. */
+    @Volatile var tokenSeen = false
+        private set
+
+    private var refusalLogged = false
+
     interface Listener {
         fun onModConnected(capabilities: Int, engine: String) {}
 
@@ -289,7 +302,22 @@ class DuoBridge private constructor(private val socket: DatagramSocket) {
         main.post { l(ms.coerceAtMost(HAPTIC_MAX_MS), strength.coerceIn(1, 255)) }
     }
 
-    private fun onHello(port: Int, announced: Int, name: String) {
+    private fun onHello(port: Int, announced: Int, text: String) {
+        val alive = modPort != 0 && SystemClock.elapsedRealtime() - lastHelloAt < MOD_TIMEOUT_MS
+        val verdict = BridgePackets.judgeHello(token, BridgePackets.helloToken(text), port == modPort, alive, tokenSeen)
+        if (verdict == BridgePackets.HelloVerdict.REFUSE) {
+            if (!refusalLogged) {
+                refusalLogged = true
+                Timber.tag(DualScreenHost.TAG).w("Bridge: ignoring a HELLO from port %d (wrong or missing session token)", port)
+            }
+            return
+        }
+        if (verdict == BridgePackets.HelloVerdict.ACCEPT) {
+            tokenSeen = true
+        } else if (port != modPort) {
+            Timber.tag(DualScreenHost.TAG).w("Bridge: the mod on port %d sends no session token (built on SDK 1.0)", port)
+        }
+        val name = BridgePackets.helloName(text)
         val caps = permissions?.let { announced and it.capabilityMask } ?: announced
         val isNew = port != modPort || caps != capabilities || SystemClock.elapsedRealtime() - lastHelloAt >= MOD_TIMEOUT_MS
         modPort = port

@@ -136,7 +136,7 @@ class SplitScreenController(
                 LayoutFile.delete(container)
             } else {
                 top.setDuoViewRect(newSplit.top)
-                LayoutFile.write(container, newSplit, calibration, bridge?.port ?: 0)
+                LayoutFile.write(container, newSplit, calibration, bridge)
             }
             presentation = SplitBottomPresentation(
                 context, bottomDisplay, xServer, top, newSplit.top, newSplit.bottom, calibration, profile.calibration,
@@ -164,7 +164,7 @@ class SplitScreenController(
 
     private fun onCalibrationChange(new: ScreenCalibration) {
         calibration = new
-        split?.let { LayoutFile.write(container, it, new, bridge?.port ?: 0) }
+        split?.let { LayoutFile.write(container, it, new, bridge) }
     }
 
     // ---- for GameNative's in-game menu (duo/ui/DuoQuickMenu.kt) ---------------------------------------------------

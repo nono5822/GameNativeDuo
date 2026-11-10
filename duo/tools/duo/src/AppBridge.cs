@@ -20,6 +20,7 @@ public sealed class AppBridge : IDisposable
     private readonly Socket _socket = new(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
     private readonly Thread _thread;
     private volatile bool _running = true;
+    private bool _refusalLogged;
     private readonly EventLog _events;
     private readonly LinkedList<JsonObject> _recent = new();
     private int _in, _out;
@@ -27,6 +28,19 @@ public sealed class AppBridge : IDisposable
     private double _rateIn, _rateOut;
 
     public int Port => ((IPEndPoint)_socket.LocalEndPoint!).Port;
+
+    /// <summary>The session token written into layout.json / bridge.json; a mod on SDK 1.1+ repeats it in every HELLO.</summary>
+    public string Token { get; } = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
+
+    /// <summary>True once a mod said hello with <see cref="Token"/>: HELLOs without it are then ignored, as on the device.</summary>
+    public bool TokenSeen { get; private set; }
+
+    /// <summary>
+    /// The app's rule for a HELLO (BridgePackets.judgeHello in the Android app): the token always wins; without one
+    /// (a mod on SDK 1.0) only when no token was seen this session and no other live mod holds the bridge.
+    /// </summary>
+    public static bool AcceptsHello(string expected, string? given, bool samePort, bool modAlive, bool tokenSeen) =>
+        given != null ? given == expected : !tokenSeen && (samePort || !modAlive);
     public int ModPort { get; private set; }
     public uint Capabilities { get; private set; }
     public string Engine { get; private set; } = "";
@@ -165,7 +179,21 @@ public sealed class AppBridge : IDisposable
             case Hello when n >= 8:
             {
                 uint caps = BitConverter.ToUInt32(b, 4);
-                string name = Encoding.ASCII.GetString(b, 8, n - 8);
+                string text = Encoding.ASCII.GetString(b, 8, n - 8);
+                int nul = text.IndexOf('\0');
+                string? given = nul < 0 ? null : text[(nul + 1)..];
+                string name = nul < 0 ? text : text[..nul];
+                if (!AcceptsHello(Token, given, port == ModPort, Connected, TokenSeen))
+                {
+                    if (!_refusalLogged)
+                        _events.Log("duo", "W", $"bridge: ignoring a HELLO from port {port} (wrong or missing session token)");
+                    _refusalLogged = true;
+                    break;
+                }
+                if (given != null)
+                    TokenSeen = true;
+                else if (port != ModPort)
+                    _events.Log("duo", "W", $"bridge: the mod on port {port} sends no session token (built on SDK 1.0)");
                 bool isNew = port != ModPort || caps != Capabilities || !Connected;
                 ModPort = port;
                 Capabilities = caps;

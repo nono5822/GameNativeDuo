@@ -96,9 +96,15 @@ namespace GameNativeDuo.Sdk
             }
         }
 
+        /// <summary>
+        /// The session token from layout.json / bridge.json, sent back in every HELLO so the app knows this is the game
+        /// and not another app on the device ("" with an app that has none: the HELLO is then the old one).
+        /// </summary>
+        public string Token = "";
+
         public void SendHello(uint capabilities, string engine)
         {
-            byte[] name = Encoding.ASCII.GetBytes(engine);
+            byte[] name = Encoding.ASCII.GetBytes(string.IsNullOrEmpty(Token) ? engine : engine + "\0" + Token);
             var p = new byte[8 + name.Length];
             Header(p, Hello);
             WriteU32(p, 4, capabilities);

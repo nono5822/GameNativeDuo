@@ -36,7 +36,11 @@ for _, c in ipairs(chunks) do
 end
 check(#chunks > 1 and keys == 400, "chunks keep every key")
 
-local l = duo.parse_layout('{"screen":{"w":1920,"h":2160},"top":{"x":0,"y":0,"w":1920,"h":1080},"bottom":{"x":340,"y":1080,"w":1240,"h":1080},"bridge":{"port":4000}}')
+local l = duo.parse_layout('{"screen":{"w":1920,"h":2160},"top":{"x":0,"y":0,"w":1920,"h":1080},"bottom":{"x":340,"y":1080,"w":1240,"h":1080},"bridge":{"port":4000,"token":"00112233445566778899aabbccddeeff"}}')
 check(l.port == 4000 and l.bottom.x == 340 and l.bottom_scale == 1, "layout parses")
+check(l.token == "00112233445566778899aabbccddeeff", "layout carries the session token")
+check(duo.parse_layout('{"screen":{"w":1,"h":1},"bridge":{"port":4000}}').token == "", "no token from an older app")
+check(duo.hello_packet(3, "love/sdk1.1", l.token) == "GD\1\129\3\0\0\0love/sdk1.1\0" .. l.token, "hello ends with a NUL and the token")
+check(duo.hello_packet(3, "love/sdk1.1", "") == "GD\1\129\3\0\0\0love/sdk1.1", "hello without a token is the old one")
 
 print("duo.lua: " .. n .. " checks passed")
