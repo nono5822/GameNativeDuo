@@ -200,8 +200,15 @@ h3 { margin: 4px 0 10px; font-size: 13px; letter-spacing: .08em; text-transform:
 <script>
 "use strict";
 const $ = (s) => document.querySelector(s);
-const params = new URLSearchParams(location.search);
-let code = (params.get("k") || localStorage.getItem("duoCode") || "").toUpperCase();
+// The code may come with the address (the QR code): after '#', which the browser never sends, or '?k=' from older
+// links. Either way it is taken out of the address bar and the history at once.
+const params = new URLSearchParams(location.search), hash = new URLSearchParams(location.hash.slice(1));
+let code = (hash.get("k") || params.get("k") || "").toUpperCase();
+if (code) history.replaceState(null, "", location.pathname);
+try { localStorage.removeItem("duoCode"); } catch (e) { /* storage off: nothing to forget */ }
+// The session token from pairing: every request carries it instead of the code. Gone when the tab closes.
+let token = "";
+try { token = sessionStorage.getItem("duoToken") || ""; } catch (e) { /* storage off: pair again on reload */ }
 let state = null, selected = null, selectedWidget = -1, snapTime = 0, liveTimer = 0, refreshTimer = 0;
 const view = { k: 1, top: null, bottom: null };
 
@@ -211,10 +218,14 @@ function toast(text, ms = 2600) {
 }
 
 async function api(path, body, raw) {
-  const opts = { method: body === undefined ? "GET" : "POST", headers: { "X-Duo-Code": code } };
+  const opts = { method: body === undefined ? "GET" : "POST", headers: { "X-Duo-Token": token } };
   if (body !== undefined) opts.body = raw ? body : JSON.stringify(body);
   const r = await fetch(path, opts);
-  if (r.status === 403) { showPair("That code was not accepted."); throw new Error("code"); }
+  if (r.status === 403) {
+    const was = token; token = "";
+    try { sessionStorage.removeItem("duoToken"); } catch (e) { /* nothing stored */ }
+    showPair(was ? "The device asks for the code again." : ""); throw new Error("code");
+  }
   if (!r.ok) throw new Error(r.status);
   return r.headers.get("content-type").includes("json") ? r.json() : r.blob();
 }
@@ -223,12 +234,43 @@ function showPair(error) {
   $("#pair").style.display = "flex"; $("#pairError").textContent = error || ""; $("#code").value = code; $("#code").focus();
 }
 
+// Pairing: the code goes to the device once, the player taps Allow on its bottom screen, and the device answers
+// with a session token. False (with the reason shown) when it did not work out.
+let pairing = false;
+async function pair() {
+  if (pairing) return false;
+  pairing = true;
+  try {
+    for (let i = 0; i < 90; i++) {
+      const r = await fetch("/api/pair", { method: "POST", body: JSON.stringify({ code }) });
+      if (r.status === 200) {
+        token = (await r.json()).token;
+        try { sessionStorage.setItem("duoToken", token); } catch (e) { /* storage off: pair again on reload */ }
+        return true;
+      }
+      if (r.status === 202) {
+        showPair("Now tap Allow on the device's bottom screen.");
+        await new Promise((done) => setTimeout(done, 1000));
+        continue;
+      }
+      const o = await r.json().catch(() => ({}));
+      if (r.status === 429) showPair("Too many wrong codes from this computer. Try again in " + Math.ceil((o.retryAfter || 60) / 60) + " min.");
+      else if (o.error === "refused on the device") showPair("The device refused this computer. Stop and start Edit on PC there to try again.");
+      else if (r.status === 403) showPair("That code was not accepted.");
+      else showPair("This device runs an older GameNative Duo: update it to use this editor.");
+      return false;
+    }
+    showPair("Nobody tapped Allow on the device. Connect again when you are ready.");
+    return false;
+  } finally { pairing = false; }
+}
+
 async function connect() {
   const typed = $("#code").value.trim().toUpperCase();
   if (typed) code = typed;
   try {
+    if (!token && (!code || !(await pair()))) { if (!code) showPair(""); return; }
     await load();
-    localStorage.setItem("duoCode", code);
     startDev().catch(() => {});
     $("#pair").style.display = "none";
   } catch (e) {
@@ -840,7 +882,7 @@ window.addEventListener("resize", () => state && render());
 $("#connect").onclick = connect;
 $("#code").addEventListener("keydown", (ev) => { if (ev.key === "Enter") connect(); });
 $("#code").value = code;
-if (code) connect(); else showPair();
+if (code || token) connect(); else showPair();
 </script>
 </body>
 </html>

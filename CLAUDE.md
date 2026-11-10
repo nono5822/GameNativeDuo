@@ -154,8 +154,9 @@ no CPU frame copies, data over pixels, idle at 0 fps when nothing changes.
   GameNative Duo tab of GameNative's in-game menu (Back button; `duo/ui/DuoQuickMenu.kt`). Note: GameNative pauses
   the game while its menu is open, so the mod's hellos stop; use `UiLayoutController.modSeen`, not `canEdit`, there.
 - **PC editor** (`duo/pc/`): started from either menu, a small HTTP server on the device's Wi-Fi address (port 8642,
-  6-character pairing code shown on the bottom screen with a QR code, stops after 20 wrong codes, never in the
-  background). The web app is `assets/duo/pc-editor/index.html` (one file, no dependencies): both screens from
+  6-character pairing code shown on the bottom screen with a QR code, Allow on the device per new address, then a
+  session token (`PcPairing`; 5 wrong codes lock that address out for 5 minutes), bound to the Wi-Fi address, never
+  in the background). The web app is `assets/duo/pc-editor/index.html` (one file, no dependencies): both screens from
   PixelCopy snapshots, drag elements between screens, background, widgets, and Share (opens the community repo's
   share form on the PC, the same link as the app's Share button; background images stay private).
 - **Native touch**: bottom-screen fingers go over the bridge into the engine's UI (Unity: `EventSystem`; Stardew: the

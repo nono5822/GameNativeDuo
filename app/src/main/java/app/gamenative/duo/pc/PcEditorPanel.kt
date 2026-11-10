@@ -18,7 +18,8 @@ import kotlin.math.roundToInt
 
 /**
  * Shown on the bottom screen while the PC editor runs: the address to open on the PC and the pairing code (the QR
- * code carries both). A small card in a corner; the rest of the bottom screen keeps working for the game.
+ * code carries both). When a browser gave the code from an address not seen before ([pending]), the card asks the
+ * player to allow it first. A small card in a corner; the rest of the bottom screen keeps working for the game.
  */
 @SuppressLint("ViewConstructor")
 internal class PcEditorPanel(
@@ -27,6 +28,9 @@ internal class PcEditorPanel(
     code: String,
     onHide: () -> Unit,
     onStop: () -> Unit,
+    /** The address waiting for an answer, or null; [onAnswer] is told Allow (true) or Refuse. */
+    pending: String? = null,
+    onAnswer: (allow: Boolean) -> Unit = {},
 ) : FrameLayout(context) {
     init {
         val card = LinearLayout(context).apply {
@@ -40,7 +44,8 @@ internal class PcEditorPanel(
             }
             isClickable = true
         }
-        val full = url?.let { "$it?k=$code" }
+        // After '#': the browser keeps that part to itself, so the code is not in the request for the page.
+        val full = url?.let { "$it#k=$code" }
         full?.let { qr(it) }?.let { bitmap ->
             card.addView(
                 ImageView(context).apply { setImageBitmap(bitmap) },
@@ -66,7 +71,17 @@ internal class PcEditorPanel(
                 },
             )
         }
-        text.addView(DuoUi.row(context, DuoUi.chip(context, "Hide") { onHide() }, DuoUi.chip(context, "Stop") { onStop() }))
+        if (pending != null) {
+            text.addView(DuoUi.label(context, "Let $pending edit this game's layout?", 15f, Color.WHITE, bold = true))
+            text.addView(
+                DuoUi.label(context, "A browser there entered the code. Allow it only if that is you.", 13f, DuoUi.MUTED)
+                    .apply { setPadding(0, dp(2), 0, dp(8)) },
+            )
+            val allow = DuoUi.chip(context, "Allow") { onAnswer(true) }
+            text.addView(DuoUi.row(context, allow, DuoUi.chip(context, "Refuse") { onAnswer(false) }))
+        } else {
+            text.addView(DuoUi.row(context, DuoUi.chip(context, "Hide") { onHide() }, DuoUi.chip(context, "Stop") { onStop() }))
+        }
         card.addView(text)
         addView(
             card,

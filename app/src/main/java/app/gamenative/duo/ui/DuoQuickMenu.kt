@@ -311,7 +311,7 @@ private fun PcInfo(url: String?, code: String) {
         Text("Connect the device to Wi-Fi to use the PC editor.", color = Muted, fontSize = 13.sp)
         return
     }
-    val qr = remember(url, code) { qrBitmap("$url?k=$code", 360) }
+    val qr = remember(url, code) { qrBitmap("$url#k=$code", 360) }
     Row(verticalAlignment = Alignment.CenterVertically) {
         qr?.let { Image(it.asImageBitmap(), contentDescription = "QR code for the PC editor", modifier = Modifier.size(96.dp)) }
         Spacer(Modifier.width(14.dp))

@@ -57,7 +57,7 @@ function openEditor() {
     return;
   }
   const panel = vscode.window.createWebviewPanel("gamenativeDuo", "GameNative Duo", vscode.ViewColumn.Beside, { enableScripts: true });
-  const src = `${t.url}/?k=${encodeURIComponent(t.code)}`;
+  const src = `${t.url}/#k=${encodeURIComponent(t.code)}`;
   // The page is the same one the browser shows, served by duo or the device; the webview only frames it.
   panel.webview.html = `<!doctype html><html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; frame-src ${t.url}; style-src 'unsafe-inline';">

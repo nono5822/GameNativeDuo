@@ -573,6 +573,9 @@ private class SplitBottomPresentation(
         val server = pc ?: PcEditorServer(context, this).takeIf { it.start() }?.also {
             pc = it
             it.onStopped = { if (overlay is PcEditorPanel) hideOverlay() }
+            // A browser at a new address gave the code: ask on the bottom screen, unless something else is open there
+            // (the question then shows with the card, next time it opens).
+            it.pairing.onConfirm = { _ -> handler.post { if (pc === it && (overlay == null || overlay is PcEditorPanel)) showPcCard(it) } }
         } ?: return null
         if (showCard) showPcCard(server)
         return server.url to server.code
@@ -590,13 +593,24 @@ private class SplitBottomPresentation(
     }
 
     private fun showPcCard(server: PcEditorServer) {
-        showOverlay(
-            PcEditorPanel(
-                context, server.url, server.code,
-                onHide = ::hideOverlay,
-                onStop = ::stopPc,
-            ),
-        )
+        try {
+            val pending = server.pairing.pending
+            showOverlay(
+                PcEditorPanel(
+                    context, server.url, server.code,
+                    onHide = ::hideOverlay,
+                    onStop = ::stopPc,
+                    pending = pending,
+                    onAnswer = { allow ->
+                        pending?.let { server.pairing.answer(it, allow) }
+                        // The next address that is waiting, else the plain card.
+                        if (pc === server) showPcCard(server)
+                    },
+                ),
+            )
+        } catch (t: Throwable) {
+            Timber.tag(DualScreenHost.TAG).e(t, "Failed to show the PC editor card")
+        }
     }
 
     private fun showMenu() {
