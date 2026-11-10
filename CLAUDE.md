@@ -36,7 +36,7 @@ Upstream lands ~4-5 commits/day; `XServerScreen.kt` (~6,800 lines) changes almos
 | File | Change |
 |---|---|
 | `ui/screen/xserver/XServerScreen.kt` | import + one `DualScreenHost.attach(...)` line after the external-display controllers start |
-| `app/build.gradle.kts` | `applicationId = "app.gamenative.duo"` |
+| `app/build.gradle.kts` | `applicationId = "app.gamenative.duo"`; `duoRelease` signing config from `DUO_RELEASE_*` (the `release` type uses it, else unsigned); `-PduoDebugSuffix` |
 | `build.gradle.kts` (root) | `buildscript` pins D8/R8 `com.android.tools:r8` (see Known issues) |
 | `com/winlator/renderer/VulkanRenderer.java` | `duoViewRect` crop in `updateTransform` (right after the surface guard, before upstream's effective-screen scaling; uses the full `xServer.screenInfo`), `setDuoViewRect`, `duoSetSecondary`/`duoClearSecondary`, `duoSetRegions`/`duoSetMasks` + their natives |
 | `cpp/winlator/VulkanRendererContext.{h,cpp}` | declarations, `duoRenderSecondary()` after both present paths, `duoWaitSecondary()` before the `deleteQueue` flush, `duoDestroySecondary()` in the destructor, `duoDrawMasks()` after the window draws in `recordCmdBuf`, region/mask members (new code in `DuoSecondaryOutput.cpp`) |
@@ -222,8 +222,12 @@ adb logcat -s GNDuo                         # devkit logs
 
 - CI: `.github/workflows/duo-debug-build.yml` builds the APK on pushes to `devkit`/`duo/**` (artifact on the run);
   `duo-upstream-check.yml` nightly test-merges upstream `master` (needs `devkit` as the default branch).
-- All builds sign with `duo/debug.keystore` (debug-only, deliberately committed) so CI and local APKs update
+- Debug builds sign with `duo/debug.keystore` (debug-only, deliberately committed) so CI and local APKs update
   each other. For local builds: `cp duo/debug.keystore ~/.android/debug.keystore` (back up your own first).
+- Release builds (`:app:assembleModernRelease`) sign with the private release key from `DUO_RELEASE_*` (repo secrets;
+  the maintainer's copy is in `~/.config/gamenative-duo/`), and come out unsigned without it: never with the debug
+  key. A `duo-v*` tag runs `.github/workflows/duo-release.yml` (draft release with the APK). Setup, the fingerprint and
+  `-PduoDebugSuffix` (debug as `app.gamenative.duo.debug`, untested): `duo/docs/release-signing.md`.
 - A `local.properties` with dummy `POSTHOG_API_KEY`/`POSTHOG_HOST` is enough to build.
 - Official GameNative can be installed alongside and logs the same tags (`evshim`, `WinHandler`, ...). Check
   which app a log line comes from: `adb logcat --pid=$(adb shell pidof app.gamenative.duo)`.
