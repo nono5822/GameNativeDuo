@@ -1,0 +1,119 @@
+name: Duo release
+
+# Builds the GameNative Duo release APK (modern flavour), signed with the fork's private release key, and attaches it
+# to a draft GitHub release for a maintainer to check and publish. Runs on tags like duo-v1.4.0 and by hand.
+# Setup and the key's secrets: duo/docs/release-signing.md.
+
+on:
+  push:
+    tags: [ "duo-v*" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: duo-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.repository != 'utkarshdalal/GameNative'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift
+          df -h /
+
+      - uses: actions/checkout@v4
+
+      - name: Release key
+        # Stops here, before an hour of building, when the secrets are not set.
+        env:
+          KEYSTORE_BASE64: ${{ secrets.DUO_RELEASE_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.DUO_RELEASE_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.DUO_RELEASE_KEY_ALIAS }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$STORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ]; then
+            echo "::error::The release key secrets are not set (duo/docs/release-signing.md)."
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/duo-release.jks"
+
+      - name: Add swap
+        run: |
+          sudo fallocate -l 8G /mnt/swapfile.ci
+          sudo chmod 600 /mnt/swapfile.ci
+          sudo mkswap /mnt/swapfile.ci
+          sudo swapon /mnt/swapfile.ci
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v4
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Dummy build-time credentials
+        run: |
+          cat <<EOF > local.properties
+          POSTHOG_API_KEY=dummy
+          POSTHOG_HOST=https://us.i.posthog.com
+          EOF
+
+      - name: Build the signed release APK
+        env:
+          DUO_RELEASE_KEYSTORE: ${{ runner.temp }}/duo-release.jks
+          DUO_RELEASE_STORE_PASSWORD: ${{ secrets.DUO_RELEASE_STORE_PASSWORD }}
+          DUO_RELEASE_KEY_ALIAS: ${{ secrets.DUO_RELEASE_KEY_ALIAS }}
+          DUO_RELEASE_KEY_PASSWORD: ${{ secrets.DUO_RELEASE_KEY_PASSWORD }}
+        run: ./gradlew -Pkotlin.daemon.jvmargs=-Xmx3g :app:assembleModernRelease
+
+      - name: Check the signature
+        # The APK must be signed, and not with the public debug key in duo/debug.keystore.
+        run: |
+          apk=$(ls app/build/outputs/apk/modern/release/*.apk | head -n 1)
+          case "$apk" in *unsigned*) echo "::error::The APK is unsigned."; exit 1;; esac
+          apksigner=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -n 1)
+          fingerprint() { sed -n 's/^Signer #1 certificate SHA-256 digest: //p'; }
+          signed=$("$apksigner" verify --print-certs "$apk" | fingerprint)
+          debug=$(keytool -list -v -keystore duo/debug.keystore -storepass android 2>/dev/null \
+            | sed -n 's/^[[:space:]]*SHA256: //p' | head -n 1 | tr -d ':' | tr 'A-F' 'a-f')
+          if [ -z "$signed" ] || [ "$signed" = "$debug" ]; then
+            echo "::error::The APK is not signed with the release key."
+            exit 1
+          fi
+          echo "Release certificate SHA-256: $signed" | tee -a "$GITHUB_STEP_SUMMARY"
+          name="GameNativeDuo-${GITHUB_REF_NAME//\//-}.apk"
+          cp "$apk" "$RUNNER_TEMP/$name"
+          echo "APK=$RUNNER_TEMP/$name" >> "$GITHUB_ENV"
+
+      - name: Remove the key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/duo-release.jks"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: GameNativeDuo-release-${{ github.run_number }}
+          path: ${{ env.APK }}
+          retention-days: 30
+
+      - name: Draft release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Another workflow of the same tag (the duo tool's binaries) may have made the draft already.
+          gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --draft \
+            --title "GameNative Duo ${GITHUB_REF_NAME#duo-v}" \
+            --notes "Draft made by the release workflow. Check the APK on a device, write the notes, then publish." || true
+          gh release upload "$GITHUB_REF_NAME" "$APK" --clobber

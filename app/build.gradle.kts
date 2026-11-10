@@ -20,6 +20,12 @@ val keystoreProperties: Properties? = if (keystorePropertiesFile.exists()) {
     }
 } else null
 
+// GameNativeDuo: the fork's release key comes from the environment (CI secrets) or Gradle properties, never from the
+// repo: DUO_RELEASE_KEYSTORE (path), DUO_RELEASE_STORE_PASSWORD, DUO_RELEASE_KEY_ALIAS, DUO_RELEASE_KEY_PASSWORD.
+// Without them a release build comes out unsigned (it cannot be installed), never signed with the public debug key.
+fun duoSecret(name: String): String? = ((project.findProperty(name) as String?) ?: System.getenv(name))?.takeIf { it.isNotBlank() }
+val duoReleaseKeystore: File? = duoSecret("DUO_RELEASE_KEYSTORE")?.let { rootProject.file(it) }?.takeIf { it.isFile }
+
 // Add PostHog API key and host as build-time variables
 val posthogApiKey: String = project.findProperty("POSTHOG_API_KEY") as String? ?: System.getenv("POSTHOG_API_KEY") ?: ""
 val posthogHost: String = project.findProperty("POSTHOG_HOST") as String? ?: System.getenv("POSTHOG_HOST") ?: "https://us.i.posthog.com"
@@ -45,6 +51,15 @@ android {
     ndkVersion = "27.3.13750724"
 
     signingConfigs {
+        // GameNativeDuo
+        if (duoReleaseKeystore != null) {
+            create("duoRelease") {
+                storeFile = duoReleaseKeystore
+                storePassword = duoSecret("DUO_RELEASE_STORE_PASSWORD")
+                keyAlias = duoSecret("DUO_RELEASE_KEY_ALIAS")
+                keyPassword = duoSecret("DUO_RELEASE_KEY_PASSWORD") ?: duoSecret("DUO_RELEASE_STORE_PASSWORD")
+            }
+        }
         create("pluvia") {
             if (keystoreProperties != null) {
                 storeFile = file(keystoreProperties["storeFile"].toString())
@@ -171,11 +186,14 @@ android {
             isMinifyEnabled = false
             isShrinkResources = false
             signingConfig = signingConfigs.getByName("debug")
+            // GameNativeDuo: -PduoDebugSuffix installs debug builds as app.gamenative.duo.debug, next to a release.
+            if (project.hasProperty("duoDebugSuffix")) applicationIdSuffix = ".debug"
         }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            signingConfig = signingConfigs.getByName("debug")
+            // GameNativeDuo: the fork's private key, or unsigned; never the debug key (duo/debug.keystore is public).
+            signingConfig = signingConfigs.findByName("duoRelease")
         }
         create("release-signed") {
             isMinifyEnabled = true
