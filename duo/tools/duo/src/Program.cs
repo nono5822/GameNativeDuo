@@ -14,17 +14,24 @@ public static class Program
                 Simulates the app for a game on this PC: writes layout.json / ui.json into the game's
                 %AppData%\GameNativeDuo, runs the bridge, serves the editor UI and the Duo API.
           duo info | elements | logs [-f] | check | tap X Y | command NAME [JSON] | state [PREFIX]
+          duo screenshot [top|bottom] [--out FILE]
                 Talk to a running sim or device (--url http://HOST:8642 --code CODE; defaults: the last sim).
           duo test SCRIPT          Run a test script against the sim or device.
           duo new --engine love|unity|smapi|native ID    Start a mod from a template.
+          duo build [DIR] [--game FOLDER]
+                The mod's own build: dotnet for a .csproj (FOLDER holds the game's assemblies), make, or a
+                syntax check of its Lua files.
+          duo dev --device MOD-ID [DIR]
+                Push a mod folder to a device over adb; it loads at the next game start (developer mode on).
           duo pack DIR [--write] [--sign [--key FILE]]
                 Check a package folder against the community schemas; --write fills in hashes, --sign
                 signs manifest.json with your author key (sets author.key the first time).
+          duo submit               How to send a packed mod or layout to the community repository.
           duo keygen [--out FILE]  A new author key (SSH ed25519), by default in ~/.config/gamenative-duo/.
           duo stubs DIR --out SET.zip [--only A.dll,B.dll]
                 Reference stubs of a game's assemblies (no code, no assets) for building mods in CI (refs.json).
           duo mcp                  MCP server (stdio) over the Duo API, for Claude Code and other agents.
-          duo version
+          duo version              This tool's version and the Duo SDK version its templates and simulator use.
         """;
 
     public static async Task<int> Main(string[] args)
@@ -38,7 +45,7 @@ public static class Program
         {
             return args[0] switch
             {
-                "version" or "--version" => Print("duo " + Version),
+                "version" or "--version" => Print($"duo {Version} (Duo SDK {SdkVersion()})"),
                 "sim" => await Sim.Run(new Args(args.Skip(1))),
                 _ => await Commands.Run(args[0], new Args(args.Skip(1))),
             };
@@ -48,6 +55,20 @@ public static class Program
             Console.Error.WriteLine("duo: " + ex.Message);
             return 2;
         }
+    }
+
+    /// <summary>
+    /// The version of the SDK this build carries (what `duo new` copies into a mod and what the simulator speaks): read
+    /// from the embedded SDK source, so it cannot drift from it.
+    /// </summary>
+    public static string SdkVersion()
+    {
+        using var s = System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("sdk/cs/Duo.cs");
+        if (s == null)
+            return "unknown";
+        using var r = new StreamReader(s);
+        var m = System.Text.RegularExpressions.Regex.Match(r.ReadToEnd(), "SdkVersion\\s*=\\s*\"([^\"]+)\"");
+        return m.Success ? m.Groups[1].Value : "unknown";
     }
 
     private static int Print(string s)
