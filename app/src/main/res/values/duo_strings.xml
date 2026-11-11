@@ -41,15 +41,28 @@
     <!-- Community packages (layouts, settings, mods shared on GitHub) -->
     <string name="duo_community_share">Share your layout</string>
     <string name="duo_community_apply">Apply</string>
+    <!-- Several layouts per game ("My layouts" in the mod explorer) -->
+    <string name="duo_layouts_title">My layouts</string>
+    <string name="duo_layouts_text">The selected layout is the one the game uses. Layouts you apply from the community join this list.</string>
+    <string name="duo_layouts_from_community">From the community</string>
+    <string name="duo_layouts_duplicate">Duplicate</string>
+    <string name="duo_layouts_rename">Rename</string>
+    <string name="duo_layouts_export">Export</string>
+    <string name="duo_layouts_import">Import a file</string>
+    <string name="duo_layouts_delete">Delete</string>
+    <string name="duo_layouts_done">Done</string>
+    <string name="duo_layouts_delete_title">Delete %1$s?</string>
+    <string name="duo_layouts_delete_text">The layout is removed from this device.</string>
+    <string name="duo_layouts_delete_last">This is the game\'s only layout: it will be emptied, back to how the mod arranges things.</string>
+    <string name="duo_layouts_export_failed">The file could not be written.</string>
+    <string name="duo_layouts_import_failed">The file could not be read.</string>
+    <string name="duo_layouts_import_too_big">That file is too large to be a layout.</string>
     <string name="duo_community_reapply">Apply again</string>
     <string name="duo_community_update">Update to %1$s</string>
     <string name="duo_community_remove">Remove</string>
     <string name="duo_community_not_installable">Needs a newer GameNative Duo to install.</string>
     <string name="duo_community_applied">%1$s applied. It takes effect next time the game starts.</string>
     <string name="duo_community_apply_failed">Could not apply %1$s (%2$s).</string>
-    <string name="duo_community_replace_title">Replace your layout?</string>
-    <string name="duo_community_replace_text">You made your own UI layout for this game. %1$s will replace it.</string>
-    <string name="duo_community_replace_confirm">Replace</string>
     <string name="duo_community_game_version">Game version %1$s</string>
     <string name="duo_community_contribute">How to contribute</string>
     <string name="duo_share_layout_title">Share your layout</string>

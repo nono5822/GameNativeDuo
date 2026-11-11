@@ -87,6 +87,7 @@ import app.gamenative.duo.community.CompatVerdict
 import app.gamenative.duo.community.RulesNote
 import app.gamenative.duo.community.ShareLayout
 import app.gamenative.duo.community.ShareLayoutDialog
+import app.gamenative.duo.ui.LayoutsDialog
 import app.gamenative.duo.ui.UiScreen
 import app.gamenative.ui.util.SnackbarManager
 import com.google.zxing.BarcodeFormat
@@ -114,6 +115,7 @@ fun ModExplorerSheet(state: ModHubState, gameTitle: String, onDismiss: () -> Uni
     var sort by rememberSaveable { mutableStateOf(HubSort.COMPAT) }
     var detailId by rememberSaveable { mutableStateOf<String?>(null) }
     var sharing by remember { mutableStateOf(false) }
+    var layoutsOpen by remember { mutableStateOf(false) }
     var statusOpen by remember { mutableStateOf(false) }
     var rating by remember { mutableStateOf<CommunityPackage?>(null) }
     LaunchedEffect(Unit) { state.refresh(force = true) }
@@ -140,11 +142,13 @@ fun ModExplorerSheet(state: ModHubState, gameTitle: String, onDismiss: () -> Uni
                     }
                 },
                 onStatus = { statusOpen = true },
+                onLayouts = { layoutsOpen = true },
             )
         }
     }
 
     if (statusOpen) ModStatusDialog(state, onDismiss = { statusOpen = false })
+    if (layoutsOpen) LayoutsDialog(state.containerId, onDismiss = { layoutsOpen = false })
     if (sharing) ShareLayoutDialog(state.containerId, gameTitle, onDismiss = { sharing = false })
     rating?.let { pkg -> RateDialog(pkg, state, onDismiss = { rating = null }) }
     state.consent?.let { c ->
@@ -161,20 +165,6 @@ fun ModExplorerSheet(state: ModHubState, gameTitle: String, onDismiss: () -> Uni
             onDismiss = { state.consent = null },
         )
     }
-    state.confirmLayout?.let { pkg ->
-        AlertDialog(
-            onDismissRequest = { state.confirmLayout = null },
-            title = { Text(stringResource(R.string.duo_community_replace_title)) },
-            text = { Text(stringResource(R.string.duo_community_replace_text, pkg.title)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    state.confirmLayout = null
-                    state.applyAddOn(pkg)
-                }) { Text(stringResource(R.string.duo_community_replace_confirm)) }
-            },
-            dismissButton = { TextButton(onClick = { state.confirmLayout = null }) { Text(stringResource(android.R.string.cancel)) } },
-        )
-    }
 }
 
 @Composable
@@ -186,6 +176,7 @@ private fun ExplorerList(
     onOpen: (HubEntry) -> Unit,
     onShare: () -> Unit,
     onStatus: () -> Unit,
+    onLayouts: () -> Unit,
 ) {
     val context = LocalContext.current
     Column(modifier = Modifier.padding(horizontal = 20.dp)) {
@@ -243,6 +234,7 @@ private fun ExplorerList(
     Row(modifier = Modifier.padding(start = 8.dp, bottom = 16.dp)) {
         val ring = Modifier.heightIn(min = 48.dp).focusRing(RoundedCornerShape(24.dp))
         TextButton(onClick = onStatus, modifier = ring.gamepadClick(onStatus)) { Text(stringResource(R.string.duo_status_and_saves)) }
+        TextButton(onClick = onLayouts, modifier = ring.gamepadClick(onLayouts)) { Text(stringResource(R.string.duo_layouts_title)) }
         TextButton(onClick = onShare, modifier = ring) { Text(stringResource(R.string.duo_community_share)) }
         TextButton(onClick = { open(context, CONTRIBUTING_URL) }, modifier = ring) {
             Text(stringResource(R.string.duo_community_contribute))

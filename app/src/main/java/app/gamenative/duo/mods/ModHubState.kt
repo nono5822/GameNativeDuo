@@ -19,7 +19,6 @@ import app.gamenative.duo.community.CommunityRevocations
 import app.gamenative.duo.display.DeviceProfile
 import app.gamenative.duo.settings.DuoSettingsStore
 import app.gamenative.duo.split.SplitLayout
-import app.gamenative.duo.ui.UiLayoutStore
 import app.gamenative.ui.util.SnackbarManager
 import java.io.File
 import java.util.concurrent.TimeUnit
@@ -88,7 +87,6 @@ class ModHubState(
 
     /** A code mod waiting for the user's consent, and what to do once given. */
     var consent by mutableStateOf<Consent?>(null)
-    var confirmLayout by mutableStateOf<CommunityPackage?>(null)
 
     class Consent(
         val pkg: CommunityPackage,
@@ -234,15 +232,10 @@ class ModHubState(
         }
     }
 
-    /** Layouts and settings that sit on top of the mod. A layout the user made is replaced only after asking. */
+    /** Layouts and settings that sit on top of the mod. A layout joins the player's own in "My layouts". */
     fun requestAddOn(pkg: CommunityPackage) {
         if (busy != null) return
-        scope.launch {
-            val ownLayout = pkg.kind == CommunityKind.UI_LAYOUT &&
-                applied[CommunityKind.UI_LAYOUT] == null &&
-                withContext(Dispatchers.IO) { UiLayoutStore.hasUserLayout(context, containerId) }
-            if (ownLayout) confirmLayout = pkg else applyAddOn(pkg)
-        }
+        applyAddOn(pkg)
     }
 
     fun applyAddOn(pkg: CommunityPackage) {
