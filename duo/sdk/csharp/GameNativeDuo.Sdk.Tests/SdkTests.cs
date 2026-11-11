@@ -143,8 +143,10 @@ public class FakeAppTests : IDisposable
         _app.ReceiveTimeout = 200;
         int port = ((IPEndPoint)_app.LocalEndPoint).Port;
         File.WriteAllText(DuoPaths.LayoutFile,
-            "{\"screen\":{\"w\":1920,\"h\":2160},\"top\":{\"x\":0,\"y\":0,\"w\":1920,\"h\":1080},\"bottom\":{\"x\":340,\"y\":1080,\"w\":1240,\"h\":1080},\"bridge\":{\"port\":" + port + "}}");
+            "{\"screen\":{\"w\":1920,\"h\":2160},\"top\":{\"x\":0,\"y\":0,\"w\":1920,\"h\":1080},\"bottom\":{\"x\":340,\"y\":1080,\"w\":1240,\"h\":1080},\"bridge\":{\"port\":" + port + ",\"token\":\"" + Token + "\"}}");
     }
+
+    private const string Token = "00112233445566778899aabbccddeeff";
 
     public void Dispose()
     {
@@ -190,6 +192,14 @@ public class FakeAppTests : IDisposable
     }
 
     [Fact]
+    public void LayoutFromAnOlderAppHasNoToken()
+    {
+        var old = DuoLayout.Parse("{\"screen\":{\"w\":1920,\"h\":2160},\"top\":{\"x\":0,\"y\":0,\"w\":1920,\"h\":1080},\"bottom\":{\"x\":340,\"y\":1080,\"w\":1240,\"h\":1080},\"bridge\":{\"port\":4000}}");
+        Assert.Equal(4000, old.BridgePort);
+        Assert.Equal("", old.BridgeToken);
+    }
+
+    [Fact]
     public void FullRoundTrip()
     {
         DuoRect? score = new DuoRect(400, 1100, 200, 50);
@@ -200,7 +210,8 @@ public class FakeAppTests : IDisposable
 
         var hello = Receive(Bridge.Hello);
         uint caps = BitConverter.ToUInt32(hello, 4);
-        Assert.Equal("test-game/sdk" + Duo.SdkVersion, Encoding.ASCII.GetString(hello, 8, hello.Length - 8));
+        // The engine string, then a NUL and the session token from layout.json.
+        Assert.Equal("test-game/sdk" + Duo.SdkVersion + "\0" + Token, Encoding.ASCII.GetString(hello, 8, hello.Length - 8));
         Assert.NotEqual(0u, caps & Bridge.CapState);
         Assert.NotEqual(0u, caps & Bridge.CapCommands);
         Assert.True(File.Exists(DuoPaths.FeaturesFile));

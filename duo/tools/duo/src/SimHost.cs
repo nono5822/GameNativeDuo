@@ -38,7 +38,7 @@ public sealed class SimHost : IDisposable
         Bridge.CommandResultReceived += (r, s, m) => Complete(_commands, r, (s, m));
         Ui = LoadUi();
         WriteLayout();
-        WriteFile("bridge.json", new JsonObject { ["port"] = Bridge.Port }.ToJsonString());
+        WriteFile("bridge.json", new JsonObject { ["port"] = Bridge.Port, ["token"] = Bridge.Token }.ToJsonString());
         WriteUi(false);
         Events.Log("duo", "I", $"sim: {profile.Name} at {scale * 100:0}%, files in {dir}, bridge on 127.0.0.1:{Bridge.Port}");
     }
@@ -62,6 +62,8 @@ public sealed class SimHost : IDisposable
     private void WriteLayout()
     {
         Layout = Profile.Layout(Scale, Bridge.Port);
+        if (Layout["bridge"] is JsonObject bridge)
+            bridge["token"] = Bridge.Token;
         WriteFile("layout.json", Layout.ToJsonString(new() { WriteIndented = true }));
     }
 

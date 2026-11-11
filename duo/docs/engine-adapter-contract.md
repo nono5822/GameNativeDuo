@@ -24,11 +24,11 @@ Where the two screens are inside the game window, in window pixels, origin top-l
 
 ```json
 {"screen":{"w":1920,"h":2160},"top":{"x":0,"y":0,"w":1920,"h":1080},"bottom":{"x":340,"y":1080,"w":1240,"h":1080},
- "gap":249,"bottomScale":1.142,"bottomShift":0,"bridge":{"port":38705}}
+ "gap":249,"bottomScale":1.142,"bottomShift":0,"bridge":{"port":38705,"token":"3f9c0a52e1b7486d9a0c5e2f71d4b8a6"}}
 ```
 
 Act only while the window is exactly `screen` (±2 px). Re-read it when it changes (calibration rewrites it live);
-`bridge.port` is new every session.
+`bridge.port` and `bridge.token` are new every session.
 
 ## 2. `ui.json` (app → adapter): the UI layout
 
@@ -59,14 +59,25 @@ Act only while the window is exactly `screen` (±2 px). Re-read it when it chang
 
 The app listens on `bridge.port` (IPv4: Wine's sockets are IPv4, and Android's `getLoopbackAddress()` can be `::1`).
 The adapter binds any free loopback port and sends a HELLO from it every 2 s; the app replies to that port. Accept
-packets only from 127.0.0.1:`bridge.port`. Little-endian; every packet starts with `'G' 'D' 0x01 type`.
+packets only from 127.0.0.1:`bridge.port`.
+
+**Session token.** Loopback is shared by every app on the device, so a port number proves nothing. The app writes a
+random `bridge.token` (32 hex characters) next to `bridge.port`, in a folder only the app and the game can read, and
+the adapter repeats it at the end of every HELLO. The app then knows the sender is the game:
+
+- A HELLO with the right token is the mod, from whatever port (a restarted game has a new one).
+- A HELLO with a wrong token is ignored.
+- A HELLO without a token (an adapter built before SDK 1.1) is still accepted for now, but never from another port
+  while the current mod is alive, and never again once a HELLO with the token arrived in the session. Dual screen
+  status tells the user such a mod was built for an older GameNative Duo. This allowance will be removed.
+ Little-endian; every packet starts with `'G' 'D' 0x01 type`.
 
 | Type | Direction | Payload after the 4-byte header |
 |---|---|---|
 | `0x01` TOUCH | app → adapter | `action u8` (0 down, 1 move, 2 up, 3 cancel), `pointer u8`, 2 bytes padding, `x f32`, `y f32` (window px, origin top-left) |
 | `0x02` RULES_CHANGED | app → adapter | none: re-read `ui.json` now |
 | `0x03` DUMP_ELEMENTS | app → adapter | `request u32`: write `elements.json`, then answer ELEMENTS_WRITTEN |
-| `0x81` HELLO | adapter → app | `capabilities u32` (1 touch, 2 UI rules, 4 element list, 8 background color and image, 16 blur, 32 game), engine name (ASCII) |
+| `0x81` HELLO | adapter → app | `capabilities u32` (1 touch, 2 UI rules, 4 element list, 8 background color and image, 16 blur, 32 game), engine name (ASCII), then a `0x00` byte and `bridge.token` (ASCII) |
 | `0x83` ELEMENTS_WRITTEN | adapter → app | `request u32` |
 | `0x04` SUBSCRIBE | app → adapter | UTF-8 JSON `{"keys": [...]}`: the state keys visible companion cards read; `[]` = send nothing |
 | `0x05` COMMAND | app → adapter | `request u32`, UTF-8 JSON `{"cmd": "hk.map.zoom", "args": {...}}` |
@@ -90,7 +101,7 @@ second, one buzz every 50 ms of at most 200 ms. State keys go under the companio
 anything under `user.`, `static.`, `session.` or `file.`. A subscription entry `s` matches key `k` when `k == s` or
 `k` starts with `s.`. The app resends SUBSCRIBE after each new HELLO, so a restarted game picks it up.
 
-`bridge.json` (`{"port": N}`) sits next to `layout.json` whenever a bridge is open, including sessions without a
+`bridge.json` (`{"port": N, "token": "..."}`) sits next to `layout.json` whenever a bridge is open, including sessions without a
 split (a companion-only mod has no `layout.json`). Commands are specified in `companions.md`.
 
 The SDKs (`duo/sdk/`) implement all of this; an adapter built on them never packs a packet by hand.

@@ -191,8 +191,8 @@ no CPU frame copies, data over pixels, idle at 0 fps when nothing changes.
   is a dialog on the main screen: the keyboard never serves the bottom display while a game runs (tested on the Thor).
   Setting "Companion" in the GameNative Duo tab. Bridge state/commands (HK, Stardew, Balatro companions) are 04c.
 - `layout.json` (`%AppData%\GameNativeDuo\` in the prefix) is the contract with in-game mods: `screen`, `top`,
-  `bottom` (window px, origin top-left), plus `gap`, `bottomScale`, `bottomShift`, `bridge.port`. Mods act only when
-  the window matches `screen`. `ui.json` (UI layout) and `elements.json` (for the editor) sit next to it.
+  `bottom` (window px, origin top-left), plus `gap`, `bottomScale`, `bottomShift`, `bridge.port`, `bridge.token` (the
+  session secret a mod repeats in its HELLO). Mods act only when the window matches `screen`. `ui.json` (UI layout) and `elements.json` (for the editor) sit next to it.
 - Mods only add code to games the user owns; never anything that touches DRM or decrypts game files.
 
 ## Branding

@@ -43,6 +43,7 @@ int main(void) {
     assert(duo_parse_layout("{\"screen\":{\"w\":1920,\"h\":2160},\"top\":{\"x\":0,\"y\":0,\"w\":1920,\"h\":1080},"
                             "\"bottom\":{\"x\":340,\"y\":1080,\"w\":1240,\"h\":1080},\"gap\":249,\"bottomScale\":1.142,\"bridge\":{\"port\":4000}}", &l));
     assert(l.bottom.x == 340 && l.bottom.h == 1080 && l.gap == 249 && l.port == 4000 && l.bottom_scale > 1.14f);
+    assert(l.token[0] == 0); /* an older app: no token */
     assert(duo_matches("hk.charms", "hk.charms.0") && duo_matches("hk.map.", "hk.map.zone") && !duo_matches("hk.charm", "hk.charms"));
 
     app = socket(AF_INET, SOCK_DGRAM, 0);
@@ -55,7 +56,7 @@ int main(void) {
     snprintf(dirs, sizeof dirs, "%s/", dir);
     duo_set_dir(dirs);
     snprintf(layout, sizeof layout, "{\"screen\":{\"w\":1920,\"h\":2160},\"top\":{\"x\":0,\"y\":0,\"w\":1920,\"h\":1080},"
-             "\"bottom\":{\"x\":340,\"y\":1080,\"w\":1240,\"h\":1080},\"bridge\":{\"port\":%d}}", ntohs(a.sin_port));
+             "\"bottom\":{\"x\":340,\"y\":1080,\"w\":1240,\"h\":1080},\"bridge\":{\"port\":%d,\"token\":\"00112233445566778899aabbccddeeff\"}}", ntohs(a.sin_port));
     assert(duo_write_file("layout.json", layout));
 
     assert(duo_start("native-test"));
@@ -65,7 +66,11 @@ int main(void) {
     duo_publish("t.zone", "\"Crossroads\"");
 
     n = receive(0x81, buf, sizeof buf);
-    assert(n > 8 && memcmp(buf + 8, "native-test/sdk" DUO_SDK_VERSION, (size_t)(n - 8)) == 0);
+    /* The engine string, then a NUL and the session token from layout.json. */
+    {
+        const char expect[] = "native-test/sdk" DUO_SDK_VERSION "\0" "00112233445566778899aabbccddeeff";
+        assert(n - 8 == (int)sizeof expect - 1 && memcmp(buf + 8, expect, sizeof expect - 1) == 0);
+    }
     assert(duo__get_u32(buf + 4) & DUO_CAP_STATE);
     assert(duo_is_split());
 

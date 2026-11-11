@@ -157,7 +157,7 @@ limits in `engine-adapter-contract.md`.
 - **Zero cost**: the mod computes and sends only subscribed prefixes, at most 30 deltas/s, each under 8 KB (larger
   states are split). The app applies deltas on its receive thread and redraws visible cards at most 10 times a
   second, only those whose keys changed. Hidden companion: `SUBSCRIBE []`, the mod sends nothing.
-- `bridge.json` (`{"port": N}`, next to `layout.json`) is written whenever a bridge is open, also in sessions without
+- `bridge.json` (`{"port": N, "token": "..."}`, next to `layout.json`) is written whenever a bridge is open, also in sessions without
   a screen split, so a companion-only mod knows where to send; `layout.json` keeps meaning "the window is split".
 
 ### Commands and staged actions

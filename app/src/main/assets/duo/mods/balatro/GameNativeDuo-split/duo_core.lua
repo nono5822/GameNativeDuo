@@ -39,6 +39,9 @@ do
         end
         local port = layout and type(layout.bridge) == "table" and tonumber(layout.bridge.port)
         D.port = port and port > 0 and port or nil
+        -- The session token the app wrote next to the port: sent back in every HELLO (SDK 1.1).
+        local token = layout and type(layout.bridge) == "table" and layout.bridge.token
+        D.token = type(token) == "string" and token or ""
         D.bottom_scale = layout and tonumber(layout.bottomScale) or 1
         return true
     end

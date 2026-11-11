@@ -233,7 +233,7 @@ do
             D.safe("ui.json", D.read_ui)
             if D.active then
                 if not features_written then features_written = D.safe("features.json", write_features) ~= false end
-                send(duo.hello_packet(CAPS, ENGINE .. "/sdk" .. duo.VERSION))
+                send(duo.hello_packet(CAPS, ENGINE .. "/sdk" .. duo.VERSION, D.token))
             end
         end
         receive()

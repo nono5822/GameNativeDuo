@@ -32,13 +32,56 @@ object BridgePackets {
     }
 
     /** The SDK version this app knows best; mods built for an older one may miss features. */
-    const val SDK_VERSION = "1.0"
+    const val SDK_VERSION = "1.1"
 
     /** HELLO's engine string is `engine` or `engine/sdkX.Y`: the engine part. */
-    fun engineOf(hello: String): String = hello.substringBefore("/sdk")
+    fun engineOf(hello: String): String = helloName(hello).substringBefore("/sdk")
 
     /** The SDK part of HELLO's engine string, or "" for a mod without the SDK. */
-    fun sdkOf(hello: String): String = if ("/sdk" in hello) hello.substringAfter("/sdk") else ""
+    fun sdkOf(hello: String): String = helloName(hello).let { if ("/sdk" in it) it.substringAfter("/sdk") else "" }
+
+    /** HELLO's text is the engine string, then (SDK 1.1+) a NUL and the session token: the engine string. */
+    fun helloName(text: String): String = text.substringBefore(HELLO_SEPARATOR)
+
+    /** The session token a HELLO carries after the NUL, or null for a mod built before tokens (SDK 1.0). */
+    fun helloToken(text: String): String? = if (HELLO_SEPARATOR in text) text.substringAfter(HELLO_SEPARATOR) else null
+
+    /** A new session token: 128 random bits as 32 hex characters (ASCII, so every SDK can copy it as is). */
+    fun newToken(random: java.security.SecureRandom = java.security.SecureRandom()): String =
+        ByteArray(16).also { random.nextBytes(it) }.joinToString("") { "%02x".format(it) }
+
+    enum class HelloVerdict {
+        /** Carries this session's token: the mod, whatever port it speaks from (a restarted game has a new one). */
+        ACCEPT,
+
+        /** No token (a mod built on SDK 1.0), and nothing speaks against it. */
+        ACCEPT_LEGACY,
+
+        REFUSE,
+    }
+
+    /**
+     * Whether a HELLO may become (or stay) the session's mod. Loopback is shared by every app on the device, so only
+     * the token from `layout.json` (in the app's private prefix) proves a sender is the game. A HELLO without one is
+     * still taken from mods built before tokens, but never once a mod with the token has spoken ([tokenSeen]) and
+     * never from another port while the current mod is alive.
+     */
+    fun judgeHello(expected: String, given: String?, samePort: Boolean, modAlive: Boolean, tokenSeen: Boolean): HelloVerdict = when {
+        given != null -> if (sameText(given, expected)) HelloVerdict.ACCEPT else HelloVerdict.REFUSE
+        tokenSeen -> HelloVerdict.REFUSE
+        modAlive && !samePort -> HelloVerdict.REFUSE
+        else -> HelloVerdict.ACCEPT_LEGACY
+    }
+
+    /** Equality that takes the same time wherever the texts differ. */
+    private fun sameText(a: String, b: String): Boolean {
+        if (a.length != b.length) return false
+        var diff = 0
+        for (i in a.indices) diff = diff or (a[i].code xor b[i].code)
+        return diff == 0
+    }
+
+    private const val HELLO_SEPARATOR = '\u0000'
 
     /** True when [sdk] (a mod's) is older than [SDK_VERSION]; false when unknown. */
     fun sdkIsOlder(sdk: String): Boolean {
@@ -69,7 +112,8 @@ object BridgePackets {
             DuoBridge.DUMP_ELEMENTS -> "DUMP_ELEMENTS ${if (n >= 8) b.getInt(4) else ""}"
             DuoBridge.SUBSCRIBE -> "SUBSCRIBE ${text(4)}"
             DuoBridge.COMMAND -> "COMMAND #${if (n >= 8) b.getInt(4) else 0} ${text(8)}"
-            DuoBridge.HELLO -> "HELLO caps 0x${if (n >= 8) Integer.toHexString(b.getInt(4)) else "?"} ${text(8)}"
+            // The token after the NUL stays out of the dev tools and logs.
+            DuoBridge.HELLO -> "HELLO caps 0x${if (n >= 8) Integer.toHexString(b.getInt(4)) else "?"} ${helloName(text(8))}"
             DuoBridge.ELEMENTS_WRITTEN -> "ELEMENTS_WRITTEN ${if (n >= 8) b.getInt(4) else ""}"
             DuoBridge.STATE -> "STATE ${if (n > 4 && p[4].toInt() and 1 != 0) "full " else ""}${text(8)}"
             DuoBridge.COMMAND_RESULT -> "COMMAND_RESULT #${if (n >= 8) b.getInt(4) else 0} ${if (n >= 9) p[8] else ""} ${text(9)}"

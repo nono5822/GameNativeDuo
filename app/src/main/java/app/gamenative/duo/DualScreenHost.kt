@@ -195,7 +195,7 @@ class DualScreenSession internal constructor(
         displayManager?.registerDisplayListener(displayListener, Handler(Looper.getMainLooper()))
         report("session start (container ${container.id}, profile ${profile.id}, $settings)")
         if (screenSplit == null) LayoutFile.delete(container)
-        LayoutFile.writeBridge(container, bridge?.port ?: 0)
+        LayoutFile.writeBridge(container, bridge)
         GameProfileStore.writeToPrefix(context, container)
         bridge?.hapticListener = { ms, strength -> buzz(ms, strength) }
         bridge?.let { companion?.attachBridge(it) }
@@ -278,7 +278,7 @@ class DualScreenSession internal constructor(
         }
         gamescopeStatus = null
         bridge?.close()
-        if (bridge != null) LayoutFile.writeBridge(container, 0)
+        if (bridge != null) LayoutFile.writeBridge(container, null)
         updateStatus { it.copy(endedAt = System.currentTimeMillis()) }
         Timber.tag(DualScreenHost.TAG).i("Session ended")
     }

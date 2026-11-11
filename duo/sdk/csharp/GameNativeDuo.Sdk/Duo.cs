@@ -59,7 +59,7 @@ namespace GameNativeDuo.Sdk
 #endif
     static class Duo
     {
-        public const string SdkVersion = "1.0";
+        public const string SdkVersion = "1.1";
 
         private static Bridge _bridge;
         private static string _engine = "";
@@ -352,11 +352,13 @@ namespace GameNativeDuo.Sdk
                     LayoutChanged?.Invoke(layout);
             }
             int port = Layout?.BridgePort ?? 0;
+            string token = Layout?.BridgeToken ?? "";
             if (port == 0)
-                port = DuoLayout.ReadBridgePort();
-            if (port != _bridge.AppPort)
+                port = DuoLayout.ReadBridge(out token);
+            if (port != _bridge.AppPort || token != _bridge.Token)
             {
                 _bridge.AppPort = port;
+                _bridge.Token = token;
                 _nextHelloMs = 0;
             }
             DateTime ut = Time(DuoPaths.UiFile);

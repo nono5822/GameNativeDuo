@@ -10,7 +10,7 @@
 --
 -- Everything runs on the game thread inside duo.update (one non-blocking receive per packet, nothing when idle).
 -- Low-level pieces (duo.packet, duo.parse, duo.json_*) are public for adapters that keep their own loop.
-local duo = { VERSION = "1.0" }
+local duo = { VERSION = "1.1" }
 
 local ok_socket, socket = pcall(require, "socket")
 local ok_ffi, ffi = pcall(require, "ffi")
@@ -185,7 +185,11 @@ duo.le32 = le32
 --- A packet of type t with an optional body string.
 function duo.packet(t, body) return "GD\1" .. string.char(t) .. (body or "") end
 
-function duo.hello_packet(caps, engine) return duo.packet(duo.HELLO, le32(caps) .. engine) end
+--- HELLO: capabilities, the engine string and, after a NUL, the session token from layout.json (proof to the app
+--- that this is the game and not another app on the device; left out when the app gave none).
+function duo.hello_packet(caps, engine, token)
+    return duo.packet(duo.HELLO, le32(caps) .. engine .. ((token and token ~= "") and ("\0" .. token) or ""))
+end
 
 --- Parses an app -> mod packet: a table {type=, action=, pointer=, x=, y=, request=, text=} or nil.
 function duo.parse(data)
@@ -289,7 +293,7 @@ local function parse_rect(o)
     return o and { x = tonumber(o.x) or 0, y = tonumber(o.y) or 0, w = tonumber(o.w) or 0, h = tonumber(o.h) or 0 }
 end
 
---- layout.json as {screen={w,h}, top=rect, bottom=rect, gap, bottom_scale, bottom_shift, port} or nil.
+--- layout.json as {screen={w,h}, top=rect, bottom=rect, gap, bottom_scale, bottom_shift, port, token} or nil.
 function duo.parse_layout(text)
     local ok, j = pcall(duo.json_decode, text)
     if not ok or type(j) ~= "table" or type(j.screen) ~= "table" then return nil end
@@ -298,6 +302,7 @@ function duo.parse_layout(text)
         top = parse_rect(j.top), bottom = parse_rect(j.bottom),
         gap = tonumber(j.gap) or 0, bottom_scale = tonumber(j.bottomScale) or 1, bottom_shift = tonumber(j.bottomShift) or 0,
         port = type(j.bridge) == "table" and tonumber(j.bridge.port) or 0,
+        token = type(j.bridge) == "table" and type(j.bridge.token) == "string" and j.bridge.token or "",
     }
 end
 
@@ -386,6 +391,7 @@ duo.rules = {}     -- element id -> rule {screen, scale, x, y, options}
 duo.background = { mode = "game" }
 duo.rules_version = 0
 duo.port = 0
+duo.token = ""
 duo.on_rules_changed = nil   -- function() after ui.json was read again
 duo.on_layout_changed = nil  -- function(layout)
 
@@ -525,13 +531,16 @@ local function read_layout()
         if duo.on_layout_changed then pcall(duo.on_layout_changed, duo.layout) end
     end
     local port = duo.layout and duo.layout.port or 0
+    local token = duo.layout and duo.layout.token or ""
     if port == 0 then
         local b = read_file(config.dir .. "bridge.json")
         local ok, j = pcall(duo.json_decode, b or "")
         port = ok and type(j) == "table" and tonumber(j.port) or 0
+        token = ok and type(j) == "table" and type(j.token) == "string" and j.token or ""
     end
-    if port ~= duo.port then
+    if port ~= duo.port or token ~= duo.token then
         duo.port = port
+        duo.token = token
         next_hello = 0
     end
 end
@@ -577,7 +586,7 @@ function duo.update(w, h)
     end
     if now >= next_hello and duo.port > 0 then
         next_hello = now + 2
-        duo.send(duo.hello_packet(caps(), config.engine .. "/sdk" .. duo.VERSION))
+        duo.send(duo.hello_packet(caps(), config.engine .. "/sdk" .. duo.VERSION, duo.token))
         if not features_written then write_features() end
     end
     duo.poll(handle)

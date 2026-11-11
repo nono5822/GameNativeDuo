@@ -5,7 +5,7 @@
     <Nullable>disable</Nullable>
     <RootNamespace>GameNativeDuo.Sdk</RootNamespace>
     <PackageId>GameNativeDuo.Sdk</PackageId>
-    <Version>1.0.0</Version>
+    <Version>1.1.0</Version>
     <Authors>GameNative Duo contributors</Authors>
     <Description>Dual-screen mods for GameNative Duo: layout, bridge (touch, UI rules, element list, companion state, commands, logs), no engine references.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
