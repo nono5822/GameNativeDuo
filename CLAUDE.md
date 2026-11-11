@@ -56,6 +56,7 @@ Upstream lands ~4-5 commits/day; `XServerScreen.kt` (~6,800 lines) changes almos
 | `ui/screen/library/LibraryAppScreen.kt` | `DualScreenToggle(...)` next to the Play button |
 | `.github/workflows/{app-release-signed,tagged-release,issues-contributors-only}.yml` | jobs guarded to run only in upstream repo |
 | `.github/pull_request_template.md` | replaced with our template (what and why, upstream files, testing, screenshots, not tested) |
+| `README.md`, `CONTRIBUTING.md`, `.github/CODEOWNERS`, `.github/ISSUE_TEMPLATE/*` | replaced whole with the fork's (resolve upstream conflicts with "ours"); images stay in `.github/assets/` |
 
 ## Why `app.gamenative.duo` and `AppPaths`
 

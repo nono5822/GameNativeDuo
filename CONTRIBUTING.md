@@ -1,78 +1,55 @@
-# Contributing to GameNative
+# Contributing to GameNative Duo
 
-Thanks for your interest in contributing. We welcome pull requests, bug reports, and feedback.
+GameNative Duo is a fork of [GameNative](https://github.com/utkarshdalal/GameNative) that adds dual-screen support.
+This page is about the fork. A problem that also happens in official GameNative (a game that does not start, a login
+that fails) belongs with [GameNative](https://github.com/utkarshdalal/GameNative), not here.
 
-## Quick Start
+## Ways to help
 
-1. Join our [Discord server](https://discord.gg/2hKv4VfZfE). If you have access to `#code-changes`, please discuss your change there before opening a PR.
-2. Fork the repo and create a branch for your changes.
-3. See the **Building** section in [README](README.md) for setup instructions.
-4. Open a pull request with a clear description and attach a short recording/GIF of the change.
+- **Report a bug or ask for a game**: open an [issue](https://github.com/nono5822/GameNativeDuo/issues/new/choose).
+  Say which device, which game, and what both screens showed.
+- **Share a layout**: arrange a game's interface in the layout editor and use Share. Layouts are data, not code, and
+  go to the [community repository](https://github.com/nono5822/GameNativeDuo-community).
+- **Make a mod for a game**: start from the SDKs in [`duo/sdk/`](duo/sdk/README.md) and the `duo` tool in
+  [`duo/tools/duo`](duo/tools/duo). Mods are published through the community repository too.
+- **Work on the app**: see below.
 
-## Picking Something to Fix
+## Changing the app
 
-The nightly list of games that don't work, with one issue per game, lives at [GameNative/gamenative-compat](https://github.com/GameNative/gamenative-compat). Open the game's issue, check the comments for anyone already working on it, and comment that you are taking it. Open your PR in the repo the fix belongs to (this one, [proton-wine](https://github.com/GameNative/proton-wine), [FEX](https://github.com/GameNative/FEX), or a wrapper) and comment on the issue with the link once it is up or merged. The issue closes on its own once players are running the game. To donate a key for a broken game so someone can fix it, email [support@gamenative.app](mailto:support@gamenative.app).
+1. Pick an [issue](https://github.com/nono5822/GameNativeDuo/issues), or open one first so the change can be
+   discussed before you write it. Each issue says what "done" means.
+2. Branch from `devkit` (the working branch) as `duo/<short-name>`. `master` mirrors upstream and is never changed
+   here.
+3. Keep the pull request small: one issue, one change. Open it into `devkit` and fill in the template. It asks what
+   changed and why, which upstream files were touched, how it was tested, and what was **not** tested. Write
+   `Closes #N`.
+4. Say plainly what you could not check. Most of this project only shows its bugs on a real dual-screen handheld, so
+   "not tried on a device" is useful to know and fine to write.
 
-## Scope of Contributions
+### Rules that keep the fork maintainable
 
-GameNative is currently focused on:
-- Core functionality
-- Stability and performance
-- Compatibility improvements
+- New code goes in new files under `app/src/main/java/app/gamenative/duo/`. Upstream files get one-line hooks marked
+  `// GameNativeDuo`, and each one is listed in the table in [`CLAUDE.md`](CLAUDE.md). Upstream changes daily; every
+  line we change in their files is a future merge conflict.
+- Nothing in `app.gamenative.duo` may crash or stall a game: catch and log at every entry point (logcat tag `GNDuo`).
+- The CPU is the bottleneck of an emulated game. No frame copies on the CPU, no polling, nothing that runs every
+  frame without need.
+- Mods only add code to games the player owns. Nothing that touches DRM or decrypts game files.
+- Kotlin style: 140 columns, trailing commas, sorted imports (`.editorconfig`).
 
-Out of scope (unless explicitly approved beforehand):
-- New features
-- UI/UX changes
-- Cosmetic-only changes
-- Preference-driven behavior changes
+### Building and testing
 
-## Process
+```bash
+./gradlew :app:assembleModernDebug                                              # the APK
+./gradlew :app:testModernDebugUnitTest --tests 'app.gamenative.duo.*'           # the fork's unit tests
+dotnet test duo/tools/duo/tests && dotnet test duo/sdk/csharp/GameNativeDuo.Sdk.Tests   # the tool and the C# SDK
+```
 
-Before opening a PR:
-1. Discuss the change in #code-changes
-2. Wait for it to be acknowledged/approved
-3. Then open a PR
+A `local.properties` with dummy `POSTHOG_API_KEY` and `POSTHOG_HOST` values is enough to build. Architecture, the
+device's details and debugging notes are in [`CLAUDE.md`](CLAUDE.md); the history of each feature is in
+[`duo/notes/`](duo/notes).
 
-PRs that are not discussed beforehand or are out of scope may be closed without review.
+## Licence
 
-## Reviews
-
-PRs are reviewed once a week. Please be patient.
-
-## Reporting Issues
-
-Please report bugs and request support through our [Discord server](https://discord.gg/2hKv4VfZfE). GitHub issues are automatically closed.
-
-## Contribution Terms
-
-We want contributing to feel straightforward and fair.
-
-- You keep ownership of your work.
-- You confirm you have the right to submit your contribution.
-- You allow maintainers to use your contribution in GameNative and future versions.
-- This can include relicensing when needed to keep the project sustainable. Our default intent is to keep GameNative free and open source; if major licensing changes are ever considered, we will communicate them transparently with the community.
-- Public forks continue under the project's published license, unless maintainers separately grant extra rights. This helps protect contributors by ensuring forks cannot take your code proprietary in violation of the license.
-
-By opening a pull request, you agree to these terms.
-
-<details>
-<summary>Legal details</summary>
-
-The legal clauses below are directly based on the [Apache Software Foundation Individual Contributor License Agreement (ICLA)](https://www.apache.org/licenses/icla.pdf), which is widely used as a template across open-source projects.
-
-Except for the license granted below to the project maintainers, you reserve all right, title, and interest in and to your contributions.
-
-Grant of Copyright License: Subject to these terms, you hereby grant to the project maintainers a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable copyright license to reproduce, prepare derivative works of, publicly display, publicly perform, sublicense, and distribute your contributions and such derivative works.
-
-You represent that you are legally entitled to grant the above license and that your contributions are your original creation (or that you otherwise have sufficient rights to submit them).
-
-</details>
-
-### Maintainer Authority
-
-Maintainers have final discretion over:
-- Project direction and priorities
-- What contributions are accepted or rejected
-- When and how contributions are reviewed and merged
-
-Not all contributions will be accepted, and decisions may change as the project evolves.
+Contributions are accepted under the repository's licence (see [`LICENSE`](LICENSE)). The SDKs in `duo/sdk/` are MIT
+so that any mod may use them.

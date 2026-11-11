@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: A problem that also happens in official GameNative
+    url: https://github.com/utkarshdalal/GameNative
+    about: Games that do not start, logins, downloads and performance without Dual screen belong with GameNative.
+  - name: Share a layout or publish a mod
+    url: https://github.com/nono5822/GameNativeDuo-community
+    about: Layouts, mods and companions go to the community repository.

@@ -1,84 +1,47 @@
 name: Bug report
-description: File a bug report
-title: "[Bug]: "
-labels: bug
-assignees: []
+description: Something in GameNative Duo's dual-screen features does not work
+labels: [bug]
 body:
-
   - type: markdown
     attributes:
       value: |
-
-        - Please be aware that some devices are not compatible. Snapdragon chipsets tend to be more compatible than most.
-        (Examples: Exynos, Tensor, or other chipsets with a Mali GPU).
-
-        - Games with DRM are currently unsupported and the issue may be closed.
-
-        - If the bug was due to a hard crash, please attatch logs if possible.
-
-        - If a game shows a soft error about `Failed to initialize graphics...` or anything inside the emulation environment, try editing the container settings.
-          Note: Forums and subreddits will provide great help to configure certain games.
-
+        This is for the dual-screen features of GameNative Duo. If the same thing happens with Dual screen off, or in
+        official GameNative, please report it to GameNative instead.
   - type: textarea
-    id: describe-the-bug
+    id: what
     attributes:
-      label: Describe the bug
-      placeholder: Describe what the bug is.
+      label: What happened
+      description: What you did, what you expected, and what both screens showed instead.
     validations:
       required: true
-
-  - type: textarea
-    id: what-actually-happened
-    attributes:
-      label: Steps to reproduce
-      placeholder: What are some steps to reliably reproduce the bug?
-    validations:
-      required: true
-
-  - type: textarea
-    id: expected-behavior
-    attributes:
-      label: Expected behavior
-      placeholder: What should have happened?
-    validations:
-      required: true
-
   - type: input
-    id: pluvia-version
+    id: game
     attributes:
-      label: GameNativeVersion
-      description: "What version of GameNative are you using? (ie: 1.3.0)"
+      label: Game
+      description: The game and the mod in use (bundled, a community mod, or region view).
     validations:
       required: true
-
   - type: input
-    id: device-model
+    id: device
     attributes:
-      label: Device Model
-      description: "What device did this happen with? (ie: Retroid Pocket 5)"
+      label: Device
+      placeholder: AYN Thor
     validations:
       required: true
-
   - type: input
-    id: device-android-version
+    id: version
     attributes:
-      label: Android Version
-      description: "What android version did this occur on? (ie: Android 15)"
+      label: GameNative Duo version
+      description: From the app's settings, or the name of the APK you installed.
     validations:
       required: true
-
   - type: textarea
-    id: additional-info
+    id: status
     attributes:
-      label: Additional Information
-      description: "Is there any additional info to be added? (ie: logs)"
-    validations:
-      required: false
-  - type: checkboxes
-    id: issue-already-searched
+      label: Dual screen status
+      description: Open the status next to the Play button ("Dual screen status") and copy what it says, if it shows a problem.
+  - type: textarea
+    id: extra
     attributes:
-      label: New Issue
-      description: Is the issue not already posted as an [Issue](https://github.com/oxters168/gamenative/issues?q=is%3Aissue%20state%3Aopen%20label%3Abug) or in the [Project Board](https://github.com/users/oxters168/projects/1)
-      options:
-        - label: I have searched and did not find a similar issue to mine already listed.
-          required: true
+      label: Screenshots or logs
+      description: A photo of both screens helps most. Logs if you have them (`adb logcat -s GNDuo`).
