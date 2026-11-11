@@ -362,8 +362,7 @@ second, complete example for a non-Unity engine.
 - **SDKs** ([`duo/sdk/`](https://github.com/nono5822/GameNativeDuo/tree/devkit/duo/sdk)) for C# (Unity, MonoGame and
   any .NET game), Lua (LÖVE) and C (a header-only library for native mods), with short examples. The bundled mods use
   them too.
-- **The `duo` tool** ([`duo/tools/duo`](https://github.com/nono5822/GameNativeDuo/tree/devkit/duo/tools/duo), one file
-  for Windows, Linux or macOS on the [releases page](https://github.com/nono5822/GameNativeDuo/releases)): start a
+- **The `duo` tool** ([`duo/tools/duo`](https://github.com/nono5822/GameNativeDuo/tree/devkit/duo/tools/duo)): start a
   mod from a template, build, test and pack it, and check it against the contract. Its simulator runs a mod on a PC with
   no handheld at all, and its web UI inspects elements, bridge traffic and logs, on the simulator or on a device
   ([`duo/docs/duo-api.md`](https://github.com/nono5822/GameNativeDuo/blob/devkit/duo/docs/duo-api.md)).
