@@ -33,7 +33,7 @@ drift apart; `duo/tools/duo/tests` runs the same contract tests against the sim.
 | Method, path | Answer |
 |---|---|
 | `GET /api/info` | `{"api": 1, "server": "device"\|"sim", "app": "0.x", "sdk": "1.0", "dev": true, "game": "STEAM_2379780", "title": "Balatro", "mod": {"engine": "balatro-love", "sdk": "1.0", "caps": 47, "connected": true, "port": 40811}, "profile": "thor"}` |
-| `GET /api/state` | Layout tab state: screens (`window`, `top`, `bottom`), `caps` (from `EditCapabilities`), the user's `layout`, `elements` with features and limits (today's PC editor) |
+| `GET /api/state` | Layout tab state: screens (`window`, `top`, `bottom`), `caps` (from `EditCapabilities`), the user's `layout`, `elements` with features and limits (today's PC editor). Device: `answered` is false when the game did not answer (paused, loading) and `elements` is then the mod's bundled list; `elementsVersion` counts the mod's ELEMENTS_CHANGED (also in `/api/info`) |
 | `GET /api/snapshot/top.jpg`, `/bottom.jpg` | The screen as it looks now (device: PixelCopy; sim: window capture cropped) |
 
 ### Layout (player)

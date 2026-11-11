@@ -243,7 +243,12 @@ async function load(withSnapshot = true) {
   if (s.error) throw new Error(s.error);
   state = s;
   $("#game").textContent = s.title + (s.engine ? "  ·  " + s.engine : "");
-  $("#status").textContent = "Connected"; $("#status").className = "status ok";
+  // The game did not answer (paused by GameNative's menu, or loading): the list is the mod's fixed one. Ask again
+  // until it does, so the elements become clickable without a press on Refresh.
+  const paused = s.answered === false;
+  $("#status").textContent = paused ? "Game paused: close GameNative's menu on the device" : "Connected";
+  $("#status").className = paused ? "status" : "status ok";
+  if (paused) scheduleRefresh(2000);
   $("#regionRow").style.display = s.caps.source === "regions" ? "" : "none";
   if (withSnapshot) snapTime = Date.now();
   render();
@@ -827,6 +832,19 @@ function showTab(name) {
 }
 document.querySelectorAll(".tabs button").forEach((b) => (b.onclick = () => showTab(b.dataset.tab)));
 $("#refresh").onclick = () => load(true).catch(() => {});
+// The game's elements change with its scenes (a menu closes, a level loads): the device counts those changes, and a
+// cheap look at the count every few seconds reloads the page's list when it moved. Never during a drag.
+let pointerDown = false;
+document.addEventListener("pointerdown", () => { pointerDown = true; }, true);
+document.addEventListener("pointerup", () => { pointerDown = false; }, true);
+document.addEventListener("pointercancel", () => { pointerDown = false; }, true);
+setInterval(async () => {
+  if (!state || state.elementsVersion === undefined || pointerDown || document.hidden) return;
+  try {
+    const info = await api("/api/info");
+    if (info.elementsVersion !== undefined && info.elementsVersion !== state.elementsVersion && !pointerDown) await load(true);
+  } catch (e) { /* the device went away: the next request says so */ }
+}, 3000);
 $("#live").onchange = (ev) => {
   clearInterval(liveTimer);
   if (ev.target.checked) {
