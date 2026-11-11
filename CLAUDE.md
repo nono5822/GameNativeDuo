@@ -141,6 +141,9 @@ no CPU frame copies, data over pixels, idle at 0 fps when nothing changes.
   `assets/duo/mods/<mod>/ui-layout.json`, handed to the mod as `ui.json`. The editor opens with a two-finger long press
   on the bottom screen -> "Edit UI layout". A mod can add its own element with settings (`screens`, `options` in
   `elements.json`, the choice in the rule's `options`; contract "Plugin elements"): both editors list it first.
+  Several named layouts per game (`UiLayoutLibrary`, "My layouts" in the mod explorer: duplicate, rename, delete,
+  export, import): the active one is still `<game>.json`, the others sit beside it as `<game>.layout-<id>.json` with
+  the list in `<game>.layouts.json`; a community layout joins the list.
 - **Uniform editing** (`duo/docs/uniform-editing.md`): elements declare what the editor may do (`features`, `present`,
   `when` in `elements.json`; `features.json` bundled per mod), every editor surface reads `EditCapabilities`, mod cards
   show Full / Partial editing / Regions. Region view's elements are the user's regions (`UiRegion` in the UI layout:

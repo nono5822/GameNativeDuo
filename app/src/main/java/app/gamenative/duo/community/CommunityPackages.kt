@@ -6,6 +6,7 @@ import app.gamenative.duo.DualScreenHost
 import app.gamenative.duo.settings.DuoContainerSettings
 import app.gamenative.duo.settings.DuoSettingsStore
 import app.gamenative.duo.ui.UiLayout
+import app.gamenative.duo.ui.UiLayoutLibrary
 import app.gamenative.duo.ui.UiLayoutStore
 import app.gamenative.utils.Net
 import java.io.File
@@ -131,7 +132,8 @@ object CommunityPackages {
                 val file = pkg.file("ui-layout.json") ?: throw IOException("the package has no ui-layout.json")
                 val json = JSONObject(String(download(context, file), Charsets.UTF_8))
                 val layout = UiLayout.fromJson(json, containerId).copy(game = containerId)
-                UiLayoutStore.save(context, layout)
+                // Beside the player's own layouts, not over them (a newer version of the package replaces its own).
+                UiLayoutLibrary.of(context, containerId).add(pkg.title, layout.toJson().toString(2), source = pkg.id)
             }
             CommunityKind.DUO_SETTINGS -> {
                 val file = pkg.file("duo-settings.json") ?: throw IOException("the package has no duo-settings.json")
@@ -208,9 +210,16 @@ object CommunityPackages {
         forget(context, containerId, CommunityKind.GAME_PROFILE)
     }
 
-    /** Undoes an applied layout (back to the bundled preset or nothing). Settings stay as they are. */
+    /** Undoes an applied layout: it leaves the game's list of layouts. Settings stay as they are. */
     fun removeLayout(context: Context, containerId: String) {
-        UiLayoutStore.reset(context, containerId)
+        val source = applied(context, containerId)[CommunityKind.UI_LAYOUT]?.id.orEmpty()
+        val library = UiLayoutLibrary.of(context, containerId)
+        if (library.entries.any { source.isNotEmpty() && it.source == source }) {
+            library.removeSource(source)
+        } else {
+            // Applied before layouts had a list: the package is the game's only layout.
+            UiLayoutStore.reset(context, containerId)
+        }
         forget(context, containerId, CommunityKind.UI_LAYOUT)
     }
 
