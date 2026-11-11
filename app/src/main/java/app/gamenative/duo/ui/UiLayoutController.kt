@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.RectF
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import app.gamenative.duo.DualScreenHost
 import app.gamenative.duo.bridge.DuoBridge
 import app.gamenative.duo.mods.DuoModCatalog
@@ -156,6 +157,38 @@ class UiLayoutController(
     /** The regions as of the last saved change: editor gestures send changes relative to it. */
     private var regionBase: List<UiRegion> = layout.regions
 
+    /** Undo and redo of saved changes this session, for every editor surface. */
+    private val history = UiHistory()
+
+    /** The layout as of the last saved change: what an undo of the next one goes back to. */
+    private var committed: UiLayout = layout
+
+    val canUndo: Boolean get() = history.canUndo
+    val canRedo: Boolean get() = history.canRedo
+
+    /** Takes the last saved change back; false when there is none. */
+    fun undo(): Boolean = restore(history.undo(committed))
+
+    /** Does again what the last [undo] took back; false when there is none. */
+    fun redo(): Boolean = restore(history.redo(committed))
+
+    private fun restore(target: UiLayout?): Boolean {
+        if (target == null) return false
+        layout = target.withRegionRules()
+        regionBase = layout.regions
+        committed = layout
+        push()
+        persist()
+        Timber.tag(DualScreenHost.TAG).i("UI layout: undo/redo -> %d rule(s), %d region(s)", layout.rules.size, layout.regions.size)
+        return true
+    }
+
+    /** A saved change was made: remember what it replaced. [key] names what changed (see [UiHistory.record]). */
+    private fun commit(key: String) {
+        history.record(committed, layout, key, SystemClock.uptimeMillis())
+        committed = layout
+    }
+
     private val main = Handler(Looper.getMainLooper())
     private var nextRequest = 1
     private val pending = mutableMapOf<Int, (UiElementList?) -> Unit>()
@@ -247,6 +280,7 @@ class UiLayoutController(
     fun set(id: String, rule: UiRule, save: Boolean) {
         if (regionMode) return setRegion(id, rule, save)
         layout = layout.with(id, rule)
+        if (save) commit("rule:$id")
         push()
         if (save) {
             persist()
@@ -260,6 +294,7 @@ class UiLayoutController(
             layout = layout.copy(regions = layout.regions.ifEmpty { listOf(UiRegion.create(emptyList())) }).withRegionRules()
             regionBase = layout.regions
         }
+        commit("reset")
         push()
     }
 
@@ -278,9 +313,10 @@ class UiLayoutController(
         saveRegions(layout.regions.filterNot { it.id == regionId })
     }
 
-    private fun saveRegions(regions: List<UiRegion>) {
+    private fun saveRegions(regions: List<UiRegion>, key: String = "regions") {
         layout = layout.copy(regions = regions).withRegionRules()
         regionBase = layout.regions
+        commit(key)
         push()
         persist()
     }
@@ -315,7 +351,7 @@ class UiLayoutController(
         }
         val regions = layout.regions.map { if (it.id == regionId) changed else it }
         if (save) {
-            saveRegions(regions)
+            saveRegions(regions, "rule:$id")
         } else {
             layout = layout.copy(regions = regions).withRegionRules()
             listeners.forEach { it(layout) }
@@ -358,6 +394,7 @@ class UiLayoutController(
 
     fun setBackground(background: UiBackground, save: Boolean) {
         layout = layout.copy(background = background)
+        if (save) commit("background")
         push()
         if (save) persist()
     }
@@ -365,6 +402,7 @@ class UiLayoutController(
     fun setWidgets(widgets: List<UiWidget>, save: Boolean) {
         layout = layout.copy(widgets = widgets.take(UiLayout.MAX_WIDGETS))
         // Widgets are the app's own: the mod has nothing to redraw.
+        if (save) commit("widgets")
         listeners.forEach { it(layout) }
         if (save) persist()
     }

@@ -106,6 +106,8 @@ h3 { margin: 4px 0 10px; font-size: 13px; letter-spacing: .08em; text-transform:
   <div class="spacer"></div>
   <span class="status" id="status">Connecting</span>
   <label class="muted"><input type="checkbox" id="live"> Live view</label>
+  <button id="undo" title="Undo (Ctrl+Z)" style="display:none" disabled>Undo</button>
+  <button id="redo" title="Redo (Ctrl+Y)" style="display:none" disabled>Redo</button>
   <button id="refresh">Refresh</button>
 </header>
 <main>
@@ -245,8 +247,22 @@ async function load(withSnapshot = true) {
   $("#game").textContent = s.title + (s.engine ? "  ·  " + s.engine : "");
   $("#status").textContent = "Connected"; $("#status").className = "status ok";
   $("#regionRow").style.display = s.caps.source === "regions" ? "" : "none";
+  // Undo and redo: one history on the device for every editor. A server without it (the simulator) shows no buttons.
+  showHistory();
   if (withSnapshot) snapTime = Date.now();
   render();
+}
+
+function showHistory() {
+  for (const k of ["undo", "redo"]) {
+    $("#" + k).style.display = state.history ? "" : "none";
+    $("#" + k).disabled = !(state.history && state.history[k]);
+  }
+}
+
+// A change was just sent: it can be undone, and there is nothing to redo (the device answers the same on the next load).
+function changed() {
+  if (state.history) { state.history = { undo: true, redo: false }; showHistory(); }
 }
 
 function scheduleRefresh(ms = 400) {
@@ -268,6 +284,7 @@ async function setRule(id, rule) {
   if (rule.options && Object.keys(rule.options).length) clean.options = rule.options;
   if (Object.keys(clean).length) rules()[id] = clean; else delete rules()[id];
   await api("/api/rule", { id, rule: clean });
+  changed();
   scheduleRefresh();
 }
 
@@ -276,12 +293,14 @@ async function setBackground(patch) {
   state.layout.background = bg;
   renderBackground();
   await api("/api/background", bg);
+  changed();
   scheduleRefresh(600);
 }
 
 async function setWidgets(list) {
   state.layout.widgets = list;
   await api("/api/widgets", list);
+  changed();
 }
 
 // ---- the two screens ----------------------------------------------------------------------------------------
@@ -680,6 +699,22 @@ $("#removeRegion").onclick = async () => {
   if (!selected) return toast("Select a region first");
   await api("/api/regions/remove", { id: selected }); selected = null; scheduleRefresh(150);
 };
+
+async function historyStep(kind) {
+  if (!state || !state.history || !state.history[kind]) return;
+  clearTimeout(refreshTimer);
+  await api("/api/" + kind, {});
+  selectedWidget = -1;
+  await load(true);
+}
+$("#undo").onclick = () => historyStep("undo");
+$("#redo").onclick = () => historyStep("redo");
+document.addEventListener("keydown", (ev) => {
+  if (!(ev.ctrlKey || ev.metaKey) || ev.target.tagName === "INPUT" || ev.target.tagName === "TEXTAREA") return;
+  const k = ev.key.toLowerCase();
+  if (k === "z" && !ev.shiftKey) { ev.preventDefault(); historyStep("undo"); }
+  else if (k === "y" || (k === "z" && ev.shiftKey)) { ev.preventDefault(); historyStep("redo"); }
+});
 
 $("#resetAll").onclick = async () => {
   if (!confirm("Reset every change for this game?")) return;
