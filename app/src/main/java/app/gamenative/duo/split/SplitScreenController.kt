@@ -21,6 +21,7 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia
 import app.gamenative.duo.DualScreenHost
 import app.gamenative.duo.bridge.DuoBridge
+import app.gamenative.duo.community.ShareLayout
 import app.gamenative.duo.companion.CompanionHost
 import app.gamenative.duo.companion.CompanionPickers
 import app.gamenative.duo.companion.CompanionSession
@@ -619,11 +620,20 @@ private class SplitBottomPresentation(
                     onCompanion = if (companion != null) ::showCompanion else null,
                     onDevOverlay = if (dev != null) ::toggleDevOverlay else null,
                     devOverlayOn = devOverlay != null,
+                    onShare = if (uiLayout != null) ::shareLayout else null,
+                    canShare = uiLayout?.let { ShareLayout.canShare(context, it.layout.game) } == true,
                 ),
             )
         } catch (t: Throwable) {
             Timber.tag(DualScreenHost.TAG).e(t, "Failed to open the bottom screen menu")
         }
+    }
+
+    /** The share dialog opens on the main screen: text cannot be typed on the bottom screen while a game runs. */
+    private fun shareLayout() {
+        hideOverlay()
+        val ui = uiLayout ?: return
+        ShareLayout.askInGame(outerContext, ui.layout.game, ui.gameName)
     }
 
     private var devOverlay: DevOverlay? = null
