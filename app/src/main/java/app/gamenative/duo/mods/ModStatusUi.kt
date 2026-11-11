@@ -92,6 +92,7 @@ fun ModStatusDialog(state: ModHubState, onDismiss: () -> Unit) {
                 } else {
                     report.problems.forEach { problem -> Problem(state, report, problem, busy) }
                     LastSession(report)
+                    Note(stringResource(R.string.duo_hint_menu_status))
                 }
                 if (report?.on == true) {
                     HorizontalDivider()

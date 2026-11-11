@@ -192,6 +192,10 @@
     <string name="duo_status_title">Dual screen status</string>
     <string name="duo_status_and_saves">Status and saves</string>
     <string name="duo_status_close">Close</string>
+    <!-- The bottom screen's menu (two-finger long press): the hint card in game, and the same instruction in the status dialog -->
+    <string name="duo_hint_menu_title">Tip: the GameNative Duo menu</string>
+    <string name="duo_hint_menu">Hold two fingers still on this screen for a second: edit the UI layout, line up the screens.</string>
+    <string name="duo_hint_menu_status">In game, hold two fingers still on the bottom screen for a second to open the GameNative Duo menu: edit the UI layout, edit on a PC, line up the screens.</string>
     <string name="duo_status_off">Dual screen is off for this game. Save backups are still listed below.</string>
     <string name="duo_status_short_gamescope">Needs X11 · tap ⚠</string>
     <string name="duo_status_short_size">Wrong screen size · tap ⚠</string>
