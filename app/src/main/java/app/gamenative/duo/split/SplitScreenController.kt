@@ -19,6 +19,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia
+import app.gamenative.R
 import app.gamenative.duo.DualScreenHost
 import app.gamenative.duo.bridge.DuoBridge
 import app.gamenative.duo.companion.CompanionHost
@@ -329,7 +330,9 @@ private class SplitBottomPresentation(
             )
         }
     }
-    private val hideHint = Runnable { if (status?.showing == HINT) status?.dismiss() }
+    private val hintTitle: String by lazy { context.getString(R.string.duo_hint_menu_title) }
+    private var hintShownThisSession = false
+    private val hideHint = Runnable { if (status?.showing == hintTitle) status?.dismiss() }
 
     /** The game's mod said hello: the "starting" card goes, and the menu hint shows once. */
     fun onModConnected() {
@@ -340,10 +343,14 @@ private class SplitBottomPresentation(
         showHintOnce()
     }
 
+    /**
+     * Once per session, until the player has opened the menu once (then never again, for any game): a hint that is
+     * only "seen" by being on screen for a few seconds teaches nobody who was looking at the top screen.
+     */
     private fun showHintOnce() {
-        if (overlay != null || DuoHints.shown(context, DuoHints.TWO_FINGER_MENU)) return
-        DuoHints.markShown(context, DuoHints.TWO_FINGER_MENU)
-        status?.show(HINT, "Hold two fingers still on this screen for a second: edit the UI layout, line up the screens.")
+        if (overlay != null || hintShownThisSession || DuoHints.shown(context, DuoHints.TWO_FINGER_MENU)) return
+        hintShownThisSession = true
+        status?.show(hintTitle, context.getString(R.string.duo_hint_menu))
         handler.postDelayed(hideHint, HINT_MS)
     }
 
@@ -605,7 +612,7 @@ private class SplitBottomPresentation(
         endGesture(cancel = true)
         gesture = Gesture.IGNORED
         DuoHints.markShown(context, DuoHints.TWO_FINGER_MENU)
-        if (status?.showing == HINT) status?.dismiss()
+        if (status?.showing == hintTitle) status?.dismiss()
         try {
             showOverlay(
                 DuoMenuPanel(
@@ -858,7 +865,6 @@ private class SplitBottomPresentation(
         const val MOD_TIMEOUT_MS = 120_000L
         const val HINT_MS = 12_000L
         const val STARTING_PREFIX = "Starting"
-        const val HINT = "Tip: the GameNative Duo menu"
         const val NOT_STARTED = "The dual-screen mod has not started"
     }
 }
