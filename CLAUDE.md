@@ -141,6 +141,8 @@ no CPU frame copies, data over pixels, idle at 0 fps when nothing changes.
   `assets/duo/mods/<mod>/ui-layout.json`, handed to the mod as `ui.json`. The editor opens with a two-finger long press
   on the bottom screen -> "Edit UI layout". A mod can add its own element with settings (`screens`, `options` in
   `elements.json`, the choice in the rule's `options`; contract "Plugin elements"): both editors list it first.
+  Undo and redo (`UiHistory`, 30 steps per session, kept by `UiLayoutController` so every editor surface shares
+  it; PC editor: Ctrl+Z / Ctrl+Y, `POST /api/undo`, `/api/redo`).
 - **Uniform editing** (`duo/docs/uniform-editing.md`): elements declare what the editor may do (`features`, `present`,
   `when` in `elements.json`; `features.json` bundled per mod), every editor surface reads `EditCapabilities`, mod cards
   show Full / Partial editing / Regions. Region view's elements are the user's regions (`UiRegion` in the UI layout:

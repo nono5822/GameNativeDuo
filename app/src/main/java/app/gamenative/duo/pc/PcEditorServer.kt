@@ -263,6 +263,12 @@ internal class PcEditorServer(private val context: Context, private val host: Pc
                 onMainUnit { host.controller.resetAll() }
                 sendJson(out, JSONObject().put("ok", true))
             }
+            // One history for every editor (UiHistory): `ok` is false when there was nothing to undo or redo.
+            "POST /api/undo", "POST /api/redo" -> {
+                val undo = route.endsWith("undo")
+                val ok = onMain(2_000) { done: (Boolean?) -> Unit -> done(if (undo) host.controller.undo() else host.controller.redo()) }
+                sendJson(out, JSONObject().put("ok", ok == true))
+            }
             "POST /api/share" -> {
                 val o = JSONObject(String(req.body))
                 val layout = onMain(2_000) { done: (UiLayout?) -> Unit -> done(host.controller.layout) } ?: UiLayout("")
@@ -320,6 +326,7 @@ internal class PcEditorServer(private val context: Context, private val host: Pc
                     )
                     .put("layout", c.layout.toJson())
                     .put("hasImage", c.layout.background.image)
+                    .put("history", JSONObject().put("undo", c.canUndo).put("redo", c.canRedo))
                     .put(
                         "widgetTypes",
                         JSONArray().apply {

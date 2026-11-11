@@ -47,6 +47,7 @@ drift apart; `duo/tools/duo/tests` runs the same contract tests against the sim.
 | `POST /api/snapshot-background` | none | The top screen's picture as the background |
 | `POST /api/regions/add`, `/remove` | `{"id": ...}` for remove | Region view regions |
 | `POST /api/reset` | none | Back to the preset |
+| `POST /api/undo`, `/redo` | none | Takes the last saved change back, or does it again (device only; `GET /api/state` has `history: {"undo", "redo"}` when the server keeps one). `ok` is false when there was nothing to do |
 | `POST /api/share` | `{"name", "description", "author"}` | The community share form's URL |
 
 ### Inspector (*dev*)

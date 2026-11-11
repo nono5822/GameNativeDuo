@@ -85,12 +85,18 @@ internal class UiLayoutEditor(
         postDelayed(refreshSoon, 120)
     }
 
+    // Undo and redo follow every saved change, whichever editor made it (this one, the PC editor).
+    private val historyChanged: (UiLayout) -> Unit = { updateHistoryChips() }
+
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         controller.elementsChangedListeners += elementsChanged
+        controller.listeners += historyChanged
+        updateHistoryChips()
     }
 
     override fun onDetachedFromWindow() {
+        controller.listeners -= historyChanged
         controller.elementsChangedListeners -= elementsChanged
         removeCallbacks(refreshSoon)
         super.onDetachedFromWindow()
@@ -178,11 +184,30 @@ internal class UiLayoutEditor(
         val header = DuoUi.row(context)
         Tab.entries.forEach { t -> DuoUi.add(header, DuoUi.chip(context, t.label) { showTab(t) }.also { tabChips[t] = it }) }
         DuoUi.add(header, View(context), weight = 1f)
+        DuoUi.add(header, undoChip)
+        DuoUi.add(header, redoChip)
         DuoUi.add(header, DuoUi.chip(context, "Done") { onDone() })
         toolbar.addView(header)
         toolbar.addView(content)
         addView(toolbar)
         showTab(Tab.ELEMENTS)
+    }
+
+    private val undoChip = DuoUi.chip(context, "Undo") { if (controller.undo()) afterHistoryStep() }
+    private val redoChip = DuoUi.chip(context, "Redo") { if (controller.redo()) afterHistoryStep() }
+
+    private fun updateHistoryChips() {
+        undoChip.isEnabled = controller.canUndo
+        redoChip.isEnabled = controller.canRedo
+    }
+
+    /** The layout changed under the editor: show the restored values and ask the game where things are now. */
+    private fun afterHistoryStep() {
+        board.clearPreview()
+        // The background and widget controls show the layout's values: build them again.
+        if (tab == Tab.ELEMENTS) updateToolbar() else showTab(tab)
+        board.invalidate()
+        postDelayed({ if (isAttachedToWindow) refresh() }, 120)
     }
 
     private fun showTab(t: Tab) {
