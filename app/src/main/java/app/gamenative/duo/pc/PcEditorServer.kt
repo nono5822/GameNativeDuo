@@ -288,6 +288,7 @@ internal class PcEditorServer(private val context: Context, private val host: Pc
         done(
             JSONObject().put("api", 1).put("server", "device").put("app", BuildConfig.VERSION_NAME).put("sdk", BridgePackets.SDK_VERSION)
                 .put("dev", dev != null).put("game", c.layout.game).put("title", c.gameName)
+                .put("elementsVersion", c.elementsVersion)
                 .put(
                     "mod",
                     JSONObject().put("engine", c.engine).put("sdk", dev?.bridge?.sdkVersion.orEmpty())
@@ -298,7 +299,10 @@ internal class PcEditorServer(private val context: Context, private val host: Pc
     } ?: JSONObject().put("error", "busy")
 
     private fun state(): JSONObject {
-        val elements = onMain(4_000) { done: (UiElementList?) -> Unit -> host.controller.requestElements { done(it) } }
+        val answer = onMain(4_000) { done: (UiElementList?) -> Unit -> host.controller.requestElements { done(it) } }
+        // No answer: the game is paused (GameNative's menu is open) or still loading. Like the on-device editor, show
+        // the mod's bundled element list meanwhile, and say so: the page asks again until the game answers.
+        val elements = answer ?: onMain(1_000) { done: (UiElementList?) -> Unit -> done(host.controller.staticElements()) }
         return onMain(2_000) { done: (JSONObject?) -> Unit ->
             val c = host.controller
             done(
@@ -320,6 +324,8 @@ internal class PcEditorServer(private val context: Context, private val host: Pc
                     )
                     .put("layout", c.layout.toJson())
                     .put("hasImage", c.layout.background.image)
+                    .put("answered", answer != null)
+                    .put("elementsVersion", c.elementsVersion)
                     .put(
                         "widgetTypes",
                         JSONArray().apply {
