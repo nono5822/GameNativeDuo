@@ -243,6 +243,9 @@ dotnet build -c Release -p:ManagedPath=<Game_Data/Managed> -p:BepInExPath=<BepIn
   BepInEx `<game>/BepInEx/LogOutput.log`.
 - `libvulkan_renderer.so` (bottom-screen output) is rebuilt per `duo/native/README.md` after any change in
   `app/src/main/cpp/winlator/`.
+- The `duo` tool is built per platform (Windows, Linux, macOS; one AOT file each) by
+  `.github/workflows/duo-tool-release.yml` and attached to the draft release of a `duo-v*` tag; install, commands and
+  an example: `duo/tools/duo/README.md`.
 - Wireless adb: `export ANDROID_SERIAL="$(duo/agents/thor-wifi.sh)"` (plug in once per Thor boot, then unplug; or
   `thor-wifi.sh pair HOST:PORT CODE` once with Wireless debugging). Gradle installs and all `adb` calls then go over Wi-Fi.
 - Screenshots per screen: `adb exec-out screencap -p -d 4630946441858561667` (top), `-d 4630946482288158084` (bottom).
