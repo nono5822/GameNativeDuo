@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import app.gamenative.R
 import app.gamenative.duo.DualScreenHost
 import app.gamenative.duo.display.DeviceProfile
+import app.gamenative.duo.ui.Snapshots
 import app.gamenative.duo.ui.UiBackgroundMode
 import app.gamenative.duo.ui.UiLayout
 import app.gamenative.duo.ui.UiLayoutStore
@@ -48,6 +49,63 @@ object ShareLayout {
         authorFile(context).takeIf { it.isFile }?.readText()?.trim().orEmpty()
     } catch (t: Throwable) {
         ""
+    }
+
+    /**
+     * The share dialog while a game runs: plain views in a dialog on the main screen (the keyboard does not serve the
+     * bottom screen during a game), with the same three fields as [ShareLayoutDialog]. "Open the form" then leaves
+     * the game for the browser; the session stays in the background.
+     */
+    fun askInGame(context: Context, containerId: String, gameTitle: String) {
+        val activity = Snapshots.activityOf(context) ?: return
+        try {
+            val pad = (20 * activity.resources.displayMetrics.density).toInt()
+            fun field(hint: Int, text: String, lines: Int) = android.widget.EditText(activity).apply {
+                setHint(hint)
+                setText(text)
+                inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES or
+                    if (lines > 1) android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE else 0
+                minLines = lines
+            }
+            val name = field(R.string.duo_share_layout_name, "", 1)
+            val description = field(R.string.duo_share_layout_description, "", 2)
+            val author = field(R.string.duo_share_layout_author, lastAuthor(activity), 1)
+            val box = android.widget.LinearLayout(activity).apply {
+                orientation = android.widget.LinearLayout.VERTICAL
+                setPadding(pad, pad / 2, pad, 0)
+                addView(android.widget.TextView(activity).apply { setText(R.string.duo_share_layout_text) })
+                addView(name)
+                addView(description)
+                addView(author)
+            }
+            val dialog = android.app.AlertDialog.Builder(activity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle(R.string.duo_share_layout_title)
+                .setView(box)
+                .setPositiveButton(R.string.duo_share_layout_open, null)
+                .setNegativeButton(android.R.string.cancel, null)
+                .create()
+            dialog.window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
+            dialog.show()
+            // Set after show(): the button must not close the dialog while a field is still empty.
+            dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val n = name.text.toString().trim().take(60)
+                val d = description.text.toString().trim().take(600)
+                val a = author.text.toString().trim().take(60)
+                val missing = listOf(name to n.isEmpty(), description to d.isEmpty(), author to a.none { it.isLetterOrDigit() })
+                    .firstOrNull { it.second }?.first
+                if (missing != null) {
+                    missing.requestFocus()
+                    return@setOnClickListener
+                }
+                dialog.dismiss()
+                if (!open(activity, containerId, gameTitle, n, d, a)) {
+                    SnackbarManager.show(activity.getString(R.string.duo_share_layout_failed))
+                }
+            }
+            name.requestFocus()
+        } catch (t: Throwable) {
+            Timber.tag(DualScreenHost.TAG).e(t, "Could not open the share dialog")
+        }
     }
 
     /** Opens the filled-in form. Returns false (and logs) when no browser could open it. */

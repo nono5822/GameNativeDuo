@@ -31,6 +31,10 @@ internal class DuoMenuPanel(
     /** Developer mode: shows or hides the developer overlay (null when developer mode is off). */
     onDevOverlay: (() -> Unit)? = null,
     devOverlayOn: Boolean = false,
+    /** Shares the game's layout with the community (null where there is no layout editor). */
+    onShare: (() -> Unit)? = null,
+    /** False until the player has made a layout: the entry is greyed out and a line says why. */
+    canShare: Boolean = false,
 ) : FrameLayout(context) {
     init {
         setBackgroundColor(Color.argb(120, 0, 0, 0))
@@ -55,6 +59,12 @@ internal class DuoMenuPanel(
         item("Edit UI layout", editUiOff == null) { onEditUi() }
         onEditOnPc?.let { item(if (pcRunning) "PC editor (on)" else "Edit on PC", editUiOff == null) { it() } }
         if (editUiOff != null) card.addView(DuoUi.label(context, editUiOff, 12f, DuoUi.MUTED))
+        onShare?.let {
+            item("Share layout", canShare) { it() }
+            if (!canShare && editUiOff == null) {
+                card.addView(DuoUi.label(context, "Change something in the layout first.", 12f, DuoUi.MUTED))
+            }
+        }
         onCalibrate?.let { item("Line up screens") { it() } }
         onDevOverlay?.let { item(if (devOverlayOn) "Hide developer overlay" else "Developer overlay") { it() } }
         card.addView(View(context), LinearLayout.LayoutParams(1, dp(4)))
