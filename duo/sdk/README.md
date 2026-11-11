@@ -11,6 +11,8 @@ bridge packet by hand. MIT, so closed-source mods may use them. The protocol the
 | Lua `duo.lua` | LÖVE / LuaJIT games (Balatro uses it) | `lua/duo.lua` | `luajit lua/tests/test_duo.lua` (from the repo root) |
 | C `duo.h` | Native games through an ASI loader; header-only, Winsock or POSIX | `c/duo.h`, template `c/native-asi/` | `gcc -std=c99 -D_DEFAULT_SOURCE c/tests/test_duo.c` |
 
+New here? Start with [your first dual-screen mod](../docs/quickstart.md).
+
 ## One API, three languages
 
 | Idea | C# | Lua | C |

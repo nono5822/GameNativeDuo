@@ -39,4 +39,9 @@ check(#chunks > 1 and keys == 400, "chunks keep every key")
 local l = duo.parse_layout('{"screen":{"w":1920,"h":2160},"top":{"x":0,"y":0,"w":1920,"h":1080},"bottom":{"x":340,"y":1080,"w":1240,"h":1080},"bridge":{"port":4000}}')
 check(l.port == 4000 and l.bottom.x == 340 and l.bottom_scale == 1, "layout parses")
 
+-- Where the files are: %AppData%\GameNativeDuo\ under Windows and Wine, a "/" path for a native game against duo sim.
+check(duo.default_dir("C:\\Users\\me\\AppData\\Roaming") == "C:\\Users\\me\\AppData\\Roaming\\GameNativeDuo\\", "default dir on Windows and Wine")
+check(duo.default_dir("/home/me/mod") == "/home/me/mod/GameNativeDuo/", "default dir for a native game against duo sim")
+check(duo.default_dir("") == nil, "no default dir with an empty APPDATA")
+
 print("duo.lua: " .. n .. " checks passed")

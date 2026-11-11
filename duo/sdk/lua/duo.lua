@@ -279,10 +279,14 @@ end
 
 duo.read_file, duo.write_file = read_file, write_file
 
---- %AppData%\GameNativeDuo\ (with a trailing separator), or nil outside Wine/Windows.
-function duo.default_dir()
-    local appdata = os.getenv("APPDATA")
-    return appdata and (appdata .. "\\GameNativeDuo\\") or nil
+--- The GameNativeDuo folder under APPDATA (with a trailing separator), or nil when APPDATA is not set.
+--- Windows and Wine: %AppData%\GameNativeDuo\. A native Linux or macOS game (testing against `duo sim`) has no
+--- APPDATA: start it with APPDATA set to the folder that holds the sim's GameNativeDuo folder, and "/" is used.
+function duo.default_dir(appdata)
+    appdata = appdata or os.getenv("APPDATA")
+    if not appdata or appdata == "" then return nil end
+    local sep = (appdata:find("/", 1, true) and not appdata:find("\\", 1, true)) and "/" or "\\"
+    return appdata .. sep .. "GameNativeDuo" .. sep
 end
 
 local function parse_rect(o)
