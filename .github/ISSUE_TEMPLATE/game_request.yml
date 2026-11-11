@@ -1,0 +1,45 @@
+name: Game request
+description: Ask for dual-screen support for a game
+title: "Game: "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Any game already works with region view (parts of the picture shown on the bottom screen). This form is for a
+        real dual-screen mod, where the game's interface moves to the bottom screen.
+  - type: input
+    id: game
+    attributes:
+      label: Game
+      description: Name and store (Steam, GOG, Epic).
+    validations:
+      required: true
+  - type: dropdown
+    id: runs
+    attributes:
+      label: Does it run in GameNative on your device today
+      options:
+        - "Yes"
+        - "Yes, with problems"
+        - "No"
+        - Not tried
+    validations:
+      required: true
+  - type: input
+    id: engine
+    attributes:
+      label: Engine, if you know it
+      description: Unity, Godot, Unreal, LÖVE, MonoGame... The game's folder often tells (a `_Data` folder means Unity).
+  - type: textarea
+    id: screens
+    attributes:
+      label: What should go where
+      description: What you would like on the bottom screen (inventory, map, hotbar) and what should stay on top.
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device
+      placeholder: AYN Thor
