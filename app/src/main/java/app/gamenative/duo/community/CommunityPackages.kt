@@ -7,7 +7,9 @@ import app.gamenative.duo.settings.DuoContainerSettings
 import app.gamenative.duo.settings.DuoSettingsStore
 import app.gamenative.duo.ui.UiLayout
 import app.gamenative.duo.ui.UiLayoutStore
+import app.gamenative.utils.ContainerUtils
 import app.gamenative.utils.Net
+import com.winlator.container.Container
 import java.io.File
 import java.io.IOException
 import java.security.MessageDigest
@@ -113,13 +115,35 @@ object CommunityPackages {
         val request = Request.Builder().url(file.url).build()
         val bytes = Net.http.newCall(request).execute().use { response ->
             if (!response.isSuccessful) throw IOException("HTTP ${response.code} for ${file.path}")
-            response.body.bytes()
+            // Never more than the index declares: a server must not be able to fill the memory or the disk.
+            response.body.byteStream().use { readBounded(it, downloadLimit(file.size), file.path) }
         }
         if (sha256(bytes) != file.sha256) throw IOException("${file.path} does not match its checksum")
         cache.parentFile?.mkdirs()
         writeAtomic(cache, bytes)
         return bytes
     }
+
+    /** The most bytes a download of declared [size] may deliver ([MAX_DOWNLOAD] when the index gives no size). */
+    internal fun downloadLimit(size: Long): Long = if (size in 0..MAX_DOWNLOAD) size else MAX_DOWNLOAD
+
+    /** Reads [input] to its end, or fails once it gives more than [limit] bytes. */
+    internal fun readBounded(input: java.io.InputStream, limit: Long, name: String): ByteArray {
+        val out = java.io.ByteArrayOutputStream()
+        val buffer = ByteArray(64 * 1024)
+        var total = 0L
+        while (true) {
+            val n = input.read(buffer)
+            if (n < 0) break
+            total += n
+            if (total > limit) throw IOException("$name is larger than the $limit bytes the index declares")
+            out.write(buffer, 0, n)
+        }
+        return out.toByteArray()
+    }
+
+    /** The largest file a package may carry (the community repository's own limit for mods). */
+    internal const val MAX_DOWNLOAD = 20L * 1024 * 1024
 
     /**
      * Applies a data package to the container: a layout becomes the game's UI layout (picked up at the next game
@@ -143,6 +167,9 @@ object CommunityPackages {
                     undo.parentFile?.mkdirs()
                     writeAtomic(undo, current.toJson().toString(2).toByteArray())
                 }
+                // Screen split needs the X11 display server (nothing splits under Gamescope, the default of new
+                // containers): switch like the Dual screen toggle does, and remember what to put back.
+                if (json.optBoolean("screenSplit", current.screenSplit)) useX11(context, containerId, undo)
                 // Only the settings the package names change.
                 DuoSettingsStore.save(
                     context,
@@ -181,6 +208,7 @@ object CommunityPackages {
         } catch (t: Throwable) {
             null
         }
+        restoreDisplayServer(context, containerId, undo)
         val current = DuoSettingsStore.load(context, containerId)
         DuoSettingsStore.save(
             context,
@@ -201,6 +229,40 @@ object CommunityPackages {
         forget(context, containerId, CommunityKind.DUO_SETTINGS)
         Timber.tag(DualScreenHost.TAG).i("Community: settings package removed from %s", containerId)
     }
+
+    /** Switches the container to X11 when it is not, recording the old display server in the settings undo file. */
+    private fun useX11(context: Context, containerId: String, undo: File) {
+        try {
+            val container = ContainerUtils.getContainer(context, containerId)
+            if (Container.isX11Display(container.containerVariant, container.displayServer)) return
+            val record = JSONObject(undo.readText())
+            if (!record.has(PREVIOUS_DISPLAY_SERVER)) {
+                record.put(PREVIOUS_DISPLAY_SERVER, container.displayServer)
+                writeAtomic(undo, record.toString(2).toByteArray())
+            }
+            container.displayServer = Container.DISPLAY_SERVER_X11
+            container.saveData()
+            Timber.tag(DualScreenHost.TAG).i("Community: %s now uses the X11 display server (screen split needs it)", containerId)
+        } catch (t: Throwable) {
+            Timber.tag(DualScreenHost.TAG).w(t, "Could not switch %s to X11 for a settings package", containerId)
+        }
+    }
+
+    /** Puts back the display server [useX11] replaced, unless the user chose another one since. */
+    private fun restoreDisplayServer(context: Context, containerId: String, undo: File) {
+        try {
+            val previous = undo.takeIf { it.isFile }?.let { JSONObject(it.readText()).optString(PREVIOUS_DISPLAY_SERVER) }
+            if (previous.isNullOrEmpty()) return
+            val container = ContainerUtils.getContainer(context, containerId)
+            if (container.displayServer != Container.DISPLAY_SERVER_X11) return
+            container.displayServer = previous
+            container.saveData()
+        } catch (t: Throwable) {
+            Timber.tag(DualScreenHost.TAG).w(t, "Could not restore the display server of %s", containerId)
+        }
+    }
+
+    private const val PREVIOUS_DISPLAY_SERVER = "previousDisplayServer"
 
     /** Undoes an applied game profile: the bundled one (or none) is used from the next session start. */
     fun removeProfile(context: Context, containerId: String) {
